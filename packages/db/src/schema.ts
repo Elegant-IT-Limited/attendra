@@ -66,6 +66,9 @@ export const patients = pgTable('patients', {
   status: text('status', { enum: ['active', 'new'] }).notNull().default('active'),
   createdByCallId: uuid('created_by_call_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  /** A record staff deleted (migration 0054): no name, number, date of birth or details left, kept so its past visits still count. */
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  deletedBy: text('deleted_by'),
 });
 
 /** A patient's search keys (migration 0049): shortened keyed hashes, looked up by equality so the index serves them under Row Level Security. */
@@ -101,7 +104,11 @@ export const appointments = pgTable('appointments', {
   visitTypeId: text('visit_type_id').notNull(),
   startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
   endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
-  status: text('status', { enum: ['booked', 'cancelled'] }).notNull().default('booked'),
+  /** booked, arrived, completed, no_show or cancelled (core visit-status.ts; migration 0054). */
+  status: text('status', { enum: ['booked', 'arrived', 'completed', 'no_show', 'cancelled'] }).notNull().default('booked'),
+  /** When, and by whom (a staff member's id), the desk last set arrived, completed, no-show or back to booked (migration 0054). */
+  statusChangedAt: timestamp('status_changed_at', { withTimezone: true }),
+  statusChangedBy: text('status_changed_by'),
   idempotencyKey: text('idempotency_key').notNull(),
   createdByCallId: uuid('created_by_call_id'),
   createdByUserId: text('created_by_user_id'),

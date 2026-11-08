@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { addDays, ClinicConfig, localDateOf, zonedInstant } from '@attendra/core';
-import { clinicSince, type Database, type FrontDeskRepository, qualityRows, testCallStarts } from '@attendra/db';
+import { clinicSince, type Database, type FrontDeskRepository, qualityRows, testCallStarts, visitsDue } from '@attendra/db';
 import { Controller, Get, Inject, NotFoundException, Param, Query } from '@nestjs/common';
 import { ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { z } from 'zod';
@@ -21,7 +21,7 @@ export class QualityController {
 
   /**
    * How the assistant did, week by week: containment, bookings, refusals, handovers,
-   * reviews, after-hours calls and cost. No patient data. Real phone calls only, with
+   * reviews, after-hours calls and cost, and the visits the desk marked no-shows. No patient data. Real phone calls only, with
    * each week's browser test calls counted as left out. The weeks go back to the
    * clinic's sign-up week, `weeks` at most.
    */
@@ -37,7 +37,7 @@ export class QualityController {
     const weeks = weeksSince(await clinicSince(this.db, clinicId), now, clinic.timezone, q.weeks);
     const from = zonedInstant(addDays(weekStart(localDateOf(now, clinic.timezone)), -7 * (weeks - 1)), '00:00', clinic.timezone);
     const to = new Date(now.getTime() + 86_400_000);
-    const [rows, tests] = await Promise.all([qualityRows(this.db, clinicId, from, to), testCallStarts(this.db, clinicId, from, to)]);
-    return { weeks: qualityWeeks(rows, clinic, now, weeks, COST_PER_MINUTE, tests), costPerMinute: COST_PER_MINUTE };
+    const [rows, tests, visits] = await Promise.all([qualityRows(this.db, clinicId, from, to), testCallStarts(this.db, clinicId, from, to), visitsDue(this.db, clinicId, from, to, now)]);
+    return { weeks: qualityWeeks(rows, clinic, now, weeks, COST_PER_MINUTE, tests, visits), costPerMinute: COST_PER_MINUTE };
   }
 }

@@ -44,9 +44,10 @@ That is not the same as no PHI. A patient id with an appointment's times says wh
 | `call.completed` | A call ends. | `callId`, `channel` (`phone` or `web` for a browser test), `startedAt`, `endedAt`, `durationSeconds`, `outcome` (`booked`, `rescheduled`, `cancelled`, `info`, `task_created`, `transferred`, `emergency`, `abandoned`), `emergency`, `verified` |
 | `call.summary.ready` | The worker has summarised a call. | `callId`, `intent`, `sentiment`, `needsReview`. The summary itself stays in Attendra. |
 | `appointment.booked` | The assistant or the front desk books. | `appointmentId`, `patientId` (unless the endpoint leaves patient ids out), `providerId`, `visitTypeId`, `startsAt`, `endsAt`, `by` (`assistant` or `staff`), `callId` |
-| `appointment.rescheduled` | An appointment moves. | As booked, plus `previousAppointmentId` when the assistant booked a new one in its place (the front desk moves it in place, so that is `null`). |
+| `appointment.rescheduled` | An appointment moves (to another time, or to another vet, as when a vet's visits are handed over before they are removed). | As booked, plus `previousAppointmentId` when the assistant booked a new one in its place (the front desk moves it in place, so that is `null`). |
 | `appointment.cancelled` | An appointment is cancelled. | `appointmentId`, `patientId` (unless the endpoint leaves patient ids out), `by`, `callId`, `reason` (a code, like `patient_asked`) |
 | `appointment.confirmed` | The owner or patient replied C to the visit's reminder text. | `appointmentId`, `patientId` (unless the endpoint leaves patient ids out), `via` (`text`) |
+| `appointment.status_changed` | The front desk marks a visit arrived, completed or a no-show, or puts it back to booked. | `appointmentId`, `patientId` (unless the endpoint leaves patient ids out), `providerId`, `startsAt`, `status` (`booked`, `arrived`, `completed`, `no_show`), `previousStatus`, `by` (`staff`) |
 | `request.created` | The assistant takes a refill or callback request. | `requestId`, `type` (`refill`, `callback`), `patientId` or `null` (left out when the endpoint leaves patient ids out), `callId` |
 | `request.done` | Staff close a request. | `requestId`, `type`, `outcome` (`called_back`, `left_message`, `refill_sent`, `not_needed`), `callId` |
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { API_SCOPES, bareName, Gender, HAS_NAME, PHONE_NUMBERS_ONLY, PHONE_TYPED, Provider, VisitType } from '@attendra/core';
+import { API_SCOPES, bareName, DESK_STATUSES, Gender, HAS_NAME, PHONE_NUMBERS_ONLY, PHONE_TYPED, Provider, VISIT_STATUSES, VisitType } from '@attendra/core';
 import { z } from 'zod';
 
 // The dashboard's HTTP contract. Request schemas are enforced by the API; response
@@ -163,7 +163,7 @@ export const CallDetail = CallSummary.omit({ tools: true, verified: true, patien
   /** What the call booked or cancelled, for "Booked: Tue 6 Oct 3:00 PM with Dr. Okafor". */
   appointments: z.array(z.object({
     id: z.string(), startsAt: z.iso.datetime(), providerId: z.string(), visitTypeId: z.string(),
-    status: z.enum(['booked', 'cancelled']), change: z.enum(['booked', 'cancelled']),
+    status: z.enum(VISIT_STATUSES), change: z.enum(['booked', 'cancelled']),
     createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(),
     /** Booked on this call, and moved to another time since. */
     moved: z.boolean(),
@@ -213,7 +213,7 @@ export const KnowledgeAnswer = z.object({
   refusal: z.enum(['medical', 'off_topic', 'no_information']).nullable(),
 });
 
-export const WEBHOOK_EVENTS = ['call.completed', 'call.summary.ready', 'appointment.booked', 'appointment.rescheduled', 'appointment.cancelled', 'appointment.confirmed', 'request.created', 'request.done'] as const;
+export const WEBHOOK_EVENTS = ['call.completed', 'call.summary.ready', 'appointment.booked', 'appointment.rescheduled', 'appointment.cancelled', 'appointment.confirmed', 'appointment.status_changed', 'request.created', 'request.done'] as const;
 export const WebhookEndpoint = z.object({
   id: z.string(), url: z.string(), description: z.string(), events: z.array(z.enum(WEBHOOK_EVENTS)), enabled: z.boolean(),
   /** repeated_failures when Attendra turned it off, turned_off when someone did. */
@@ -265,6 +265,8 @@ export const QualityWeek = z.object({
   voiceMinutes: z.number(), cost: z.number(), costPerCall: z.number().nullable(), costPerBooking: z.number().nullable(),
   /** Browser test calls that week: not in any number above, which count real phone calls only. */
   testCallsLeftOut: z.number(),
+  /** Visits due that week that have started (any state but cancelled), and those the desk marked no-show, with their share (null with none due). Visits, not calls. */
+  visitsDue: z.number(), noShows: z.number(), noShowShare: z.number().nullable(),
 });
 export const Quality = z.object({ weeks: z.array(QualityWeek), costPerMinute: z.number() });
 export const QualityQuery = z.object({ weeks: z.coerce.number().int().min(1).max(26).default(8) });
@@ -448,7 +450,7 @@ export const ScheduleQuery = z.object({
   // a day, a week, or a month view's six weeks
   days: z.coerce.number().int().min(1).max(42).default(1),
   providerId: z.string().max(64).optional(),
-  /** booked: what is on the calendar; cancelled: only what was cancelled; all: both. */
+  /** booked: what is on the calendar, whatever the desk marked it (booked, arrived, completed, no-show); cancelled: only what was cancelled; all: both. */
   status: z.enum(['booked', 'cancelled', 'all']).default('all'),
 });
 /** Cancelled visits as a history list: a window of visit days, newest first by default. A POST body, since `q` is a patient's name. */
@@ -469,7 +471,11 @@ export const Appointment = z.object({
   visitTypeId: z.string(),
   startsAt: z.iso.datetime(),
   endsAt: z.iso.datetime(),
-  status: z.enum(['booked', 'cancelled']),
+  /** booked, arrived, completed, no_show or cancelled (core visit-status.ts). */
+  status: z.enum(VISIT_STATUSES),
+  /** When the desk last marked it (arrived, completed, no-show, back to booked), and the staff member's name; null until it does. */
+  statusChangedAt: z.iso.datetime().nullable(),
+  statusChangedBy: z.string().nullable(),
   cancelReason: CancelReason.nullable(),
   bookedBy: BookedBy,
   cancelledBy: BookedBy.nullable(),
@@ -552,6 +558,8 @@ export const RescheduleAppointment = z.object({
 }).refine((b) => !b.override || !!b.overrideReason, { path: ['overrideReason'], message: 'say why it is moved outside the hours' });
 export const CancelAppointment = z.object({ reason: CancelReason.optional() });
 export const AppointmentChange = z.object({ appointmentId: z.string(), status: z.enum(['done', 'already_done']) });
+/** What the desk marks a visit: arrived, completed, no-show, or back to booked. */
+export const SetVisitStatus = z.object({ status: z.enum(DESK_STATUSES) });
 
 // a name: letters of any language, spaces, - ' . (digits allowed for pets), never only spaces or symbols
 const personName = z.string().trim().min(1, 'required').max(80).regex(HAS_NAME, 'type a name, not only spaces or symbols');
@@ -637,7 +645,7 @@ export const PatientProfile = PatientCard.extend({
   usualProviderId: z.string().nullable(),
   appointments: z.array(z.object({
     id: z.string(), providerId: z.string(), visitTypeId: z.string(), startsAt: z.iso.datetime(), endsAt: z.iso.datetime(),
-    status: z.enum(['booked', 'cancelled']), bookedBy: BookedBy,
+    status: z.enum(VISIT_STATUSES), bookedBy: BookedBy,
   })),
   /** Every call from this record's phone number, as one profile for the number: verified on this record, or from the number only. */
   calls: z.array(z.object({ id: z.string(), startedAt: z.iso.datetime(), outcome: z.string().nullable(), emergency: z.boolean(), channel: z.enum(['phone', 'web']), voiceSeconds: z.number().nullable(), forThisRecord: z.boolean() })),

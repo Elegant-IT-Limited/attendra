@@ -2,7 +2,7 @@
 'use client';
 import { useProblem } from '@/components/ui/toast';
 import type { CallList, Overview, Schedule, WaitingTasks, WebhookEndpoints } from '@attendra/api/contracts';
-import { bookableWindows, type ClinicConfig, localDateOf, localParts, shownProviders, toMinutes, providerName } from '@attendra/core';
+import { bookableWindows, type ClinicConfig, holdsTime, localDateOf, localParts, shownProviders, toMinutes, providerName } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ArrowRight, Flag, PhoneCall, PhoneOff, Pill, Siren, UserCheck, Voicemail, Webhook } from 'lucide-react';
 import Link from 'next/link';
@@ -211,9 +211,10 @@ function TodaysSchedule({ clinicId, clinic, now, today, schedule, allowed }: { c
             : schedule.isError ? <Alert tone="danger" className="m-5">Today&apos;s schedule did not load. It tries again every {SAFETY_POLL_WORDS}.</Alert> : (
               <div className="grid divide-y divide-border md:grid-cols-2 md:divide-x md:divide-y-0">
                 {/* the stand-in a new clinic starts with steps aside once anyone else is listed, unless it has visits today */}
-                {shownProviders(clinic.providers, (schedule.data?.appointments ?? []).filter((a) => a.status === 'booked').map((a) => a.providerId)).map((p) => {
+                {shownProviders(clinic.providers, (schedule.data?.appointments ?? []).filter((a) => holdsTime(a.status)).map((a) => a.providerId)).map((p) => {
                   const windows = bookableWindows(clinic, p, today).windows.map((w) => [toMinutes(w.open), toMinutes(w.close)] as const);
-                  const mine = (schedule.data?.appointments ?? []).filter((a) => a.providerId === p.id && a.status === 'booked');
+                  // what keeps the vet's time today: booked, arrived and completed (a no-show frees it)
+                  const mine = (schedule.data?.appointments ?? []).filter((a) => a.providerId === p.id && holdsTime(a.status));
                   const span = mine.map((a) => ({ a, s: localParts(new Date(a.startsAt), tz).minutes, e: localParts(new Date(a.endsAt), tz).minutes }));
                   const next = span.find((x) => x.e > nowMin);
                   // open stretches of 20 minutes or more inside the provider's hours, from now on

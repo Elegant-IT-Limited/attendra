@@ -24,6 +24,7 @@ Self-hosters are responsible for their own BAAs and operations.
   - `appointment.viewed`: one appointment with the patient's date of birth, phone and the note.
   - `appointment.booked.staff`, `appointment.rescheduled.staff`, `appointment.cancelled.staff`: changes made at the front desk, under the staff member's own id.
   - `appointment.booked.staff.override`, `appointment.rescheduled.staff.override`: the same, outside the hours, with the reason kept on the visit.
+  - `appointment.status.arrived`, `.completed`, `.no_show`, `.booked`: the desk marked what happened to a visit (or put it back to booked), under the staff member's own id; the visit keeps when and by whom.
   - `appointment.confirmed.text`: a reply of C to a reminder confirmed the visit. `patient.texts_ok.call`: the caller said yes to reminder texts on a call.
 - The call record is audited under the actor `system` when the call opens (`call.opened`) and when it closes (`call.closed`, with how many transcript lines and tool steps it wrote, as counts). There is no row per line or step, so the log stays readable for the rows that matter: people reading patient data. A browser test call is opened as `call.test.started` under the staff member instead.
 - The Today screen reads no patient data except today's appointments, which are audited as `schedule.viewed`. Its counts and its list of waiting requests carry none, so they write no audit rows.
@@ -74,6 +75,10 @@ Each row in the audit log has an action code. The audit page shows it in plain w
 | `appointment.cancelled` | Cancelled an appointment |
 | `appointment.cancelled.staff` | Cancelled an appointment at the desk |
 | `appointment.rescheduled.staff` | Moved an appointment |
+| `appointment.status.arrived` | Marked a visit arrived |
+| `appointment.status.booked` | Put a marked visit back to booked |
+| `appointment.status.completed` | Marked a visit completed |
+| `appointment.status.no_show` | Marked a visit a no-show |
 | `appointment.viewed` | Opened an appointment |
 | `call.closed` | Finished a call |
 | `call.coached` | Sent the assistant a note |

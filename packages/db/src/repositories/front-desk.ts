@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { normalizeName } from '@attendra/core';
+import { HOLDS_TIME, normalizeName } from '@attendra/core';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL, sql } from 'drizzle-orm';
 import { clinicAccess, clinicMemberships, memberships } from '../auth-schema';
 import { type Database, type Tx, withClinic } from '../client';
@@ -646,10 +646,10 @@ export class FrontDeskRepository {
     return withClinic(this.db, clinicId, async (tx) => !!(await tx.select({ id: patients.id }).from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId)))).length);
   }
 
-  /** Booked time in [from, to), for the open-slot search. No patient data, so no audit row. */
+  /** Time held in [from, to) (booked, arrived or completed visits), for the open-slot search. No patient data, so no audit row. */
   async busy(clinicId: string, q: { from: Date; to: Date; except?: string }) {
     return withClinic(this.db, clinicId, (tx) => tx.select({ providerId: appointments.providerId, start: appointments.startsAt, end: appointments.endsAt, visitTypeId: appointments.visitTypeId })
-      .from(appointments).where(and(eq(appointments.clinicId, clinicId), eq(appointments.status, 'booked'),
+      .from(appointments).where(and(eq(appointments.clinicId, clinicId), inArray(appointments.status, [...HOLDS_TIME]),
         lt(appointments.startsAt, q.to), sql`${appointments.endsAt} > ${q.from}`, q.except ? sql`${appointments.id} <> ${q.except}` : undefined)));
   }
 

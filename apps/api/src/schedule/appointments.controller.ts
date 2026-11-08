@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ageOn, bookingOf, DESK_LEAD_MINUTES, ClinicConfig, type EventSink, localDateOf, normalizeName, strandedReason, zonedInstant } from '@attendra/core';
+import { addDays, ageOn,  bookingOf, ClinicConfig, DESK_LEAD_MINUTES, DESK_STATUS_REFUSED, type EventSink, localDateOf, normalizeName, strandedReason, zonedInstant } from '@attendra/core';
 import { appointmentFacts, type Database, type FrontDeskRepository, nameMatches, type ScheduleEntry, type ScheduleRepository } from '@attendra/db';
-import { openSlots, type SlotProblem, type StaffChange, type StaffScheduler } from '@attendra/scheduling';
+import { openSlots, type SlotProblem, type StaffChange, type StaffScheduler, type StatusChange } from '@attendra/scheduling';
 import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
 import { can } from '../access';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import {
   type Appointment, AppointmentChange, AppointmentDetail, BookAppointment, type BookedBy, CancelAppointment, CancelledList, CancelledQuery, RescheduleAppointment, Schedule,
-  ScheduleConflicts, ScheduleQuery, SlotList, SlotQuery,
+  ScheduleConflicts, ScheduleQuery, SetVisitStatus, SlotList, SlotQuery,
 } from '../contracts';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
@@ -39,6 +39,7 @@ const by = (b: import('@attendra/db').BookedBy | null): BookedBy | null =>
 const toAppointment = (a: ScheduleEntry): Appointment => ({
   id: a.id, patientId: a.patientId, patientName: a.patientName, providerId: a.providerId, visitTypeId: a.visitTypeId,
   startsAt: a.startsAt.toISOString(), endsAt: a.endsAt.toISOString(), status: a.status,
+  statusChangedAt: a.statusChangedAt?.toISOString() ?? null, statusChangedBy: a.statusChangedBy,
   cancelReason: a.cancelReason as Appointment['cancelReason'], bookedBy: by(a.bookedBy)!, cancelledBy: by(a.cancelledBy), createdAt: a.createdAt.toISOString(),
   overrideReason: a.overrideReason, confirmedAt: a.confirmedAt?.toISOString() ?? null, confirmedVia: a.confirmedVia, reminderSentAt: a.reminderSentAt?.toISOString() ?? null,
 });
@@ -194,6 +195,34 @@ export class AppointmentsController {
     if (!isUuid(id)) throw new NotFoundException({ error: 'not_found' });
     const clinic = await this.clinic(clinicId);
     return this.announce(clinicId, 'appointment.cancelled', this.answer(await this.scheduler.cancel(clinic, id, { reason: body.reason }, staff.userId)));
+  }
+
+  @Post(':appointmentId/status')
+  @HttpCode(200)
+  @Requires('schedule:write')
+  @ApiOperation({ summary: 'Mark a visit arrived, completed or a no-show, or put it back to booked. Arrived and completed from the visit\'s day; a no-show once it has started. The same state again changes nothing. Audited.' })
+  @ApiBody({ schema: schemaOf(SetVisitStatus) })
+  @ApiOkResponse({ schema: schemaOf(AppointmentChange) })
+  @ApiConflictResponse({ description: 'The state cannot be set now; `reason` says why' })
+  async status(@Param('clinicId') clinicId: string, @Param('appointmentId') id: string, @Body(new ZodPipe(SetVisitStatus)) body: z.infer<typeof SetVisitStatus>, @CurrentStaff() staff: Staff): Promise<AppointmentChange> {
+    if (!isUuid(id)) throw new NotFoundException({ error: 'not_found' });
+    const clinic = await this.clinic(clinicId);
+    const result: StatusChange = await this.scheduler.setStatus(clinic, id, body.status, staff.userId);
+    if (result.status === 'not_found') throw new NotFoundException({ error: 'not_found' });
+    if (result.status === 'refused') {
+      throw new ConflictException({ error: 'status_refused', reason: result.reason, message: result.reason === 'taken' ? 'Another visit was booked at that time since. Move one of them first.' : DESK_STATUS_REFUSED[result.reason] });
+    }
+    if (result.status === 'done') {
+      const a = await appointmentFacts(this.db, clinicId, id);
+      // each change is its own event: arrived, then completed, then back to booked and arrived again
+      if (a) {
+        await this.events.emit(clinicId, {
+          type: 'appointment.status_changed', key: `${id}|${result.to}|${a.updatedAt}`,
+          data: { appointmentId: id, patientId: a.patientId, providerId: a.providerId, startsAt: a.startsAt, status: result.to, previousStatus: result.from, by: 'staff' },
+        });
+      }
+    }
+    return { appointmentId: id, status: result.status };
   }
 
   /** Tells the clinic's webhooks about a change that happened (not a repeat of one), with ids and times only. */

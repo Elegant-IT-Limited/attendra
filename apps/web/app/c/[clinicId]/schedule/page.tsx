@@ -123,7 +123,7 @@ function ScheduleScreen() {
   // the visit open in the panel stays on the grid when it is cancelled there, so the block does not vanish behind it
   // a viewer's schedule carries no patient: each visit shows as a booked visit, and does not open
   const named = can('schedule:read');
-  const appointments = useMemo(() => (schedule.data?.appointments ?? []).filter((a) => showCancelled || a.status === 'booked' || a.id === open)
+  const appointments = useMemo(() => (schedule.data?.appointments ?? []).filter((a) => showCancelled || a.status !== 'cancelled' || a.id === open)
     .map((a) => (a.patientName ? a : { ...a, patientName: NAMELESS_VISIT })), [schedule.data, showCancelled, open]);
   const hidden = (schedule.data?.appointments.length ?? 0) - appointments.length;
 
@@ -144,7 +144,8 @@ function ScheduleScreen() {
   const step = weekly ? 7 : 1;
   const go = (by: 1 | -1) => set({ date: view === 'month' ? shiftMonth(date, by) : addDays(date, by * step) });
   const unit = view === 'month' ? 'month' : weekly ? 'week' : 'day';
-  const booked = appointments.filter((a) => a.status === 'booked').length;
+  // every visit on the calendar, whatever the desk marked it
+  const booked = appointments.filter((a) => a.status !== 'cancelled').length;
   const writable = can('schedule:write');
   const pets = industryPack(clinic.industry).identity === 'pet';
 

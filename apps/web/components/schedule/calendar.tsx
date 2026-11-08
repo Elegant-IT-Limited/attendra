@@ -4,6 +4,7 @@ import type { Appointment } from '@attendra/api/contracts';
 import { bufferOf, type ClinicConfig, localParts, providerName, toMinutes } from '@attendra/core';
 import { Bot, Check, User } from 'lucide-react';
 import type { CSSProperties } from 'react';
+import { MarkedIcon, markedWords } from '@/components/schedule/visit-status';
 import { Empty } from '@/components/ui/feedback';
 import { Popover } from '@/components/ui/overlay';
 import { dayTitle, timeOf, VISIT_DOTS, VISIT_TAILS, VISIT_TONES } from '@/lib/format';
@@ -169,16 +170,17 @@ function Lane({ clinic, provider, date, start, end, appointments, onOpen, visitI
         const twoLines = h >= 36;
         return (
           <button key={a.id} type="button" onClick={() => onOpen(a.id)} data-testid="appointment"
-            aria-label={`${timeOf(a.startsAt, tz)}, ${a.patientName}, ${clinic.visitTypes.find((v) => v.id === a.visitTypeId)?.name ?? ''}${cancelled ? ', cancelled' : ''}${a.confirmedAt && !cancelled ? ', confirmed' : ''}, booked by ${a.bookedBy.kind === 'assistant' ? 'the assistant' : 'staff'}`}
+            aria-label={`${timeOf(a.startsAt, tz)}, ${a.patientName}, ${clinic.visitTypes.find((v) => v.id === a.visitTypeId)?.name ?? ''}${cancelled ? ', cancelled' : ''}${markedWords(a.status)}${a.confirmedAt && !cancelled ? ', confirmed' : ''}, booked by ${a.bookedBy.kind === 'assistant' ? 'the assistant' : 'staff'}`}
             className={cn('absolute z-10 overflow-hidden rounded-md border border-border/60 border-l-4 px-1.5 text-left text-xs leading-tight shadow-xs transition hover:z-20 hover:shadow-md focus-visible:z-20 focus-ring',
               VISIT_TONES[visitIndex(a.visitTypeId) % VISIT_TONES.length],
-              cancelled && 'border-dashed text-text-muted')}
+              cancelled && 'border-dashed text-text-muted', a.status === 'no_show' && 'opacity-60')}
             // visits drawn at the same height share the lane, side by side: nothing is ever under anything
             style={{ top: (s - start) * PX + 1, height: h, left: `calc(${(column / columns) * 100}% + 0.125rem)`, width: `calc(${100 / columns}% - 0.25rem)` }}>
             <span className={cn('flex items-center gap-1', twoLines ? 'pt-1' : 'pt-0.5')}>
               <Icon className="size-3 shrink-0 text-text-muted" aria-hidden />
               {/* too short for a second line: the time goes on the first, and both truncate together */}
               <span className={cn('truncate font-medium', cancelled && 'line-through')}>
+                <MarkedIcon status={a.status} className="mr-0.5" />
                 {a.confirmedAt && !cancelled && <Check className="mr-0.5 inline size-3 text-success" aria-hidden />}
                 {a.patientName}{twoLines ? '' : <span className="font-normal text-text-muted"> · {timeOf(a.startsAt, tz)}</span>}
               </span>
@@ -252,7 +254,7 @@ export function ScheduleList({ clinic, dates, appointments, onOpen }: { clinic: 
                       <span className={cn('size-2 shrink-0 rounded-full', VISIT_DOTS[idx(a.visitTypeId) % VISIT_DOTS.length])} aria-hidden />
                       <span className="min-w-0 flex-1">
                         <span className={cn('block truncate font-medium', a.status === 'cancelled' && 'line-through text-text-muted')}>{a.patientName}</span>
-                        <span className="block truncate text-xs text-text-muted">{visit(a.visitTypeId)}, {provider(a.providerId)}{a.status === 'cancelled' ? ', cancelled' : ''}</span>
+                        <span className="block truncate text-xs text-text-muted">{visit(a.visitTypeId)}, {provider(a.providerId)}{a.status === 'cancelled' ? ', cancelled' : markedWords(a.status)}</span>
                       </span>
                       <Icon className="size-3.5 shrink-0 text-text-muted" aria-label={a.bookedBy.kind === 'assistant' ? 'Booked by the assistant' : 'Booked by staff'} />
                     </button>
@@ -323,6 +325,7 @@ export function MonthGrid({ clinic, month, dates, appointments, today, onOpen, o
                         <span className={cn('size-2 shrink-0 rounded-full', VISIT_DOTS[idx(a.visitTypeId) % VISIT_DOTS.length])} aria-hidden />
                         <span className="shrink-0 tabular-nums text-text-muted">{timeOf(a.startsAt, tz)}</span>
                         <span className={cn('truncate', a.status === 'cancelled' && 'line-through text-text-muted')}>{a.patientName}</span>
+                        <MarkedIcon status={a.status} />
                         {a.confirmedAt && a.status === 'booked' && <Check className="size-3 shrink-0 text-success" aria-label="confirmed" />}
                       </button>
                     </li>

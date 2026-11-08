@@ -71,3 +71,34 @@ test('the front desk does not see Quality', async ({ browser }) => {
   const page = await openAs(browser, 'frontdesk');
   await expect(page.getByRole('link', { name: 'Quality' })).toHaveCount(0);
 });
+
+// No-shows are the desk's marks, counted by the server: the card and the week's row show the share and count it sent,
+// and the card opens that week's visits on the schedule.
+test('the no-shows card shows the server\'s share and count, and opens the week on the schedule', async ({ browser }) => {
+  const page = await openAs(browser, 'manager', (p) => p.route((url) => url.pathname.startsWith('/api/v1/') && url.pathname.endsWith('/quality'), async (route) => {
+    const res = await route.fetch();
+    const body = await res.json() as { weeks: Record<string, unknown>[] };
+    body.weeks[0] = { ...body.weeks[0], visitsDue: 8, noShows: 2, noShowShare: 0.25 };
+    await route.fulfill({ response: res, json: body });
+  }));
+  const clinic = new URL(page.url()).pathname.split('/')[2];
+  await page.goto(`/c/${clinic}/quality`);
+  const card = page.getByTestId('quality-noShows');
+  await expect(card).toContainText('No-shows');
+  await expect(card).toContainText('25% (2)');
+  await expect(card).toContainText('This week, 8 visits due');
+  await expect(page.locator('tbody tr').first()).toContainText('25% (2)');
+  await card.click();
+  await expect(page).toHaveURL(/\/schedule\?.*view=agenda/, { timeout: 20_000 });
+});
+
+test('the no-shows card shows what the server counted, as it sent it', async ({ browser }) => {
+  const page = await openAs(browser, 'manager');
+  const clinic = new URL(page.url()).pathname.split('/')[2];
+  const served = await (await page.request.get(`/api/v1/clinics/${clinic}/quality?weeks=26`)).json() as { weeks: { noShows: number; noShowShare: number | null; visitsDue: number }[] };
+  const [week] = served.weeks;
+  await page.goto(`/c/${clinic}/quality`);
+  const shown = week!.noShowShare === null ? '—' : `${Math.round(week!.noShowShare * 100)}% (${week!.noShows})`;
+  await expect(page.getByTestId('quality-noShows').locator('p').nth(1)).toHaveText(shown);
+  await expect(page.getByTestId('quality-noShows')).toContainText(`This week, ${week!.visitsDue} visit${week!.visitsDue === 1 ? '' : 's'} due`);
+});

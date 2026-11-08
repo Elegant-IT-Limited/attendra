@@ -59,3 +59,15 @@ export async function clinicSince(db: Database, clinicId: string): Promise<Date 
     return r ? new Date(r.created_at) : null;
   });
 }
+
+/**
+ * The visits that were due in a period and have started by `now`, whatever the desk marked
+ * them (booked, arrived, completed, no-show): when each started and its state, for the
+ * quality page's no-shows. Cancelled visits are not counted. No patient data.
+ */
+export async function visitsDue(db: Database, clinicId: string, from: Date, to: Date, now: Date): Promise<{ startsAt: Date; status: string }[]> {
+  const until = now < to ? now : to;
+  return withClinic(db, clinicId, async (tx) => (await tx.execute(sql`
+    select starts_at, status from appointments where clinic_id = ${clinicId} and status <> 'cancelled' and starts_at >= ${from} and starts_at <= ${until} order by starts_at`))
+    .rows.map((r: unknown) => { const x = r as { starts_at: string; status: string }; return { startsAt: new Date(x.starts_at), status: x.status }; }));
+}
