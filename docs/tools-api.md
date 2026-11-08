@@ -48,6 +48,21 @@ A tools-path call reads the clinic's schedule for 14 days as it starts, and a pe
 - **A likely lookup runs before the reply** (`flow/speculate.ts`): once times are on the table and the visit is known, the voice waits for the caller's words (gpt-realtime only transcribes a turn after it ends); when they ask about a day or a time the lookup runs, and its result goes into the conversation with them, so the voice answers in one reply instead of a tool call and a second reply. It never guesses a visit. The engine replies by itself if no go comes within 1.2 s. **Off by default**: on real audio it saved no time, since waiting for the caller's words costs about as much as the round it saves. `ATTENDRA_LOOKUP_AHEAD=on` (the local demo and the evals read it) turns it on to compare.
 - **No narration before a tool**; at most one short phrase when a second tool is needed. A caller who switches language is answered in it, without a second introduction.
 
+## Cost per call (path A, batch 1d)
+
+gpt-realtime reads the whole prompt on every reply: the instructions, the tool definitions, then the conversation. OpenAI's prompt cache bills the part a reply shares with an earlier one at a tenth (text) or an eightieth (audio) of the price, so the layout keeps that part as long as possible:
+
+- **The same instructions and tools on every call of a clinic.** The caller ID and the clinic's date are not in them: they are the conversation's first item (`callFacts`), once.
+- **The same short turn note after each caller turn, never removed.** Removing the last one moved every item after it, and the cache missed the rest of the call.
+- **Words a tool gives that the next reply must say as written** (its question, its refusal line) go in as a note, then a reply with no tools; never as the reply's own `instructions`, which replace the session's for that reply and miss the cache for the whole call.
+- **Compact tool schemas** (no `$schema`, defaults or length limits; nullable strings as a type list): the backend checks every call's arguments against the full schema anyway. A vet clinic's voice gets shorter wording for the six longest tool descriptions (`VET_VOICE_DESCRIPTIONS`); the planner path keeps the full wording.
+- **The call's state in a line** (`callStateNote`: who was found, what waits for a yes, what is done), added after the tool results that changed it, and **truncation** (`retention_ratio` 0.7 past 12,000 conversation tokens), so a long call drops its oldest turns now and then without losing where it stands.
+- Tools are not cut down by booking stage: a different tool list mid-call misses the cache for everything after it, which costs more than the tokens it saves (measured below).
+
+`pnpm --filter @attendra/evals exec tsx scripts/path-a-cost.ts` lays every scripted scenario out as gpt-realtime would see it and counts the tokens (o200k tokenizer, no API): before and after this layout, each change on its own, tools by stage, and calls back to back (the cache across calls). Audio is estimated from the words (150 a minute; 10 audio tokens a second for the caller, 20 for the voice). An estimate for comparing layouts, not a bill: `call_costs` has the real figure.
+
+`PUT /provisioning/clinics/:clinicId/realtime-model` puts one clinic on `gpt-realtime-2.1-mini` for a phone trial; its calls are priced as that model.
+
 ## Path C (Vapi), for the bake-off only
 
 A Vapi assistant (Vapi's transcriber, model and voice) whose function tools are ours. Vapi posts its tool calls and call events to `POST /webhooks/vapi/v1/events?clinic=<id>` on the voice service, with the shared secret in `x-vapi-secret` (or as a bearer). Each Vapi call gets the same `CallAgent`, booking flow and safety rules as our own calls; the conversation comes from Vapi's `conversation-update` messages; the end-of-call report closes the call row (`engine: vapi`, `voice_flow: tools`) with its transcript and cost. The route exists only when `VAPI_SERVER_SECRET` is set. No clinic is switched to Vapi; batch 6 builds the real adapter (number re-pointing, back-office switch, concurrency).

@@ -76,6 +76,7 @@ const Flag = z.enum(['0', '1']).default('0').transform((v) => v === '1');
 const PurgeQuery = z.object({ force: Flag, keepLogins: Flag });
 const EngineChoice = z.object({ engine: z.enum(['gpt-live', 'gpt-realtime']).nullable() });
 const FlowChoice = z.object({ flow: z.enum(['planner', 'tools']).nullable() });
+const ModelChoice = z.object({ model: z.enum(['gpt-realtime-2.1', 'gpt-realtime-2.1-mini']).nullable() });
 const Period = z.object({ from: z.iso.datetime(), to: z.iso.datetime() }).refine((p) => p.from < p.to, 'from must be before to');
 const ReportQuery = z.object({ weeks: z.coerce.number().int().min(1).max(8).default(1) });
 // a POST body, so a caller's number is never in an address: since when, and optionally the number a check call comes from
@@ -358,6 +359,21 @@ export class ProvisioningController {
       const c = ClinicConfig.parse(current);
       if ((c.voiceFlow ?? null) === body.flow) return { result: true };
       return { save: { ...c, voiceFlow: body.flow ?? undefined }, result: true };
+    });
+    if (!done) throw new NotFoundException({ error: 'not_found' });
+  }
+
+  /**
+   * Which gpt-realtime model answers this clinic's calls when it is on gpt-realtime; null goes back to the deployment's
+   * (ATTENDRA_REALTIME_MODEL). For a one-clinic phone trial of the cheaper model (batch 1d). Not something the clinic sets.
+   */
+  @Put('clinics/:clinicId/realtime-model')
+  @HttpCode(204)
+  async realtimeModel(@Param('clinicId') clinicId: string, @Body(new ZodPipe(ModelChoice)) body: z.infer<typeof ModelChoice>) {
+    const done = await this.desk.updateSettings(clinicId, 'provisioning', `clinic.realtime_model.${body.model ?? 'default'}`, clinicId, (current) => {
+      const c = ClinicConfig.parse(current);
+      if ((c.realtimeModel ?? null) === body.model) return { result: true };
+      return { save: { ...c, realtimeModel: body.model ?? undefined }, result: true };
     });
     if (!done) throw new NotFoundException({ error: 'not_found' });
   }

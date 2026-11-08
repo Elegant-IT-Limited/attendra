@@ -33,6 +33,7 @@ const AUDIT: Record<string, Way> = {
   'booking.startEvery': 'code',
   voiceEngine: 'code', // set by the operator
   voiceFlow: 'code', // set by the operator: planner hand-offs or the tools API
+  realtimeModel: 'code', // set by the operator: which gpt-realtime model answers (a one-clinic trial)
   answeringPaused: 'code', // set by the hosting layer
   'specialDays[].date': 'clinic_info',
   'specialDays[].windows[].open': 'clinic_info',

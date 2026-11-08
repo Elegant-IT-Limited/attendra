@@ -2,7 +2,7 @@
 import { answerAcrossPieces, isClearYes, LANGUAGES, RIVERBEND_CLINIC, zonedInstant } from '@attendra/core';
 import { seedRiverbend } from '@attendra/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { CallCache, cachedBackend, CallState, CLINIC_NOW, flowStage, speculativeLookup, voiceToolDefinitions } from '../src';
+import { CallCache, cachedBackend, CallState, callStateNote, CLINIC_NOW, flowStage, speculativeLookup, voiceToolDefinitions } from '../src';
 import { world } from './support';
 
 // Batch 1a: the voice calls the tools itself. The same safety rules (runTool), the booking flow as code around them,
@@ -50,6 +50,8 @@ describe('a booking on the tools path', () => {
     c.caller('Linh.');
     const found = await tool('verify_caller', { owner_name: 'Linh', pet_name: 'Biscuit', phone: '720 555 0172' });
     expect(found).toMatchObject({ ok: true, outcome: 'found', stage: 'pet_chosen' });
+    // the call's state in a line for the voice (batch 1d): it outlasts the oldest turns being cut
+    expect(callStateNote(c.state)).toBe('Call state. found: Biscuit.');
 
     // no time named: the earliest times (an exact time asked for is staged straight away, as on the planner path)
     const times = await tool('find_slots', { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2026-09-29', from_time: null, part_of_day: 'any' });
@@ -61,6 +63,7 @@ describe('a booking on the tools path', () => {
     expect(proposed).toMatchObject({ ok: true, stage: 'readback_pending' });
     expect(proposed.spoken).toMatch(/Shall I book it\?/);
     expect(proposed.next).toMatch(/call commit_pending at once/);
+    expect(callStateNote(c.state)).toContain('waiting for a yes to: ');
     // the yes before the read-back was spoken does not book
     expect((await tool('commit_pending')).outcome).toBe('not_read_back');
     c.assistant(proposed.spoken!);
@@ -70,6 +73,8 @@ describe('a booking on the tools path', () => {
     expect(booked).toMatchObject({ ok: true, outcome: 'booked', stage: 'done' });
     expect(booked.spoken).toMatch(/That's booked|All set/);
     expect(c.state.outcome).toBe('booked');
+    expect(callStateNote(c.state)).toMatch(/^Call state\. found: Biscuit\. done: /);
+    expect(callStateNote(new CallState())).toBeNull();
   });
 
   it('a no after a yes, in a later piece, is a no', async () => {

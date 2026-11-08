@@ -3,6 +3,7 @@ import { type ClinicConfig, localName, TOOL_NAMES, type ToolName } from '@attend
 import { toolDefinitions } from '../planner';
 import type { ToolResult } from '../tools';
 import type { FlowStage } from './booking';
+import type { CallState } from '../call-state';
 
 /** The clinic's clock: a tool of its own, the one source for the time, the day and whether the clinic is open (V-3). */
 export const CLINIC_NOW = {
@@ -82,3 +83,17 @@ const okOutcome = (name: string, data: Record<string, unknown>) => {
   if (name === 'find_slots') return Array.isArray(data.slots) && data.slots.length ? 'times_found' : 'no_times';
   return 'ok';
 };
+
+/**
+ * The call's state in one short line, for the voice model on the tools path (batch 1d): who was found, what waits for
+ * a yes, what is done. Added to its conversation when it changes, so it is still there once the oldest turns are cut.
+ * Null before anything happened. No record data beyond the pet's first name the caller already heard.
+ */
+export function callStateNote(state: Pick<CallState, 'verifiedPatient' | 'pending' | 'done'>): string | null {
+  const parts = [
+    state.verifiedPatient ? `found: ${state.verifiedPatient.firstName}${state.verifiedPatient.isNew ? ' (new)' : ''}` : null,
+    state.pending ? `waiting for a yes to: ${state.pending.readback}` : null,
+    state.done.length ? `done: ${state.done.join('; ')}` : null,
+  ].filter(Boolean);
+  return parts.length ? `Call state. ${parts.join('. ')}.` : null;
+}

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { CallAgent, Outbound } from '@attendra/agent';
+import { type CallAgent, callStateNote, type Outbound } from '@attendra/agent';
 import { addTokens, askedToHangUp, type CallQuality, EMPTY_CALL_MIN_MS, type ModelTokens, recordedOutcome, saidGoodbye } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { randomUUID } from 'node:crypto';
@@ -120,6 +120,8 @@ export class CallRunner {
   private answerDue = false;
   /** Tool calls on the tools path, by call id: each is answered once, whatever a sideband replay sends again. */
   private readonly toolCalls = new Set<string>();
+  /** The last call-state line the voice model was given (tools path). */
+  private stateNote: string | null = null;
   /**
    * The tools path on an engine that can wait for our go (gpt-realtime): once a pet is found, after each caller turn the
    * lookup their words ask for is run and handed to the voice before it replies (round 2). Set by the voice service.
@@ -277,6 +279,9 @@ export class CallRunner {
         const e = event as Extract<SidebandEvent, { call_id: string; name: string; arguments: string }>;
         const output = await this.callTool(e.call_id, e.name, e.arguments);
         if (output === null || this.closed) return;
+        // the call's state, when this tool changed it, goes in before the result the model answers from (batch 1d)
+        const state = callStateNote(this.agent.state);
+        if (state && state !== this.stateNote) { this.stateNote = state; this.sideband.send({ type: 'context.note', event_id: `state_${e.call_id}`, content: state }); }
         this.sideband.send({ type: 'tool.result', event_id: `tool_${e.call_id}`, call_id: e.call_id, output });
         return;
       }

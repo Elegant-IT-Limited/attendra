@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { afterTool, type CallState, type FlowMemory, flowStage, nextStep, type Planner, type PlannerInput, type PlannerOutput, type PlannerTiming, shapeForVoice, speculativeLookup, type ToolResult, visitTypeChoices, voiceToolDefinitions } from '@attendra/agent';
+import { afterTool, type CallState, callStateNote, type FlowMemory, flowStage, nextStep, type Planner, type PlannerInput, type PlannerOutput, type PlannerTiming, shapeForVoice, speculativeLookup, type ToolResult, visitTypeChoices, voiceToolDefinitions } from '@attendra/agent';
 import { addDays, clinicNow, clinicNowLine, type ClinicConfig, localDateOf, type ToolName, weekdayOf } from '@attendra/core';
-import { realtimeTools, toolQuestion, toolRefusalLine, toolReplyInstructions, toolsBackendInstructions, toolsVoicePrompt, turnNoteFor } from '@attendra/voice-engine';
+import { callFacts, realtimeTools, toolQuestion, toolRefusalLine, toolReplyInstructions, toolsBackendInstructions, toolsVoiceStaticPrompt, TOOLS_TRUNCATION, TURN_NOTE } from '@attendra/voice-engine';
 import type OpenAI from 'openai';
 import { OpenAIRealtimeWS } from 'openai/realtime/ws';
 
@@ -26,7 +26,7 @@ function clockFor(clinic: ClinicConfig, now: Date, state: CallState) {
   return { ok: true, outcome: 'ok', spoken: clinicNowLine(clinic, c, state.language), data: { ...c, days }, stage: 'idle' };
 }
 
-interface Session { flow: FlowMemory; sent: number; lastSaid: string | null; notes?: number; ws?: OpenAIRealtimeWS; ready?: Promise<void> }
+interface Session { flow: FlowMemory; sent: number; lastSaid: string | null; stateNote?: string | null; ws?: OpenAIRealtimeWS; ready?: Promise<void> }
 
 export class ToolsPathPlanner implements Planner {
   private readonly sessions = new WeakMap<CallState, Session>();
@@ -104,7 +104,9 @@ export class ToolsPathPlanner implements Planner {
       this.open = ws;
       s.ready = new Promise((resolve, reject) => { ws.socket.once('open', () => resolve()); ws.socket.once('error', reject); if (ws.socket.readyState === 1) resolve(); });
       await s.ready;
-      ws.send({ type: 'session.update', session: { type: 'realtime', output_modalities: ['text'], instructions: toolsVoicePrompt(input.clinic, { callerNumber: input.callerNumber ?? null }), tools: realtimeTools(input.clinic) as never, tool_choice: 'auto' } });
+      ws.send({ type: 'session.update', session: { type: 'realtime', output_modalities: ['text'], instructions: toolsVoiceStaticPrompt(input.clinic), tools: realtimeTools(input.clinic) as never, tool_choice: 'auto', truncation: TOOLS_TRUNCATION } });
+      // the call's own facts first, once (batch 1d), as on a call
+      ws.send({ type: 'conversation.item.create', item: { type: 'message', role: 'system', content: [{ type: 'input_text', text: callFacts(input.clinic, input.now ?? new Date(), input.callerNumber ?? null) }] } } as never);
       // the greeting was said before the caller spoke
       ws.send({ type: 'conversation.item.create', item: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: input.clinic.greeting }] } } as never);
     }
@@ -118,10 +120,9 @@ export class ToolsPathPlanner implements Planner {
         : { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: t.text }] } } as never);
     }
     s.sent = input.state.turns.length;
-    // the per-turn note a call gets after each caller turn on path A, dated by the scenario's clock (the last one removed)
-    if (s.notes) ws.send({ type: 'conversation.item.delete', item_id: `turn_note_${s.notes}` } as never);
-    s.notes = (s.notes ?? 0) + 1;
-    ws.send({ type: 'conversation.item.create', item: { id: `turn_note_${s.notes}`, type: 'message', role: 'system', content: [{ type: 'input_text', text: turnNoteFor(input.clinic, input.now ?? new Date()) }] } } as never);
+    // the per-turn note a call gets after each caller turn on path A (the same each turn, never removed: batch 1d)
+    const note = (text: string) => ws.send({ type: 'conversation.item.create', item: { type: 'message', role: 'system', content: [{ type: 'input_text', text }] } } as never);
+    note(TURN_NOTE);
     // round 2: the lookup the caller's words ask for, run before the reply and handed to it, as the voice service does
     // off by default, as on calls; ATTENDRA_LOOKUP_AHEAD=on to compare
     const spec = process.env.ATTENDRA_LOOKUP_AHEAD === 'on' ? speculativeLookup(input.state, input.clinic) : null;
@@ -137,6 +138,9 @@ export class ToolsPathPlanner implements Planner {
     let refusal: string | null = null;
     for (let round = 0, retried = false; round < 8; round++) {
       const t0 = performance.now();
+      // the words a tool gave, said as written next: a note, then a reply with no tools (as on a call)
+      const instructions = toolReplyInstructions(question, refusal);
+      if (instructions) note(instructions);
       const answer = () => new Promise<{ text: string; calls: { name: string; call_id: string; arguments: string }[]; usage: { input_tokens?: number; output_tokens?: number; input_token_details?: { cached_tokens?: number } } | undefined }>((resolve, reject) => {
         let text = '';
         const calls: { name: string; call_id: string; arguments: string }[] = [];
@@ -155,8 +159,7 @@ export class ToolsPathPlanner implements Planner {
           }
         };
         ws.on('event', on as never);
-        const instructions = toolReplyInstructions(question, refusal);
-        ws.send((instructions ? { type: 'response.create', response: { instructions, tool_choice: 'none' } } : { type: 'response.create' }) as never);
+        ws.send((instructions ? { type: 'response.create', response: { tool_choice: 'none' } } : { type: 'response.create' }) as never);
       });
       let reply: Awaited<ReturnType<typeof answer>>;
       try { reply = await answer(); }
@@ -183,6 +186,9 @@ export class ToolsPathPlanner implements Planner {
         refusal = toolRefusalLine(output) ?? refusal;
         ws.send({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: c.call_id, output } } as never);
       }
+      // the call's state, when those calls changed it, after their results (as on a call)
+      const stateNote = callStateNote(input.state);
+      if (stateNote && stateNote !== s.stateNote) { s.stateNote = stateNote; note(stateNote); }
     }
     return null;
   }

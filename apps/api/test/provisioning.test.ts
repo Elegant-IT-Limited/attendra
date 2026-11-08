@@ -50,6 +50,7 @@ describe('provisioning', () => {
       ['PUT', `${P}/clinics/${c}/closed`, {}],
       ['PUT', `${P}/clinics/${c}/voice-engine`, { engine: 'grok' }],
       ['PUT', `${P}/clinics/${c}/voice-flow`, { flow: 'direct' }],
+      ['PUT', `${P}/clinics/${c}/realtime-model`, { model: 'gpt-4o' }],
       ['PUT', `${P}/clinics/${c}/numbers/12345`, undefined],
       ['GET', `${P}/clinics/${c}/usage?from=yesterday`, undefined],
       ['POST', `${P}/clinics/${c}/calls-check`, {}],
@@ -172,6 +173,15 @@ describe('provisioning', () => {
     expect((await api.request('GET', S, { cookie })).json().voiceFlow).toBe('planner');
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/voice-flow`, { body: { flow: null }, authorization: auth })).statusCode).toBe(204);
     expect((await api.request('GET', S, { cookie })).json().voiceFlow).toBeUndefined();
+    // and which gpt-realtime model, for a one-clinic trial of the cheaper one (batch 1d): the operator's too
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/realtime-model`, { body: { model: 'gpt-realtime-2.1-mini' }, authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/realtime-model`, { body: { model: 'gpt-4o' }, authorization: auth })).statusCode).toBe(422);
+    expect((await api.request('PUT', `${P}/clinics/clinic_none/realtime-model`, { body: { model: null }, authorization: auth })).statusCode).toBe(404);
+    const trial = (await api.request('GET', S, { cookie })).json();
+    expect(trial.realtimeModel).toBe('gpt-realtime-2.1-mini');
+    expect((await api.request('PUT', S, { cookie, body: { ...trial, realtimeModel: undefined } })).json().realtimeModel).toBe('gpt-realtime-2.1-mini');
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/realtime-model`, { body: { model: null }, authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('GET', S, { cookie })).json().realtimeModel).toBeUndefined();
   });
 
   it('sets test-call time, points numbers, and reads minutes and the weekly report', async () => {

@@ -11,6 +11,9 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **A vet's day comes from the slot search**: asked "is Dr. Vance in on Friday?", the clinic's information tells the model to search instead of working it out from the weekly hours, and only a slot search backs "she isn't in on Friday" (live runs said "away" of a vet who was fully booked, and "the clinic is closed on Sundays" of a vet who works them).
 - **A caller who can't pick a time** is offered the first one alone, for a yes, never asked to choose again.
 - **"I'm not sure if it's severe or nonstop" is not a yes**: the emergency question's own words echoed or denied ("it's not severe", "no sé si es grave") no longer put a caller with a mild sign through to the team; "he keeps vomiting" still does.
+- **Path A costs less per call** (an offline count on the scripted scenarios: see docs/tools-api.md, Cost per call): the same instructions and tools on every call of a clinic, with the caller ID and date said once at the start; the same short turn note kept instead of a dated one removed each turn; a tool's words said as written through a note instead of the reply's own instructions; compact tool schemas and shorter wording for a vet clinic's six longest tool descriptions; the call's state in a line after the results that changed it; truncation for long calls. `scripts/path-a-cost.ts` counts it.
+- **`PUT /provisioning/clinics/:clinicId/realtime-model`**: one clinic on `gpt-realtime-2.1-mini` for a phone trial, its calls priced as that model.
+- **Path A says a tool's refusal line word for word on real calls**: the check read the result before it was shaped for the voice, so it never fired.
 
 ### Changed (batch 1c: scheduling on path A)
 
