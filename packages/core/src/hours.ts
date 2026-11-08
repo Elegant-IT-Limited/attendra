@@ -120,19 +120,19 @@ export function weekHours(clinic: Days, at: Date): string {
 }
 
 /**
- * The emergency hospital to send a caller to now: the clinic's choices in order, the
- * first one open at this moment in the clinic's time. Null when none is open, so the
- * script falls back to "the nearest 24-hour emergency vet".
+ * The first of these hospitals (the clinic's choices, in order) that is open at this moment in the clinic's time. Null
+ * when none is open, so the script falls back to "the nearest 24-hour emergency vet". A hospital without hours is open
+ * around the clock; a close earlier than the open runs past midnight.
  */
-export function hospitalFor(clinic: Pick<ClinicConfig, 'emergencyHospital' | 'moreEmergencyHospitals' | 'timezone'>, at: Date): EmergencyHospital | null {
-  const minutes = localParts(at, clinic.timezone).minutes;
+export function firstOpenHospital(hospitals: readonly EmergencyHospital[], timezone: string, at: Date): EmergencyHospital | null {
+  const minutes = localParts(at, timezone).minutes;
   const open = (h: EmergencyHospital) => {
     if (!h.hours) return true;
     const from = toMinutes(h.hours.open);
     const to = toMinutes(h.hours.close);
     return from < to ? minutes >= from && minutes < to : minutes >= from || minutes < to;
   };
-  return [clinic.emergencyHospital, ...(clinic.moreEmergencyHospitals ?? [])].find((h): h is EmergencyHospital => !!h && open(h)) ?? null;
+  return hospitals.find(open) ?? null;
 }
 
 /** "8 AM" or "5:30 PM" in North America, "08:00" elsewhere. */

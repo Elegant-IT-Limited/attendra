@@ -89,13 +89,13 @@ describe('GptLiveEngine browser calls', () => {
     const through = pausedOpening(DEMO_CLINIC, true);
     expect(through).toContain("the clinic's AI assistant");
     expect(through).toContain("I'm connecting you with our team now.");
-    const back = pausedOpening({ ...DEMO_CLINIC, industry: 'vet', emergencyHospital: { name: 'Front Range Animal ER', phone: '+13035550199', address: '1 Main St, Denver CO' } }, false);
+    const back = pausedOpening({ ...DEMO_CLINIC, industry: 'vet', emergencies: { mode: 'refer', hospital: { name: 'Front Range Animal ER', phone: '+13035550199', address: '1 Main St, Denver CO' } } }, false);
     expect(back).toContain('Please call back during our opening hours.');
     expect(back).toContain('Front Range Animal ER');
     expect(back).not.toContain('connecting you');
-    expect(pausedOpening({ ...DEMO_CLINIC, industry: 'vet', emergencyHospital: undefined }, false)).toContain('nearest 24-hour emergency vet');
+    expect(pausedOpening({ ...DEMO_CLINIC, industry: 'vet', emergencies: undefined }, false)).toContain('nearest 24-hour emergency vet');
     expect(pausedOpening({ ...DEMO_CLINIC, primaryLanguage: 'es' }, true)).toContain('Le comunico con nuestro equipo');
-    const esBack = pausedOpening({ ...DEMO_CLINIC, primaryLanguage: 'es', industry: 'vet', emergencyHospital: { name: 'Front Range Animal ER', phone: '+13035550199', address: '1 Main St, Denver CO' } }, false);
+    const esBack = pausedOpening({ ...DEMO_CLINIC, primaryLanguage: 'es', industry: 'vet', emergencies: { mode: 'refer', hospital: { name: 'Front Range Animal ER', phone: '+13035550199', address: '1 Main St, Denver CO' } } }, false);
     expect(esBack).toContain('Por favor, vuelva a llamar en nuestro horario de atención.');
     expect(esBack).toContain('llame a Front Range Animal ER');
     expect(esBack).not.toContain('Please call back');

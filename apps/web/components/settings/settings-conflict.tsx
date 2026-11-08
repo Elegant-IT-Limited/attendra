@@ -24,7 +24,7 @@ export function SettingsConflict<T extends object>({ base, mine, conflict, label
   const name = conflict.updatedBy?.name ?? 'Someone';
   const shown = Object.entries(found).filter(([, c]) => c !== 'same') as [string, Exclude<Change, 'same'>][];
   const [pick, setPick] = useState<Record<string, 'mine' | 'theirs'>>({});
-  // several keys can be one section (two emergency hospital keys): one line per section
+  // several keys can be one section: one line per section
   const sections = new Map<string, Exclude<Change, 'same'>>();
   for (const [k, c] of shown) sections.set(label(k), sections.has(label(k)) && sections.get(label(k)) !== c ? 'both' : c);
   const clashes = shown.filter(([, c]) => c === 'both').map(([k]) => k);

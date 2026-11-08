@@ -12,10 +12,12 @@ settings:
     - "+14155550166"
   address: 9 Bay Street, San Francisco
   greeting: Thanks for calling Riverbend West. I'm Juniper, the clinic's AI assistant. How can I help you and your pet today?
-  emergencyHospital:
-    name: Bay Pet Emergency
-    phone: "+14155550199"
-    address: 700 Mission Street, San Francisco
+  emergencies:
+    mode: refer
+    hospital:
+      name: Bay Pet Emergency
+      phone: "+14155550199"
+      address: 700 Mission Street, San Francisco
   routing:
     - target: front_desk
       uri: tel:+14155550167

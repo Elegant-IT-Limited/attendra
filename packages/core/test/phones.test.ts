@@ -55,14 +55,14 @@ describe('one phone number, however it is typed', () => {
     const c = withPhonesAsE164({
       phoneNumbers: ['+13035550100'],
       vipCallers: [{ name: 'Partner vet', phone: '(303) 555-0177' }],
-      emergencyHospital: { phone: '1 303 555 0188' },
-      moreEmergencyHospitals: [{ phone: '303.555.0189' }],
+      emergencies: { mode: 'hours', number: '303 555 0177', afterHoursHospital: { phone: '1 303 555 0188' }, moreHospitals: [{ phone: '303.555.0189' }] },
       routing: [{ uri: 'tel:303-555-0190' }, { uri: 'sip:desk@example.com' }],
       providers: [{ phone: '303 555 0191', otherPhones: ['(303) 555-0192'] }],
     });
     expect(c.vipCallers![0]!.phone).toBe('+13035550177');
-    expect(c.emergencyHospital!.phone).toBe('+13035550188');
-    expect(c.moreEmergencyHospitals![0]!.phone).toBe('+13035550189');
+    expect(c.emergencies!.number).toBe('+13035550177');
+    expect(c.emergencies!.afterHoursHospital!.phone).toBe('+13035550188');
+    expect(c.emergencies!.moreHospitals![0]!.phone).toBe('+13035550189');
     expect(c.routing!.map((r) => r.uri)).toEqual(['tel:+13035550190', 'sip:desk@example.com']);
     expect(c.providers![0]).toEqual({ phone: '+13035550191', otherPhones: ['+13035550192'] });
   });

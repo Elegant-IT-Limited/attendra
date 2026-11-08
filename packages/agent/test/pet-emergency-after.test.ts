@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { EMERGENCY_LINES, RIVERBEND_CLINIC } from '@attendra/core';
+import { EMERGENCY_LINES, REFER_TO_RIVERBEND_HOSPITAL, RIVERBEND_CLINIC } from '@attendra/core';
 import { schema, seedRiverbend } from '@attendra/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { world } from './support';
@@ -11,7 +11,7 @@ let w: Awaited<ReturnType<typeof world>>;
 beforeAll(async () => { w = await world(seedRiverbend); }, 60_000);
 afterAll(() => w.t.close());
 
-const open = { ...RIVERBEND_CLINIC, afterHours: 'book' as const, emergencyTransferEnabled: false };
+const open = { ...RIVERBEND_CLINIC, afterHours: 'book' as const, emergencies: REFER_TO_RIVERBEND_HOSPITAL };
 // the calls are at 8 pm on a Monday: open late, so the front desk takes transfers
 const openLate = { ...open, hours: { ...open.hours, '1': [{ open: '08:00', close: '22:00' }] } };
 const instructions = (out: { type: string; content?: string }[]) => out.filter((o) => o.type === 'instructions').map((o) => o.content ?? '').join(' ');
@@ -87,7 +87,7 @@ describe('after the pet script', () => {
   });
 
   it('closed, the next step is an urgent request, flagged urgent for the team', async () => {
-    const closed = { ...RIVERBEND_CLINIC, emergencyTransferEnabled: false }; // 8 pm: closed, and it takes requests
+    const closed = { ...RIVERBEND_CLINIC, emergencies: REFER_TO_RIVERBEND_HOSPITAL }; // 8 pm: closed, and it takes requests
     const c = await w.call('+17205550172', { clinic: closed });
     routed(c, 'My cat is choking.');
     c.caller('Can you book her in for tomorrow?');

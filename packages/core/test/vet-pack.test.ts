@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectEmergencies, industryPack, isPetEmergency, parsePetBirth, RIVERBEND_CLINIC, toolArgsFor } from '../src';
+import { detectEmergencies, emergencyHospitalsOf, industryPack, isPetEmergency, parsePetBirth, RIVERBEND_CLINIC, toolArgsFor } from '../src';
 
 const vet = industryPack('vet');
 const phrases = vet.emergency!.phrases;
@@ -67,7 +67,7 @@ describe('the veterinary pack', () => {
   });
 
   it('sends an animal in danger to the clinic\'s emergency hospital, and a person in danger to the emergency number', () => {
-    const script = vet.emergency!.script('en', { hospital: RIVERBEND_CLINIC.emergencyHospital!, emergencyNumber: '911' });
+    const script = vet.emergency!.script('en', { hospital: emergencyHospitalsOf(RIVERBEND_CLINIC.emergencies)[0]!, emergencyNumber: '911' });
     expect(script).toContain('Front Range Pet Emergency at 1200 Larkspur Avenue, Denver');
     expect(script).toContain('If a person is hurt or in danger, call 911.');
     expect(script).toMatch(/do not give medical or first-aid advice/i);

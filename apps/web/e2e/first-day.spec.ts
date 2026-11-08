@@ -703,13 +703,15 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await look('Audit log', url('/audit'), heading('Audit log'));
     // Settings: every section of the one page, by its side navigation, then the pages of their own
     await look('Settings', url('/settings'), heading('Settings'));
-    for (const section of ['Opening hours', 'Holidays and special days', 'Emergency hospitals', 'Visit types', 'Booking rules', 'Transfers', 'VIP callers', 'Common questions', 'Offers', 'Fields and lists', 'Menu links', 'Call records', 'Phone numbers']) {
+    for (const section of ['Opening hours', 'Holidays and special days', 'Visit types', 'Booking rules', 'Transfers', 'VIP callers', 'Common questions', 'Offers', 'Fields and lists', 'Menu links', 'Call records', 'Phone numbers']) {
       const link = page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: section, exact: true });
       if (!(await link.count())) continue;
       await link.click();
       await expect(page.getByRole('heading', { name: section }).first()).toBeVisible();
       await watch.axe(page, `Settings, ${section}`);
     }
+    // an animal's emergency: its own page, the one place it is edited (batch 1e)
+    await look('Emergencies', url('/settings/emergencies'), heading('Settings'));
     await look('Fields and lists', url('/settings/fields'), heading('Settings'));
     for (const tab of await page.getByRole('tab').allTextContents()) {
       await page.getByRole('tab', { name: tab, exact: true }).click();

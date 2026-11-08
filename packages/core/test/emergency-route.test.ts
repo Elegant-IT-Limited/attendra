@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ClinicConfig, EMERGENCY_LINES, emergencyCallLine, emergencyPreview, emergencyRoute, emergencySettingsOf, RIVERBEND_CLINIC, settingsFieldProblems, zonedInstant } from '../src';
+import { ClinicConfig, EMERGENCY_CHOICES, EMERGENCY_LINES, EMERGENCY_MODES, emergencyCallLine, emergencyDraftOf, emergencyDraftIssues, emergencyFormFor, emergencyFormView, emergencyHospitalsOf, emergencyPreview, emergencyRoute, emergencySettingOf, emergencySettingsOf, EMERGENCY_WORDING, hospitalNow, RIVERBEND_CLINIC, settingsFieldProblems, zonedInstant } from '../src';
 
 // Batch 1b: one source of truth for where an animal's emergency goes. Made-up hospitals and 555-01xx numbers only.
 const HOSPITAL = { name: 'Front Range Pet Emergency', phone: '+17205550188', address: '1200 Larkspur Avenue, Denver' };
@@ -36,14 +36,30 @@ describe('emergencyRoute: the mode, open or closed', () => {
     expect(emergencyRoute(late, CLOSED)).toMatchObject({ open: true, action: 'transfer', closesAt: '23:00' });
   });
 
-  it('a clinic saved before the setting: an on-call line it transferred to is handle, a hospital alone is refer, nothing is none', () => {
-    const onCall = ClinicConfig.parse({ ...base, emergencyTransferEnabled: true, routing: [{ target: 'on_call', uri: `tel:${TEAM}`, when: 'always', priority: 1 }] });
-    expect(emergencySettingsOf(onCall)).toEqual({ mode: 'handle', number: TEAM, backupHospital: base.emergencyHospital });
-    const hospitalOnly = ClinicConfig.parse({ ...base, emergencyTransferEnabled: false });
-    expect(emergencySettingsOf(hospitalOnly)).toEqual({ mode: 'refer', hospital: base.emergencyHospital });
-    const none = ClinicConfig.parse({ ...base, emergencyTransferEnabled: false, emergencyHospital: undefined });
-    expect(emergencySettingsOf(none)).toBeNull();
-    expect(emergencyRoute(none, OPEN)).toMatchObject({ mode: null, action: 'none', hospital: null });
+  it('emergencies is the only source (batch 1e): the old fields and the on-call switch are never read for the route', () => {
+    // an un-migrated stored configuration still parses, and means no route until db:emergency-settings folds it in
+    const old = ClinicConfig.parse({ ...base, emergencies: undefined, emergencyTransferEnabled: true, emergencyHospital: HOSPITAL, moreEmergencyHospitals: [AFTER], routing: [{ target: 'on_call', uri: `tel:${TEAM}`, when: 'always', priority: 1 }] });
+    expect(emergencySettingsOf(old)).toBeNull();
+    expect(emergencyRoute(old, OPEN)).toMatchObject({ mode: null, action: 'none', hospital: null, backup: null });
+    expect(hospitalNow(old, OPEN)).toBeNull();
+    expect(emergencyCallLine(old, OPEN)).toContain('no emergency setting yet');
+  });
+
+  it('several hospitals in order: the first one open at that moment is named, in refer, hours (closed) and as the backup', () => {
+    const NIGHT = { ...HOSPITAL, name: 'Night Paws Emergency', hours: { open: '18:00', close: '08:00' } };
+    const DAY = { ...AFTER, name: 'Day Referral Vets', hours: { open: '08:00', close: '18:00' } };
+    const refer = withMode({ mode: 'refer', hospital: NIGHT, moreHospitals: [DAY] });
+    expect(emergencyRoute(refer, OPEN).hospital?.name).toBe('Day Referral Vets');
+    expect(emergencyRoute(refer, CLOSED).hospital?.name).toBe('Night Paws Emergency');
+    const hours = withMode({ mode: 'hours', number: TEAM, afterHoursHospital: DAY, moreHospitals: [NIGHT] });
+    expect(emergencyRoute(hours, CLOSED).hospital?.name).toBe('Night Paws Emergency');
+    const handle = withMode({ mode: 'handle', number: TEAM, backupHospital: DAY, moreHospitals: [NIGHT] });
+    expect(emergencyRoute(handle, CLOSED).backup?.name).toBe('Night Paws Emergency');
+    // none open: the first anyway, never a made-up place
+    expect(emergencyRoute(withMode({ mode: 'refer', hospital: NIGHT }), OPEN).hospital?.name).toBe('Night Paws Emergency');
+    // at most 4 more
+    expect(ClinicConfig.safeParse({ ...base, emergencies: { mode: 'refer', hospital: HOSPITAL, moreHospitals: [DAY, DAY, DAY, DAY, DAY] } }).success).toBe(false);
+    expect(emergencyHospitalsOf(refer.emergencies).map((h) => h.name)).toEqual(['Night Paws Emergency', 'Day Referral Vets']);
   });
 
   it('cannot be saved with a required field missing', () => {
@@ -78,5 +94,58 @@ describe('what callers hear, and the test-call line', () => {
     expect(emergencyCallLine(hours, CLOSED)).toContain('sent to Night Owl Animal ER now');
     expect(emergencyCallLine(withMode({ mode: 'handle', number: TEAM }), CLOSED)).toBe('Emergency calls here: transfer to the team now, any time.');
     expect(emergencyCallLine(withMode({ mode: 'refer', hospital: HOSPITAL }), OPEN)).toBe('Emergency calls here: sent to Front Range Pet Emergency, any time.');
+  });
+});
+
+describe('the emergency form: one source for Settings and the setup page (batch 1e)', () => {
+  it('offers the three modes, each with a label and a hint, in the schema\'s order', () => {
+    expect(EMERGENCY_CHOICES.map((c) => c.value)).toEqual([...EMERGENCY_MODES]);
+    for (const c of EMERGENCY_CHOICES) { expect(c.label.length).toBeGreaterThan(10); expect(c.hint.length).toBeGreaterThan(20); }
+  });
+
+  it('a draft from the saved setting saves back the same setting', () => {
+    for (const e of [
+      { mode: 'refer', hospital: HOSPITAL, moreHospitals: [{ ...AFTER, hours: { open: '18:00', close: '08:00' } }] },
+      { mode: 'handle', number: TEAM, backupHospital: HOSPITAL },
+      { mode: 'handle', number: TEAM },
+      { mode: 'hours', number: TEAM, afterHoursHospital: AFTER, hours: { '1': [{ open: '07:00', close: '23:00' }] } },
+    ]) {
+      const c = withMode(e);
+      const r = emergencySettingOf(emergencyDraftOf(c), c);
+      expect(r.success && r.data).toEqual(c.emergencies);
+    }
+  });
+
+  it('says what is still needed, by the field\'s name on the form; reads typed phones in the clinic\'s country', () => {
+    const d = emergencyDraftOf(withMode(undefined));
+    expect(d.mode).toBe('refer');
+    expect(emergencyDraftIssues(d, base)).toEqual(['the hospital\'s name', 'the hospital\'s phone', 'the hospital\'s address']);
+    expect(emergencyDraftIssues({ ...d, mode: 'hours', afterHours: { name: 'Night Owl Animal ER', phone: '(720) 555-0189', address: '88 Cedar Road, Denver', hours: null } }, base)).toEqual(['the emergency line']);
+    const typed = emergencySettingOf({ ...d, mode: 'handle', number: '(720) 555-0177' }, base);
+    expect(typed.success && typed.data).toEqual({ mode: 'handle', number: TEAM });
+  });
+
+  it('the view: issues, the setting, the Right now line and the preview, all from the same route', () => {
+    const c = withMode({ mode: 'refer', hospital: HOSPITAL });
+    const draft = { ...emergencyDraftOf(c), mode: 'hours' as const, number: TEAM, afterHours: { ...AFTER, hours: null } };
+    const v = emergencyFormView(c, draft, OPEN);
+    expect(v.issues).toEqual([]);
+    expect(v.setting).toEqual({ mode: 'hours', number: TEAM, afterHoursHospital: AFTER });
+    const shown = withMode(v.setting);
+    expect(v.callLine).toBe(emergencyCallLine(shown, OPEN));
+    expect(v.preview.es.closed).toEqual(emergencyPreview(shown, 'es', false, OPEN));
+    // an incomplete draft previews the saved setting, as Settings does
+    const half = emergencyFormView(c, { ...draft, number: '' }, OPEN);
+    expect(half.setting).toBeNull();
+    expect(half.issues).toEqual(['the emergency line']);
+    expect(half.callLine).toBe(emergencyCallLine(c, OPEN));
+  });
+
+  it('serves the constants as they are, and the intro with the clinic\'s emergency number', () => {
+    const f = emergencyFormFor(base);
+    expect(f.choices).toBe(EMERGENCY_CHOICES);
+    expect(f.wording).toBe(EMERGENCY_WORDING);
+    expect(f.intro).toContain('call 911');
+    expect(JSON.parse(JSON.stringify(f.wording))).toEqual(EMERGENCY_WORDING); // plain strings only: served as JSON unchanged
   });
 });

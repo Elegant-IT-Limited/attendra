@@ -92,8 +92,10 @@ export function knownFromConfig(config: unknown): KnownEntities {
   const c = (config ?? {}) as Record<string, unknown>;
   const str = (v: unknown) => (typeof v === 'string' && v.trim() ? [v.trim()] : []);
   k.clinic.push(...str(c.name));
-  for (const key of ['emergencyHospital', 'emergencyHospitals', 'locations']) {
-    for (const h of [c[key]].flat()) if (h && typeof h === 'object') { k.clinic.push(...str((h as Record<string, unknown>).name)); k.addresses.push(...str((h as Record<string, unknown>).address)); }
+  // the emergency setting's hospitals (its own, and the next choices) and the clinic's other locations: names and addresses
+  const e = (c.emergencies ?? {}) as Record<string, unknown>;
+  for (const h of [e.hospital, e.backupHospital, e.afterHoursHospital, e.moreHospitals, c.locations].flat()) {
+    if (h && typeof h === 'object') { k.clinic.push(...str((h as Record<string, unknown>).name)); k.addresses.push(...str((h as Record<string, unknown>).address)); }
   }
   k.assistant.push(...str(c.assistantName));
   for (const p of Array.isArray(c.providers) ? c.providers : []) k.vets.push(...str((p as Record<string, unknown>)?.name));

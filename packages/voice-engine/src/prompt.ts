@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, defaultTalkStyle, greetingFor, industryPack, isOpen, openingWords, PACKS, type TalkStyle, textingOf, todaysHoursLine } from '@attendra/core';
+import { type ClinicConfig, defaultTalkStyle, emergencyHospitalsOf, greetingFor, industryPack, isOpen, openingWords, PACKS, type TalkStyle, textingOf, todaysHoursLine } from '@attendra/core';
 
 /** Who a transfer reaches, in the words the voice uses for it. */
 const TRANSFER_TO: Record<string, string> = { front_desk: 'the front desk', billing: 'billing', on_call: 'the on-call vet or doctor, for an emergency' };
@@ -90,7 +90,7 @@ export function vipOpening(clinic: ClinicConfig, vipName: string): string {
 export function pausedOpening(clinic: ClinicConfig, transferring: boolean): string {
   const who = clinic.assistantName;
   const es = clinic.primaryLanguage === 'es';
-  const hospital = clinic.emergencyHospital;
+  const [hospital] = emergencyHospitalsOf(clinic.emergencies);
   // where to go meanwhile in an emergency: the clinic's emergency hospital, or the nearest one
   const urgent = clinic.industry !== 'vet'
     ? (es ? ' Si es una emergencia, llame a su número local de emergencias.' : ' If this is an emergency, please call your local emergency number.')

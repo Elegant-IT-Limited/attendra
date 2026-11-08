@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allowedEmergencyNumbers, applyListChange, emergencyCountry, asE164, leftOffList, listRowNote, listUsage, managedList, notOnListProblem, onList, shownProviders, withListValues, greetingFor, PACKS, textingOf, bookableProviders, ClinicConfig, clinicWarnings, currentOffers, DEMO_CLINIC, detectEmergencies, emergencyNumberFor, emergencyNumberProblem, hospitalFor, matchesSpecialty, readCustomValues, RIVERBEND_CLINIC, starterClinic, visitTypeFacts, zonedInstant } from '../src';
+import { allowedEmergencyNumbers, applyListChange, emergencyCountry, asE164, leftOffList, listRowNote, listUsage, managedList, notOnListProblem, onList, shownProviders, withListValues, greetingFor, PACKS, textingOf, bookableProviders, ClinicConfig, clinicWarnings, currentOffers, DEMO_CLINIC, detectEmergencies, emergencyNumberFor, emergencyNumberProblem, hospitalNow, matchesSpecialty, readCustomValues, RIVERBEND_CLINIC, starterClinic, visitTypeFacts, zonedInstant } from '../src';
 
 describe('what a clinic customises', () => {
   it('shows offers only between their dates', () => {
@@ -68,13 +68,13 @@ describe('emergency hospitals', () => {
   const day = { name: 'Day Referral', phone: '+17205550102', address: '2 Day Road, Denver', hours: { open: '08:00', close: '18:00' } };
   const at = (time: string) => zonedInstant('2026-10-20', time, RIVERBEND_CLINIC.timezone);
 
-  it('sends a caller to the first choice open now, overnight hours included, and to none when all are closed', () => {
-    const clinic = { ...RIVERBEND_CLINIC, emergencyHospital: night, moreEmergencyHospitals: [day] };
-    expect(hospitalFor(clinic, at('22:00'))?.name).toBe('Night Vets');
-    expect(hospitalFor(clinic, at('03:00'))?.name).toBe('Night Vets');
-    expect(hospitalFor(clinic, at('10:00'))?.name).toBe('Day Referral');
-    expect(hospitalFor({ ...clinic, moreEmergencyHospitals: undefined }, at('10:00'))).toBeNull();
-    expect(hospitalFor(RIVERBEND_CLINIC, at('10:00'))?.name).toBe('Front Range Pet Emergency'); // no hours: around the clock
+  it('sends a caller to the first choice open now, overnight hours included, and to none when all are closed (Settings > Emergencies, in order)', () => {
+    const clinic = { ...RIVERBEND_CLINIC, emergencies: { mode: 'refer' as const, hospital: night, moreHospitals: [day] } };
+    expect(hospitalNow(clinic, at('22:00'))?.name).toBe('Night Vets');
+    expect(hospitalNow(clinic, at('03:00'))?.name).toBe('Night Vets');
+    expect(hospitalNow(clinic, at('10:00'))?.name).toBe('Day Referral');
+    expect(hospitalNow({ ...clinic, emergencies: { mode: 'refer', hospital: night } }, at('10:00'))).toBeNull();
+    expect(hospitalNow(RIVERBEND_CLINIC, at('10:00'))?.name).toBe('Front Range Pet Emergency'); // no hours: around the clock
   });
 });
 

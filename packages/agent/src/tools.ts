@@ -5,7 +5,7 @@ import {
   fold, industryPack, isOpen, isPetEmergency, LANGUAGES, normalise, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant, dayShift, offerTimesLine,
-  bookableWindows, hospitalFor, hoursSummary, type NearDirection, type Provider, type SmsTemplate, textableNumber, textingOf, bookingOf, seesAnimal, soundsLike, usualProviderOf, awayOn, specialDayOf, weekdayOf, windowsOnDate,
+  bookableWindows, emergencyHospitalsOf, hospitalNow, hoursSummary, textAskOf, textRoute, textSituationOf, type AskedTextKind, type TextTableRefusal, type TextSource, type NearDirection, type Provider, type SmsTemplate, textableNumber, textingOf, bookingOf, seesAnimal, soundsLike, usualProviderOf, awayOn, specialDayOf, weekdayOf, windowsOnDate,
 } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { createHash } from 'node:crypto';
@@ -1092,23 +1092,28 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
 
     case 'send_text': {
       const texting = textingOf(clinic);
-      let kind = args.kind as 'directions' | 'hours' | 'emergency_hospital' | 'provider' | 'answer' | 'link';
-      // an animal sent to a hospital, its address offered by text and not yet sent: "directions" (an address) is the
-      // hospital's, not the clinic's (a live run sent 'directions', was refused, and the caller who said yes got no text)
-      const sentToHospital = state.emergencyCase?.stage === 'escalated' && state.emergencyCase.route?.action === 'refer' && !!state.emergencyCase.route.hospital;
-      if (state.emergencyLocked && sentToHospital && kind === 'directions' && !state.emergencyTextSent) kind = 'emergency_hospital';
+      const picked = args.kind as AskedTextKind;
       let ref = (args.ref as string | null) ?? null;
-      // "text me the address": the clinic's address and map link, whichever kind the model picked for it (a live run sent
-      // the clinic's "where are you" common question as an 'answer' text, with no map link; batch 1d)
-      if (!state.emergencyLocked && kind === 'answer' && textingOf(clinic).kinds.directions && asksWhere(clinic.faqs.find((f) => f.id === ref)?.question ?? state.lastTurn('caller', 3))) { kind = 'directions'; ref = null; }
+      // which text goes is the table's (core TEXT_TABLE, batch 1e): where the call is, and what the caller asked for. An
+      // address is an address whichever kind the model picked for it: 'directions', or the clinic's "where are you"
+      // common question sent as an 'answer' (batch 1d); in a hospital-routed emergency the address is the hospital's
+      const c = state.emergencyCase;
+      const situation = textSituationOf({
+        locked: state.emergencyLocked,
+        emergency: c ? { stage: c.stage, action: c.route?.action ?? null, transfer: c.transfer, backup: !!c.route?.backup } : null,
+        booked: state.outcome === 'booked' || state.outcome === 'rescheduled',
+      });
+      // (a clinic that does not text its address keeps sending its "where are you" answer as the answer it is)
+      const where = picked === 'answer' && (state.emergencyLocked || texting.kinds.directions) && asksWhere(clinic.faqs.find((f) => f.id === ref)?.question ?? state.lastTurn('caller', 3));
+      const route = textRoute(situation, textAskOf(picked, where));
+      if ('refuse' in route) return refuse(route.refuse, TEXT_REFUSALS[route.refuse]);
+      const kind = route.kind;
+      if (kind !== picked && picked === 'answer') ref = null;
       if (!texting.enabled) return refuse('texting_off', `The clinic does not text this. Say: "${pack.textRefused({ reason: 'off' })}" Then say it out loud, slowly, and offer to repeat it.`);
       // the clinic texts, just not this: never "texting isn't set up"
       if (!texting.kinds[kind]) return refuse('texting_off', 'The clinic does not send this one by text (it sends other things). Say in a few words that you can\'t text that one, then say it out loud, slowly, and offer to repeat it. Never say texting is not set up or not available on this line.');
-      // in an emergency the only text is where to take the animal, and only then
-      if (state.emergencyLocked && kind !== 'emergency_hospital') return refuse('emergency_in_progress', 'Do not text anything else now. Repeat where to take the animal.');
-      if (!state.emergencyLocked && kind === 'emergency_hospital') return refuse('not_an_emergency', 'That text is only for an animal emergency. Read the hospital\'s details out instead if they ask.');
       // the hospital's details go once a call (FRIDAY notes: text once, to a confirmed number)
-      if (kind === 'emergency_hospital' && state.emergencyTextSent) return refuse('already_sent', 'The hospital\'s details were already texted on this call. Say they are on their phone; do not send them again.');
+      if (kind === 'emergency_hospital' && state.emergencyTextSent) return refuse(picked === 'emergency_hospital' ? 'already_sent' : 'emergency_in_progress', 'The hospital\'s details were already texted on this call. Say they are on their phone; do not send them again.');
       // only to the number they are calling from, or the one on their file: never another person's
       const asked = (args.to as string | null) ?? null;
       const onFile = state.verifiedPatient?.phone ?? null;
@@ -1128,7 +1133,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         return refuse('opted_out', `Say: "${pack.textRefused({ reason: 'opted_out' })}" Then read it out, slowly.`);
       }
       if (state.textsSent >= MAX_TEXTS_PER_CALL) return refuse('rate_limited', 'You have sent what can be sent by text on this call. Read it out instead.');
-      const content = textContent(kind, ref, clinic, state, ctx.now(), lang);
+      const content = textContent(kind, ref, clinic, state, ctx.now(), lang, route.source);
       if (!content) return refuse('nothing_to_send', 'Say you can\'t text that one, and say it out loud instead.');
 
       // consent, in the caller's own words, after the question was spoken: like a booking
@@ -1212,16 +1217,18 @@ function specialHoursAhead(clinic: ClinicConfig, today: string): string[] {
     .map((d) => `${d.date}${d.note ? ` (${d.note})` : ''}: ${d.windows.map((w) => `${w.open} to ${w.close}`).join(' and ')}`);
 }
 
-/** The clinic's emergency hospitals in its order of choice, each with its hours (none is around the clock). */
+/** The clinic's emergency hospitals in its order of choice (Settings > Emergencies), each with its hours. */
 function emergencyHospitalFacts(clinic: ClinicConfig) {
-  // the emergency setting's hospital (Settings > Emergencies) first, then the clinic's list, each once
-  const e = clinic.emergencies;
-  const fromSetting = e?.mode === 'refer' ? e.hospital : e?.mode === 'hours' ? e.afterHoursHospital : e?.mode === 'handle' ? e.backupHospital : undefined;
-  const all = [fromSetting, clinic.emergencyHospital, ...(clinic.moreEmergencyHospitals ?? [])].filter((h, i, list) => h && list.findIndex((x) => x?.name === h.name) === i);
-  return all.flatMap((h) => (h
-    ? [{ name: h.name, phone: h.phone, address: h.address, hours: h.hours ? `${h.hours.open} to ${h.hours.close}` : 'open around the clock' }]
-    : []));
+  return emergencyHospitalsOf(clinic.emergencies).map((h) => ({ name: h.name, phone: h.phone, address: h.address, hours: h.hours ? `${h.hours.open} to ${h.hours.close}` : 'open around the clock' }));
 }
+
+/** What the model is told when the table sends nothing; the caller hears its own words for it. */
+const TEXT_REFUSALS: Record<TextTableRefusal, string> = {
+  not_an_emergency: 'That text is only for an animal emergency. Read the hospital\'s details out instead if they ask.',
+  emergency_question: 'Not yet: the caller has not answered whether this is still an emergency. Ask the one question first, word for word, and wait for the answer. Text nothing now.',
+  emergency_in_progress: 'Do not text anything else now. Repeat where to take the animal.',
+  no_hospital: 'There is no hospital to text on this call. Do not text anything. Repeat that the team will call right away, and the emergency line if you gave one.',
+};
 
 /**
  * "The other one", "my cat": the caller said which pet, not its name. Nothing is looked up and no try is used, so an
@@ -1506,8 +1513,9 @@ async function registerPet(
  * that was not given on this call.
  */
 export function textContent(
-  kind: 'directions' | 'hours' | 'emergency_hospital' | 'provider' | 'answer' | 'link', ref: string | null,
-  clinic: ClinicConfig, state: Pick<CallState, 'answersGiven'>, now: Date, lang: keyof typeof PACKS,
+  kind: AskedTextKind, ref: string | null,
+  clinic: ClinicConfig, state: Pick<CallState, 'answersGiven'> & { emergencyCase?: CallState['emergencyCase'] }, now: Date, lang: keyof typeof PACKS,
+  source: TextSource = kind === 'emergency_hospital' ? 'named_hospital' : 'clinic_address',
 ): { template: SmsTemplate; vars: Record<string, string> } | null {
   const texting = textingOf(clinic);
   const clinicPhone = callUsNumber(clinic);
@@ -1520,7 +1528,9 @@ export function textContent(
     case 'hours':
       return { template: 'hours', vars: { hours: hoursSummary(clinic, now, lang) } };
     case 'emergency_hospital': {
-      const h = hospitalFor(clinic, now);
+      // the table's source: the route's hospital, its backup after a transfer nobody took, or the one a script named
+      const r = state.emergencyCase?.route;
+      const h = source === 'route_hospital' ? r?.hospital ?? null : source === 'route_backup' ? r?.backup ?? null : hospitalNow(clinic, now);
       if (!h) return null;
       return { template: 'emergency_hospital', vars: { hospital: h.name, hospitalAddress: h.address, hospitalPhone: h.phone, emergencyNumber: emergencyNumberFor(clinic, lang) } };
     }

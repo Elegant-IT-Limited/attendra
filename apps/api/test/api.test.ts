@@ -1,4 +1,4 @@
-import { DEMO_CLINIC } from '@attendra/core';
+import { ClinicConfig, DEMO_CLINIC, EMERGENCY_CHOICES, EMERGENCY_LIMITS, EMERGENCY_WORDING, EmergencyDraft, emergencyDraftOf, emergencyFormView, emergencyIntro, emergencyNumberFor } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadEnv } from '../src/config';
@@ -259,17 +259,47 @@ describe('settings', () => {
     expect((await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, phoneNumbers: [assistant] } })).json().phoneNumbers).toEqual([assistant]);
   });
 
-  it('saves after-hours requests and an emergency hospital, refuses a hospital without a usable phone, and clears it', async () => {
+  it('saves after-hours requests and an emergency setting, reads a typed hospital phone in the clinic\'s country, refuses one that is not a number, and clears it', async () => {
     const hospital = { name: 'Front Range Pet Emergency', phone: '+17205550188', address: '1200 Larkspur Avenue, Denver' };
-    const res = await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, afterHours: 'requests', emergencyHospital: hospital } });
+    const res = await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, afterHours: 'requests', emergencies: { mode: 'refer', hospital: { ...hospital, phone: '(720) 555-0188' } } } });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ afterHours: 'requests', emergencyHospital: hospital });
-    const bad = await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, emergencyHospital: { ...hospital, phone: '555-0188' } } });
+    expect(res.json()).toMatchObject({ afterHours: 'requests', emergencies: { mode: 'refer', hospital } });
+    const bad = await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, emergencies: { mode: 'refer', hospital: { ...hospital, phone: '555-0188' } } } });
     expect(bad.statusCode).toBe(422);
-    expect(bad.json().issues[0].path).toContain('emergencyHospital');
+    expect(bad.json().issues[0].path).toContain('emergencies.hospital.phone');
     const cleared = await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC } });
     expect(cleared.json()).toMatchObject({ afterHours: 'book' });
-    expect(cleared.json().emergencyHospital).toBeUndefined();
+    expect(cleared.json().emergencies).toBeUndefined();
+  });
+
+  it('serves the setup page the emergency form: exactly the constants Settings > Emergencies reads, and a draft checked by the same rules and preview (batch 1e)', async () => {
+    const hospital = { name: 'Front Range Pet Emergency', phone: '+17205550188', address: '1200 Larkspur Avenue, Denver' };
+    await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, emergencies: { mode: 'refer', hospital } } });
+    const saved = ClinicConfig.parse((await api.request('GET', `${C}/settings`, { cookie: admin })).json());
+    const form = await api.request('GET', `${C}/settings/emergencies`, { cookie: admin });
+    expect(form.statusCode).toBe(200);
+    // one source: the choices, every word, the limits and the intro are the core constants, as they are
+    expect(form.json()).toEqual(JSON.parse(JSON.stringify({ choices: EMERGENCY_CHOICES, wording: EMERGENCY_WORDING, intro: emergencyIntro(emergencyNumberFor(saved, 'en')), limits: EMERGENCY_LIMITS, draft: emergencyDraftOf(saved) })));
+    expect(form.json().draft).toMatchObject({ mode: 'refer', hospital: { ...hospital, hours: null } });
+
+    // a draft, as the setup page sends it: checked by the same schema, route and preview the Settings page uses
+    const now = new Date();
+    const draft = { ...emergencyDraftOf(saved), mode: 'hours', number: '(720) 555-0177', afterHours: { ...hospital, hours: null } };
+    const view = await api.request('POST', `${C}/settings/emergencies/preview`, { cookie: admin, body: draft });
+    expect(view.statusCode).toBe(200);
+    const expected = emergencyFormView(saved, EmergencyDraft.parse(draft), now);
+    expect(view.json().setting).toEqual({ mode: 'hours', number: '+17205550177', afterHoursHospital: hospital });
+    expect(view.json().issues).toEqual([]);
+    expect(view.json().preview.es.closed).toEqual(JSON.parse(JSON.stringify(expected.preview.es.closed)));
+    expect(view.json().callLine).toMatch(/^Emergency calls here: /);
+    // what is still needed, in the form's words; nothing is saved
+    const half = await api.request('POST', `${C}/settings/emergencies/preview`, { cookie: admin, body: { ...draft, number: '' } });
+    expect(half.json()).toMatchObject({ setting: null, issues: ['the emergency line'] });
+    expect(ClinicConfig.parse((await api.request('GET', `${C}/settings`, { cookie: admin })).json()).emergencies).toEqual({ mode: 'refer', hospital });
+    // a draft that is not one is refused; a viewer cannot read the form
+    expect((await api.request('POST', `${C}/settings/emergencies/preview`, { cookie: admin, body: { mode: 'sometimes' } })).statusCode).toBe(422);
+    expect((await api.request('GET', `${C}/settings/emergencies`, { cookie: viewer })).statusCode).toBe(403);
+    await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC } });
   });
 
   it('saves a valid change and shows it in the audit trail', async () => {

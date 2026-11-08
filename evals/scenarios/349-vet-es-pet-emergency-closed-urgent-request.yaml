@@ -9,6 +9,12 @@ tags:
   - es
 settings:
   emergencyTransferEnabled: false
+  emergencies:
+    mode: refer
+    hospital:
+      name: Front Range Pet Emergency
+      phone: "+17205550188"
+      address: 1200 Larkspur Avenue, Denver
 facts: Eres Linh Nguyen y llamas desde tu número fuera de horario. Di que no, gracias, a un mensaje con los datos del hospital. Tu gata Mochi se está ahogando. Quieres que la vean mañana; di que sí a un mensaje urgente para el equipo.
 turns:
   - caller: ¡Mi gata Mochi se está ahogando con algo!

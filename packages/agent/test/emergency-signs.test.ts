@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { EMERGENCY_LINES, RIVERBEND_CLINIC } from '@attendra/core';
+import { EMERGENCY_LINES, REFER_TO_RIVERBEND_HOSPITAL, RIVERBEND_CLINIC } from '@attendra/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { saysSevere } from '../src/flow/emergency';
 import { world } from './support';
@@ -14,7 +14,7 @@ afterAll(() => w.t.close());
 
 const open = { ...RIVERBEND_CLINIC, afterHours: 'book' as const };
 // a clinic that refers emergencies to its hospital (no on-call line): the route on a yes is the hospital
-const refer = { ...open, emergencyTransferEnabled: false };
+const refer = { ...open, emergencies: REFER_TO_RIVERBEND_HOSPITAL };
 const QUESTION = EMERGENCY_LINES.question('en');
 const instructions = (out: { type: string; content?: string }[]) => out.filter((o) => o.type === 'instructions').map((o) => o.content ?? '').join(' ');
 const FIND = { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } } as const;

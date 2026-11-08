@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addTokens, bySubject, claimsAuthority, EMERGENCY_LINES, type EmergencyMatch, emergencyRoute, clinicNow, clinicNowLine, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, detectLanguage, emergencyNumberFor, hospitalFor, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
+import { addTokens, bySubject, claimsAuthority, EMERGENCY_LINES, type EmergencyMatch, emergencyRoute, clinicNow, clinicNowLine, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, detectLanguage, emergencyNumberFor, hospitalNow, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
 import { coachingInstruction, DOING, type LiveEvent, shortName } from './live';
@@ -241,7 +241,7 @@ export class CallAgent {
     // an animal in danger (or the bare word "emergency" at a clinic for animals) gets the trade's script
     const forTrade = trade.emergency && (isPetEmergency(match.kind) || match.kind === 'general');
     // the clinic's first choice of hospital that is open now; none open, the nearest 24-hour one
-    const hospital = hospitalFor(clinic, this.ctx.now());
+    const hospital = hospitalNow(clinic, this.ctx.now());
     const script = match.kind === 'self_harm' ? pack.selfHarmScript(number, crisisLineFor(clinic))
       : forTrade ? trade.emergency!.script(language, { hospital, emergencyNumber: number, textOffer: textingOf(clinic).enabled && textingOf(clinic).kinds.emergency_hospital })
         : pack.emergencyScript(number);

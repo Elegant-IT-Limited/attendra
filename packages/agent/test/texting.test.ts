@@ -1,4 +1,4 @@
-import { ClinicConfig, DEMO_CLINIC, EMERGENCY_LINES, RIVERBEND_CLINIC } from '@attendra/core';
+import { ClinicConfig, DEMO_CLINIC, EMERGENCY_LINES, REFER_TO_RIVERBEND_HOSPITAL, RIVERBEND_CLINIC } from '@attendra/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { MAX_TEXTS_PER_CALL, type ToolResult } from '../src';
 import { world } from './support';
@@ -139,7 +139,7 @@ describe('texting during a call', () => {
   it('in an animal emergency texts only the hospital, after the offer the script makes, and never in calm times', async () => {
     // the vet clinic's settings on the test clinic's record
     // a clinic that refers emergencies to its hospital: the route on a yes is the hospital, with the text offer
-    const vet = ClinicConfig.parse({ ...RIVERBEND_CLINIC, id: DEMO_CLINIC.id, phoneNumbers: DEMO_CLINIC.phoneNumbers, texting: { enabled: true }, emergencyTransferEnabled: false });
+    const vet = ClinicConfig.parse({ ...RIVERBEND_CLINIC, id: DEMO_CLINIC.id, phoneNumbers: DEMO_CLINIC.phoneNumbers, texting: { enabled: true }, emergencies: REFER_TO_RIVERBEND_HOSPITAL });
     const calm = await w.call('+13035550147', { clinic: vet });
     expect((await calm.delegate([{ tool: 'send_text', args: { kind: 'emergency_hospital', ref: null, to: null } }])).errors).toEqual(['not_an_emergency']);
 
@@ -161,7 +161,7 @@ describe('texting during a call', () => {
   });
 
   it('in an animal emergency, the address the caller said yes to is the hospital\'s, whichever kind the voice picks; EN and ES (a live run)', async () => {
-    const vet = ClinicConfig.parse({ ...RIVERBEND_CLINIC, id: DEMO_CLINIC.id, phoneNumbers: DEMO_CLINIC.phoneNumbers, texting: { enabled: true }, emergencyTransferEnabled: false });
+    const vet = ClinicConfig.parse({ ...RIVERBEND_CLINIC, id: DEMO_CLINIC.id, phoneNumbers: DEMO_CLINIC.phoneNumbers, texting: { enabled: true }, emergencies: REFER_TO_RIVERBEND_HOSPITAL });
     for (const [flag, yes, offer] of [
       ['My dog Biscuit\'s throat is swelling up.', 'Yes, he still is.', 'Shall I text you the address, to the number ending in 0147?'],
       ['A mi perro Biscuit se le está hinchando la garganta.', 'Sí, sigue pasando, por favor ayúdeme.', '¿Le envío la dirección por mensaje al número que termina en 0147?'],

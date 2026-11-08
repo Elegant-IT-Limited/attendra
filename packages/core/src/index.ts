@@ -17,6 +17,8 @@ export * from './demo';
 export * from './emergency';
 export * from './emergency-review';
 export * from './emergency-route';
+export * from './emergency-form';
+export * from './text-routes';
 export * from './hours';
 export * from './identity';
 export * from './industries';

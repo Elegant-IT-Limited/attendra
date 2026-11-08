@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { asE164, providerName, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, PREVIEW_VOICES, type TalkStyle, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel, DEFAULT_RECORDING_NOTICE, noticeIsSentence, openingWords, cleanPhoneTyping, PHONE_NUMBERS_ONLY, noProviderWarnings } from '@attendra/core';
+import { asE164, providerName, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, PREVIEW_VOICES, type TalkStyle, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel, DEFAULT_RECORDING_NOTICE, noticeIsSentence, openingWords, cleanPhoneTyping, PHONE_NUMBERS_ONLY, noProviderWarnings, SETTINGS_LIMITS } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
@@ -19,7 +19,6 @@ import { TimeZonePicker } from '@/components/settings/time-zone-picker';
 import { VoicePreview } from '@/components/settings/voice-preview';
 import { ConflictsAlert } from '@/components/schedule/conflicts-alert';
 import { Switch } from '@/components/ui/controls';
-import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/shell';
 import { Button, buttonStyles } from '@/components/ui/button';
 import { type Conflict, SettingsConflict } from '@/components/settings/settings-conflict';
@@ -42,7 +41,6 @@ const PARTS: { id: string; label: (t: T) => string }[] = [
   { id: 'assistant', label: () => 'Assistant and languages' },
   { id: 'hours', label: () => 'Opening hours' },
   { id: 'holidays', label: () => 'Holidays and special days' },
-  { id: 'emergency', label: () => 'Emergency hospitals' },
   { id: 'visits', label: () => 'Visit types' },
   { id: 'booking', label: () => 'Booking rules' },
   { id: 'transfers', label: () => 'Transfers' },
@@ -60,10 +58,10 @@ function issueLabel(path: string) {
   const top = path.split('.')[0] ?? '';
   const names: Record<string, string> = {
     greeting: 'Greeting', name: 'Clinic name', routing: 'Transfers', visitTypes: 'Visit types', faqs: 'Common questions', offers: 'Offers',
-    requestTopics: 'Kinds of request', customFields: 'Fields', vipCallers: 'VIP callers', menuLinks: 'Menu links', emergencyHospital: 'Emergency hospitals', moreEmergencyHospitals: 'Emergency hospitals',
+    requestTopics: 'Kinds of request', customFields: 'Fields', vipCallers: 'VIP callers', menuLinks: 'Menu links', emergencies: 'Emergencies (Settings > Emergencies)',
     hours: 'Opening hours', holidays: 'Holidays', specialDays: 'Special days', assistantName: 'Assistant name', emergencyNumber: 'Emergency number', languages: 'Languages', retentionDays: 'Call records',
     address: 'Address', website: 'Website', industry: 'Kind of practice', timezone: 'Time zone', voice: 'Voice', primaryLanguage: 'Languages', afterHours: 'After hours',
-    booking: 'Booking rules', talk: 'How the assistant talks', greetings: 'Greetings', texting: 'Texting', emergencyTransferEnabled: 'Emergency hospitals', recording: 'Call records', phoneNumbers: 'Phone numbers', providers: 'Doctors and veterinarians',
+    booking: 'Booking rules', talk: 'How the assistant talks', greetings: 'Greetings', texting: 'Texting', emergencyTransferEnabled: 'Transfer emergencies to on-call', recording: 'Call records', phoneNumbers: 'Phone numbers', providers: 'Doctors and veterinarians',
     emergencyReview: 'Emergency list review',
   };
   return names[top] ?? (top || 'Settings');
@@ -72,7 +70,7 @@ function issueLabel(path: string) {
 const SECTION_OF: Record<string, string> = {
   greeting: 'greeting-voice', greetings: 'greeting-voice', name: 'greeting-voice', address: 'greeting-voice', website: 'greeting-voice', voice: 'greeting-voice', talk: 'greeting-voice',
   recording: 'records', retentionDays: 'records', routing: 'transfers', visitTypes: 'visits', faqs: 'answers', offers: 'offers', requestTopics: 'fields', customFields: 'fields',
-  vipCallers: 'vip', menuLinks: 'links', emergencyHospital: 'emergency', moreEmergencyHospitals: 'emergency', emergencyTransferEnabled: 'emergency', hours: 'hours',
+  vipCallers: 'vip', menuLinks: 'links', emergencyTransferEnabled: 'greeting-voice', hours: 'hours',
   holidays: 'holidays', specialDays: 'holidays', assistantName: 'assistant', emergencyNumber: 'assistant', country: 'assistant', languages: 'assistant', primaryLanguage: 'assistant',
   booking: 'booking', texting: 'your-texts', phoneNumbers: 'numbers',
 };
@@ -83,7 +81,6 @@ const talkOf = (c: ClinicConfig): TalkStyle => ({ pace: c.talk?.pace ?? 'normal'
 /** A row nobody has typed in yet: the button that made it points to it again instead of adding another, and Save leaves it out. */
 const BLANK = {
   named: (x: { name: string }) => !x.name.trim(),
-  hospital: (h: { name: string; phone: string; address?: string }) => !h.name.trim() && !h.phone.replace(/\D/g, '') && !h.address?.trim(),
   /** Empty, or only the country code the new row started with. A SIP address (sip:frontdesk@pbx…) is never blank. */
   number: (n: string, c: { phoneNumbers: string[] }) => {
     if (/^sips?:\S/i.test(n.trim())) return false;
@@ -94,10 +91,8 @@ const BLANK = {
 
 /** The settings without rows left empty, so a forgotten new row never blocks a save. */
 function withoutBlankRows(c: ClinicConfig): ClinicConfig {
-  const hospitals = [...(c.emergencyHospital ? [c.emergencyHospital] : []), ...(c.moreEmergencyHospitals ?? [])].filter((h) => !BLANK.hospital(h));
   return {
     ...c,
-    emergencyHospital: hospitals[0], moreEmergencyHospitals: hospitals.length > 1 ? hospitals.slice(1) : undefined,
     visitTypes: c.visitTypes.filter((v) => !BLANK.named(v)),
     routing: c.routing.filter((r) => !BLANK.number(r.uri, c)),
     vipCallers: c.vipCallers?.filter((v) => v.name.trim() || !BLANK.number(v.phone, c)),
@@ -135,7 +130,7 @@ export default function Settings() {
   const [newHoliday, setNewHoliday] = useState('');
   useEffect(() => { if (saved.data && !draft) setDraft(saved.data); }, [saved.data, draft]);
   const pet = draft?.industry === 'vet';
-  const parts = PARTS.filter((part) => (part.id !== 'emergency' || pet || !!draft?.emergencyHospital) && (part.id !== 'links' || SHOW_MENU_LINKS));
+  const parts = PARTS.filter((part) => part.id !== 'links' || SHOW_MENU_LINKS);
   // the section being read, highlighted in the menu as the page scrolls
   const reading = useActiveSection(draft ? parts.map((p) => p.id) : []);
   const keep = (config: ClinicConfig, etag: string | null) => {
@@ -199,9 +194,6 @@ export default function Settings() {
   const windows = (d: Day) => c.hours[d] ?? [];
   const setWindows = (d: Day, w: { open: string; close: string }[]) => set({ hours: { ...c.hours, [d]: w } });
 
-  // the first hospital is the clinic's first choice; the rest, in order, its next ones
-  const hospitals = [...(c.emergencyHospital ? [c.emergencyHospital] : []), ...(c.moreEmergencyHospitals ?? [])];
-  const setHospitals = (list: typeof hospitals) => set({ emergencyHospital: list[0], moreEmergencyHospitals: list.length > 1 ? list.slice(1) : undefined });
   const upd = <K extends ListKey>(key: K, i: number, patch: Partial<NonNullable<ClinicConfig[K]>[number]>) =>
     set({ [key]: ((c[key] ?? []) as object[]).map((x, j) => (j === i ? { ...x, ...patch } : x)) } as Partial<ClinicConfig>);
   const remove = <K extends ListKey>(key: K, i: number) => set({ [key]: ((c[key] ?? []) as object[]).filter((_, j) => j !== i) } as Partial<ClinicConfig>);
@@ -242,7 +234,7 @@ export default function Settings() {
             <Field label="Website" htmlFor="website" hint="Optional."><Input id="website" type="url" maxLength={200} value={c.website ?? ''} placeholder="https://" onChange={(e) => set({ website: e.target.value && e.target.value !== 'https://' ? e.target.value : undefined })} /></Field>
           </div>
           <Field label="Greeting" htmlFor="greeting" hint={`${c.greeting.length}/400. Mention "AI assistant", "virtual receptionist" or similar.`}>
-            <Textarea id="greeting" value={c.greeting} maxLength={400} onChange={(e) => set({ greeting: e.target.value })} />
+            <Textarea id="greeting" value={c.greeting} maxLength={SETTINGS_LIMITS.greeting} onChange={(e) => set({ greeting: e.target.value })} />
           </Field>
           {clinicWarnings(c).filter((w) => w.path !== 'routing').map((w) => <Alert key={w.path} tone="warn">{w.message}</Alert>)}
           <div className="grid gap-4 sm:grid-cols-2">
@@ -285,8 +277,9 @@ export default function Settings() {
               onCheckedChange={(v) => set({ talk: { ...talkOf(c), acknowledgements: v } })} />
           </div>
           <div className="space-y-4 border-t border-border pt-5">
-            <Switch id="emergency-transfer" label="Transfer emergencies to on-call" checked={c.emergencyTransferEnabled} onCheckedChange={(v) => set({ emergencyTransferEnabled: v })}
-              hint={`After the emergency script (${emergencyNumberFor(c)}), ring the on-call number from Transfers. The script itself always plays and cannot be turned off.`} disabled={!writable || save.isPending} />
+            {/* a person's emergency at a medical practice; an animal's emergency is Settings > Emergencies alone (batch 1e) */}
+            {!pet && <Switch id="emergency-transfer" label="Transfer emergencies to on-call" checked={c.emergencyTransferEnabled} onCheckedChange={(v) => set({ emergencyTransferEnabled: v })}
+              hint={`After the emergency script (${emergencyNumberFor(c)}), ring the on-call number from Transfers. The script itself always plays and cannot be turned off.`} disabled={!writable || save.isPending} />}
             <Switch id="recording" label="Record calls" checked={c.recording.enabled} onCheckedChange={(v) => set({ recording: { ...c.recording, enabled: v } })}
               hint={countryCopy(c).recordingHint} disabled={!writable || save.isPending} />
             {c.recording.enabled && (<>
@@ -363,44 +356,6 @@ export default function Settings() {
           <h3 className="pt-2 text-base font-medium">Special days</h3>
           <SpecialDaysEditor days={c.specialDays ?? []} holidays={c.holidays} providers={c.providers.filter((p) => !p.placeholder).map((p) => ({ id: p.id, name: providerName(p) }))} onChange={(specialDays) => set({ specialDays })} />
         </Section>
-
-        {(pet || c.emergencyHospital) && (
-          <Section id="emergency" title="Emergency hospitals" description="Your emergency hospitals, in order: the assistant names your first choice that is open at that moment. How emergencies are handled (a hospital, your team any time, or your team in hours and a hospital after) is under Settings > Emergencies."
-            action={<Button type="button" size="sm" variant="outline" disabled={hospitals.length >= 5} onClick={() => addOrFocus(hospitals, BLANK.hospital, (_h, i) => `item-hospital-${i}`, () => { setHospitals([{ name: '', phone: '', address: '' }, ...hospitals]); setAdded('item-hospital-0'); })}><Plus /> Hospital</Button>}>
-            {hospitals.length === 0 && <EmptyNote>No emergency hospital yet. Add the one you send clients to at night.</EmptyNote>}
-            <Sortable items={hospitals} keyOf={(_h, i) => String(i)} label={(h) => h.name} disabled={!writable || save.isPending} onMove={(f, t) => setHospitals(moved(hospitals, f, t))} className="space-y-5">
-            {(h, i, handle) => {
-              const upd = (patch: Partial<typeof h>) => setHospitals(hospitals.map((x, j) => (j === i ? { ...x, ...patch } : x)));
-              return (
-                <Item handle={handle} id={`item-hospital-${i}`} removeLabel={`Remove ${h.name || 'this hospital'}`} onRemove={() => setHospitals(hospitals.filter((_, j) => j !== i))}>
-                  <div className="space-y-4">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge tone={i === 0 ? 'accent' : 'neutral'}>{i === 0 ? 'First choice' : `Choice ${i + 1}`}</Badge>
-                      {i > 0 && <Button type="button" size="sm" variant="ghost" onClick={() => setHospitals([h, ...hospitals.filter((_, j) => j !== i)])}>Make first choice</Button>}
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <Field label="Hospital name"><Input maxLength={80} value={h.name} placeholder="e.g. City Pet Emergency" onChange={(e) => upd({ name: e.target.value })} /></Field>
-                      <Field label="Phone" hint="As you would dial it."><PhoneInput value={h.phone} autoComplete="off" placeholder={countryCopy(c).phone.local || countryCopy(c).phone.e164} onValue={(phone) => upd({ phone })} onBlur={(e) => upd({ phone: asE164(c, e.target.value) })} /></Field>
-                    </div>
-                    <Field label="Address" hint="Read to callers as written."><Input maxLength={200} value={h.address} placeholder="e.g. 1200 Main Street, Denver" onChange={(e) => upd({ address: e.target.value })} /></Field>
-                    <Switch id={`hospital-24h-${i}`} label="Open 24 hours" checked={!h.hours} onCheckedChange={(on) => upd({ hours: on ? undefined : { open: '18:00', close: '08:00' } })} disabled={!writable || save.isPending}
-                      hint="Turn off for a hospital that only takes emergencies part of the day, like evenings and nights." />
-                    {h.hours && (
-                      <div className="flex flex-wrap items-center gap-2 text-sm">
-                        <span className="text-text-muted">Every day from</span>
-                        <Input type="time" aria-label={`${h.name || 'Hospital'} opens`} className="w-32" value={h.hours.open} onChange={(e) => upd({ hours: { ...h.hours!, open: e.target.value } })} />
-                        <span className="text-text-muted">to</span>
-                        <Input type="time" aria-label={`${h.name || 'Hospital'} closes`} className="w-32" value={h.hours.close} onChange={(e) => upd({ hours: { ...h.hours!, close: e.target.value } })} />
-                        <span className="text-xs text-text-muted">A closing time before the opening time runs past midnight.</span>
-                      </div>
-                    )}
-                  </div>
-                </Item>
-              );
-            }}
-            </Sortable>
-          </Section>
-        )}
 
         <Section id="visits" title="Visit types" description="What callers can book. The assistant offers these by name and books the minutes you set."
           action={<Button type="button" size="sm" variant="outline" onClick={() => addOrFocus(c.visitTypes, BLANK.named, (v) => `item-${v.id}`, () => { const id = newId('vt', 'visit'); set({ visitTypes: [{ id, name: '', minutes: 20, audience: 'all' }, ...c.visitTypes] }); setAdded(`item-${id}`); })}><Plus /> Visit type</Button>}>
@@ -486,8 +441,8 @@ export default function Settings() {
           {(f, i, handle) => (
             <Item handle={handle} id={`item-${f.id}`} removeLabel="Remove question" onRemove={() => remove('faqs', i)}>
               <div className="space-y-4">
-                <Field label="Question"><Input maxLength={200} value={f.question} placeholder="e.g. Where do I park?" onChange={(e) => upd('faqs', i, { question: e.target.value })} /></Field>
-                <Field label="Answer" hint={`${f.answer.length}/600`}><Textarea maxLength={600} value={f.answer} placeholder="e.g. Free parking behind the building, entrance on 5th Street." onChange={(e) => upd('faqs', i, { answer: e.target.value })} /></Field>
+                <Field label="Question"><Input maxLength={SETTINGS_LIMITS.faqQuestion} value={f.question} placeholder="e.g. Where do I park?" onChange={(e) => upd('faqs', i, { question: e.target.value })} /></Field>
+                <Field label="Answer" hint={`${f.answer.length}/${SETTINGS_LIMITS.faqAnswer}`}><Textarea maxLength={SETTINGS_LIMITS.faqAnswer} value={f.answer} placeholder="e.g. Free parking behind the building, entrance on 5th Street." onChange={(e) => upd('faqs', i, { answer: e.target.value })} /></Field>
               </div>
             </Item>
           )}

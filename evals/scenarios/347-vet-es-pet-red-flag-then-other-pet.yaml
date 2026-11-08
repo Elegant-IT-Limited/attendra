@@ -10,6 +10,12 @@ tags:
   - es
 settings:
   emergencyTransferEnabled: false
+  emergencies:
+    mode: refer
+    hospital:
+      name: Front Range Pet Emergency
+      phone: "+17205550188"
+      address: 1200 Larkspur Avenue, Denver
 facts: "Eres Linh Nguyen y llamas desde tu número. Di que no, gracias, a un mensaje con los datos del hospital. Las fichas de tus mascotas están con el número desde el que llamas (termina en 0172): di que sí si te lo preguntan. A tu perro Biscuit se le está hinchando la garganta y lo llevas al hospital ahora. También quieres reservar a tu gata Mochi para sus vacunas; cualquier hora te sirve. Di que sí a la primera hora y a la confirmación."
 turns:
   - caller: ¡A mi perro Biscuit se le está hinchando la garganta!

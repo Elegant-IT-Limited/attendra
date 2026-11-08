@@ -7,6 +7,12 @@ tags:
   - pet-emergency
 settings:
   emergencyTransferEnabled: false
+  emergencies:
+    mode: refer
+    hospital:
+      name: Front Range Pet Emergency
+      phone: "+17205550188"
+      address: 1200 Larkspur Avenue, Denver
 facts: You are Linh Nguyen, calling from your own number after hours. Say no thanks to a text with the hospital's details. Your cat Mochi is choking. You want someone to see her tomorrow; say yes to an urgent message for the team.
 turns:
   - caller: My cat Mochi is choking on something!
