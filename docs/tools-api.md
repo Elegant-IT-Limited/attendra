@@ -4,10 +4,12 @@ Since batch 1a a clinic's calls can be answered in one of two ways, set per clin
 
 | `voiceFlow` | How a turn is answered | Engines |
 |---|---|---|
-| `planner` (default) | The voice hands the turn to our backend; the planner (a Responses model) calls the tools and writes the answer; the voice says it. | GPT-Live (client delegation), gpt-realtime (`ask_backend`) |
+| `planner` (absent: the default on a self-hosted install) | The voice hands the turn to our backend; the planner (a Responses model) calls the tools and writes the answer; the voice says it. | GPT-Live (client delegation), gpt-realtime (`ask_backend`) |
 | `tools` | The voice calls the tools itself and says their results. | gpt-realtime: our tools are its own function tools (path A). GPT-Live: Responses delegation, a Responses model of OpenAI's calls our tools over the sideband (path B). |
 
 Switch: `PUT /api/v1/provisioning/clinics/:clinicId/voice-flow` with `{ "flow": "tools" }`; back with `{ "flow": "planner" }` (or `null`). The engine is `PUT …/voice-engine` as before. Both take effect from the next call; calls in progress finish as they started.
+
+On the hosted service, every clinic the hosting layer opens (an account, another business, a location) starts on path A: `voiceFlow: tools` with `voiceEngine: gpt-realtime` (`NEW_CLINIC_VOICE` in the provisioning controller). One step back for a clinic is `{ "flow": "planner" }` with `{ "engine": "gpt-live" }`.
 
 ## What stays the same
 
