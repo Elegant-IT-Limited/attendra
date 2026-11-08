@@ -24,6 +24,19 @@ import { qualityWeeks, weekStart } from '../quality/metrics';
 /** How long an unconfirmed sign-up is kept before a new one may replace it: the hosting layer's link lifetime. */
 const UNCONFIRMED_KEPT_MS = 48 * 3_600_000;
 
+/**
+ * How a clinic opened by the hosting layer answers from its first call (2026-11-08): path A, gpt-realtime calling
+ * the tools API itself, at the deployment's realtime model. The planner path stays as the one-step fallback per clinic
+ * (`PUT clinics/:id/voice-flow {flow: 'planner'}` with `voice-engine {engine: 'gpt-live'}`). A self-hosted install
+ * opens its clinics without this, so it keeps the planner unless its operator switches.
+ */
+export const NEW_CLINIC_VOICE = { voiceFlow: 'tools', voiceEngine: 'gpt-realtime' } as const satisfies Pick<ClinicConfig, 'voiceFlow' | 'voiceEngine'>;
+
+/** The pack's first settings for a clinic the hosting layer opens: an account's first, another business, or a location. */
+function hostedStarterClinic(input: Parameters<typeof starterClinic>[0]): ClinicConfig {
+  return { ...starterClinic(input), ...NEW_CLINIC_VOICE };
+}
+
 /** The city in a clinic's address, as the hosting layer shows it on a location's card: the last part that is not a postcode or a country of two letters. */
 export function cityOf(address: string | undefined): string | null {
   const parts = (address ?? '').split(',').map((p) => p.trim()).filter(Boolean);
@@ -147,7 +160,7 @@ export class ProvisioningController {
     // checked first: nothing is replaced for a request that cannot open an account
     let config: ClinicConfig;
     try {
-      config = starterClinic({ id: newId('clinic'), ...body.clinic });
+      config = hostedStarterClinic({ id: newId('clinic'), ...body.clinic });
     } catch {
       throw new HttpException({ error: 'invalid_request', issues: [{ path: 'clinic', message: 'unknown time zone or number' }] }, 422);
     }
@@ -185,7 +198,7 @@ export class ProvisioningController {
   async openForOwner(@Body(new ZodPipe(ForUser)) body: z.infer<typeof ForUser>) {
     let config: ClinicConfig;
     try {
-      config = starterClinic({ id: newId('clinic'), ...body.clinic });
+      config = hostedStarterClinic({ id: newId('clinic'), ...body.clinic });
     } catch {
       throw new HttpException({ error: 'invalid_request', issues: [{ path: 'clinic', message: 'unknown time zone or number' }] }, 422);
     }
@@ -205,7 +218,7 @@ export class ProvisioningController {
   async addLocation(@Param('organizationId') organizationId: string, @Body(new ZodPipe(NewLocation)) body: z.infer<typeof NewLocation>) {
     let config: ClinicConfig;
     try {
-      config = starterClinic({ id: newId('clinic'), ...body.clinic });
+      config = hostedStarterClinic({ id: newId('clinic'), ...body.clinic });
     } catch {
       throw new HttpException({ error: 'invalid_request', issues: [{ path: 'clinic', message: 'unknown time zone or number' }] }, 422);
     }
@@ -349,8 +362,8 @@ export class ProvisioningController {
   }
 
   /**
-   * How the voice answers this clinic's calls: 'tools' has the voice call the tools API itself (batch 1a, one clinic at a
-   * time for the bake-off), 'planner' or null the planner hand-off every other clinic has. Not something the clinic sets.
+   * How the voice answers this clinic's calls: 'tools' has the voice call the tools API itself (path A with gpt-realtime; every
+   * clinic the hosting layer opens starts there, NEW_CLINIC_VOICE), 'planner' or null the planner hand-off, the one-step fallback. Not something the clinic sets.
    */
   @Put('clinics/:clinicId/voice-flow')
   @HttpCode(204)

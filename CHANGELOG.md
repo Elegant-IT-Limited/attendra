@@ -4,6 +4,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (path A for new clinics)
+
+- **Every clinic the hosting layer opens answers on path A from its first call**: an account's first clinic, another business on the same login, or an added location starts with `voiceFlow: tools` and `voiceEngine: gpt-realtime`, at the deployment's realtime model. The planner path stays as the one-step fallback per clinic (`PUT /provisioning/clinics/:clinicId/voice-flow` and `/voice-engine`). Self-hosted installs keep the planner unless their operator switches.
+
 ### Changed (batch 1d: the last scheduling misses on path A)
 
 - **"Text me the address" sends the directions text** (the address and a map link), also when the voice model picks the clinic's "where are you" common question as an answer text.

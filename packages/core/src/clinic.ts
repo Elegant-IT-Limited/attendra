@@ -338,7 +338,8 @@ const ClinicConfigShape = z.object({
   // which voice engine answers: set by the operator (provisioning), never in Settings; absent is the deployment's default
   voiceEngine: z.enum(['gpt-live', 'gpt-realtime']).optional(),
   // how the voice answers each turn: 'planner' (one hand-off per turn to the planner, today's way) or 'tools' (the voice
-  // calls the tools API itself: batch 1a, one clinic at a time). Set by the operator (provisioning), never in Settings; absent is 'planner'
+  // calls the tools API itself: path A). Set by the operator (provisioning), never in Settings; absent is 'planner'; the hosted
+  // service opens every new clinic on 'tools' (NEW_CLINIC_VOICE in the provisioning controller)
   voiceFlow: z.enum(['planner', 'tools']).optional(),
   // which gpt-realtime model answers when the clinic is on gpt-realtime: absent is the deployment's
   // (ATTENDRA_REALTIME_MODEL). For a one-clinic phone trial of the cheaper model (batch 1d). Set by the operator

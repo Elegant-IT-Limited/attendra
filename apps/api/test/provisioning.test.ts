@@ -150,6 +150,23 @@ describe('provisioning', () => {
     expect((await api.t.owner.execute(sql`select id from clinics where org_id = ${opened.organizationId}`)).rows).toEqual([{ id: opened.clinicId }]);
   });
 
+  it('opens every new clinic on path A (tools + gpt-realtime), with the planner one step back (2026-11-08)', async () => {
+    const voiceOf = async (id: string) => (await api.t.owner.execute(sql`select config->>'voiceFlow' as flow, config->>'voiceEngine' as engine, config->>'realtimeModel' as model from clinics where id = ${id}`)).rows[0];
+    const pathA = { flow: 'tools', engine: 'gpt-realtime', model: null };
+    const opened = (await api.request('POST', `${P}/accounts`, { body: { ...account, owner: { ...account.owner, email: 'four@oakhill.example' } }, authorization: auth })).json();
+    expect(await voiceOf(opened.clinicId)).toEqual(pathA);
+    const location = (await api.request('POST', `${P}/organizations/${opened.organizationId}/clinics`, { body: { clinic: { name: 'Oak Hill East', timezone: 'America/Chicago', industry: 'vet', phone: '+13125550112' } }, authorization: auth })).json();
+    expect(await voiceOf(location.clinicId)).toEqual(pathA);
+    await api.request('POST', `${P}/email-confirmations`, { body: { email: 'four@oakhill.example' }, authorization: auth });
+    const other = (await api.request('POST', `${P}/accounts/for-user`, { body: { organization: { name: 'Birch Vets' }, clinic: { name: 'Birch Vets', timezone: 'America/Denver', industry: 'vet', phone: '+13035550191' }, plan: 'trial', userId: opened.userId }, authorization: auth })).json();
+    expect(await voiceOf(other.clinicId)).toEqual(pathA);
+    // one step back for one clinic: the planner hand-off, the others stay on path A
+    expect((await api.request('PUT', `${P}/clinics/${location.clinicId}/voice-flow`, { body: { flow: 'planner' }, authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('PUT', `${P}/clinics/${location.clinicId}/voice-engine`, { body: { engine: 'gpt-live' }, authorization: auth })).statusCode).toBe(204);
+    expect(await voiceOf(location.clinicId)).toEqual({ flow: 'planner', engine: 'gpt-live', model: null });
+    expect(await voiceOf(opened.clinicId)).toEqual(pathA);
+  });
+
   it('sets which voice engine answers a clinic, which Settings cannot change', async () => {
     const S = `/api/v1/clinics/${DEMO_CLINIC.id}/settings`;
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/voice-engine`, { body: { engine: 'gpt-realtime' }, authorization: auth })).statusCode).toBe(204);
