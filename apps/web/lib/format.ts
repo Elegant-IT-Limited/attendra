@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { asE164, formatPhone, isE164 } from '@attendra/core';
+import { asE164, type CallOutcome, type EmergencyResult, formatPhone, isE164, roleLabel } from '@attendra/core';
 
 /**
  * What depends on the clinic's country, from its first number: a 12-hour clock in
@@ -48,7 +48,7 @@ export function clock(ms: number) {
  * How an animal's emergency on a call ended (batch 1b): the badge on Calls, and the line on the call page. The words a
  * caller heard come from the engine (emergencyRoute); these are the team's.
  */
-export const EMERGENCY_RESULTS: Record<string, { label: string; text: string }> = {
+export const EMERGENCY_RESULTS: Record<EmergencyResult, { label: string; text: string }> & Record<string, { label: string; text: string } | undefined> = {
   transferred: { label: 'Emergency · put through', text: 'The caller said it was still an emergency and was put through to your team\'s emergency line.' },
   hospital_said: { label: 'Emergency · sent to hospital', text: 'The caller said it was still an emergency and was told to take their pet to your emergency hospital.' },
   hospital_texted: { label: 'Emergency · hospital texted', text: 'The caller said it was still an emergency, was told to take their pet to your emergency hospital, and was texted its address.' },
@@ -56,7 +56,11 @@ export const EMERGENCY_RESULTS: Record<string, { label: string; text: string }> 
   cleared: { label: 'Emergency cleared', text: 'The caller reported a danger sign, then said it was not an emergency now. The call went on, with a note on what they reported for the team.' },
 };
 
-export const OUTCOMES: Record<string, { label: string; tone: 'ok' | 'warn' | 'danger' | 'neutral' | 'accent' }> = {
+/**
+ * The one label table for a call's outcome, for every value core's CALL_OUTCOMES has (a test checks each has one): the
+ * Calls list, its Outcome filter, the call page, Today and the command palette all read it.
+ */
+export const OUTCOMES: Record<CallOutcome, { label: string; tone: 'ok' | 'warn' | 'danger' | 'neutral' | 'accent' }> & Record<string, { label: string; tone: 'ok' | 'warn' | 'danger' | 'neutral' | 'accent' } | undefined> = {
   booked: { label: 'Booked', tone: 'ok' },
   rescheduled: { label: 'Rescheduled', tone: 'ok' },
   cancelled: { label: 'Cancelled', tone: 'accent' },
@@ -68,6 +72,32 @@ export const OUTCOMES: Record<string, { label: string; tone: 'ok' | 'warn' | 'da
   // the caller never heard the assistant (a silent line): someone to call back
   no_audio: { label: 'Caller heard nothing', tone: 'danger' },
 };
+
+/**
+ * How a call ended, in plain words, for the call page. The engines' own codes (GPT-Live, gpt-realtime, Vapi) and ours
+ * (silent_start: the assistant never spoke, so the call was passed to the front desk or ended, batch 1e); a code we do
+ * not know is "Call ended", never the raw code or a log note.
+ */
+export const CLOSE_REASONS: Record<string, string> = {
+  caller_hangup: 'Caller hung up', remote_hangup: 'Caller hung up', 'customer-ended-call': 'Caller hung up',
+  agent_hangup: 'Assistant ended the call', 'assistant-ended-call': 'Assistant ended the call', call_ended: 'Call ended',
+  transferred: 'Transferred', 'assistant-forwarded-call': 'Transferred',
+  ended_by_staff: 'Ended by staff',
+  connection_lost: 'Connection dropped',
+  transport_failed: 'Phone line did not connect',
+  silent_start: 'Assistant never spoke: passed on or ended',
+  'silence-timed-out': 'Ended after a long silence', 'exceeded-max-duration': 'Reached the time limit',
+};
+export function closeReasonLabel(reason: string): string {
+  if (CLOSE_REASONS[reason]) return CLOSE_REASONS[reason];
+  // the runner's own notes for a drop it saw: "socket closed 1006 before session.closed", "transport failed: busy"
+  if (/^socket closed\b/.test(reason)) return CLOSE_REASONS.connection_lost!;
+  if (/^transport failed\b/.test(reason)) return CLOSE_REASONS.transport_failed!;
+  return 'Call ended';
+}
+
+/** The longest the caller waited after speaking, for the call page: "1.8 s" (from core's LONG_WAIT_MS it reads as long). */
+export const waitWords = (ms: number) => `${(Math.round(ms / 100) / 10).toFixed(1)} s`;
 
 export const TOOLS: Record<string, string> = {
   verify_caller: 'Identity check',
@@ -192,6 +222,40 @@ export { ROLE_LABEL } from '@attendra/core';
 export const NEW_MEMBER = 'New team member';
 /** A team member's name as it shows anywhere: one who has not written theirs yet is "New team member". */
 export const personName = (name: string) => name.trim() || NEW_MEMBER;
+
+/** A teammate with their role here: "Jordan Lee (Front desk)"; someone no longer on the team is "a former team member". */
+export const personWithRole = (name: string | null, role: string | null) => (name === null ? 'a former team member' : `${personName(name)}${role ? ` (${roleLabel(role)})` : ''}`);
+
+/**
+ * Who wrote a request down (REQ-1), after "Added by": the assistant for one from a call, else the teammate with their
+ * role here ("Jordan Lee (Front desk)"), or "the team" when Attendra cannot tell.
+ */
+export const requestCreator = (t: { callId: string | null; createdBy: { name: string | null; role: string | null } | null }) =>
+  (t.callId ? 'the assistant' : t.createdBy ? personWithRole(t.createdBy.name, t.createdBy.role) : 'the team');
+
+/**
+ * What can happen to a request, in words: its history on the Requests page and the audit log read this one table
+ * (audit actions, packages/db). A view is not in a request's history.
+ */
+export const TASK_HISTORY: Record<string, string> = {
+  'task.created.refill': 'Took a refill request',
+  'task.created.callback': 'Took a callback request',
+  'task.created.voicemail': 'Took a voicemail',
+  'task.created.review': 'Added a new patient for the front desk to check',
+  'task.created.follow_up': 'Opened a follow-up request for a call left unfinished',
+  'task.claimed': 'Claimed a request',
+  'task.released': 'Released a request',
+  'task.released.override': 'Released someone else\'s request',
+  'task.assigned': 'Handed a request to a teammate',
+  'task.note.added': 'Added a note to a request',
+  'task.planned': 'Changed a request\'s urgency or due day',
+  'task.fields.updated': 'Changed the details on a request',
+  'task.done': 'Closed a request',
+  'task.done.refill_sent': 'Approved a refill (sent to the pharmacy)',
+  'task.done.refill_ready': 'Approved a refill (ready to pick up)',
+  'task.done.refill_declined': 'Declined a refill',
+  'task.reopened': 'Reopened a request',
+};
 
 /**
  * A phone number the way people write it: the clinic's own national format for a number in its

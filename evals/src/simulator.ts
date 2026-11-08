@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, type PlannerTiming, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
-import { addDays, awayOn, isPetEmergency, bookableWindows, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, normalise, questionsIn, repeatedQuestions, speakSlot, toMinutes, type ToolName, weekdayOf, zonedInstant } from '@attendra/core';
+import { addDays, awayOn, isPetEmergency, bookableWindows, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, normalise, maxGapMs, questionsIn, repeatedQuestions, speakSlot, toMinutes, type ToolName, weekdayOf, zonedInstant } from '@attendra/core';
 import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, PatientRecords, type PhiCipher, phoneKey, PostgresAuditLog, PostgresPatientDirectory, phiContext, PostgresTaskQueue, RIVERBEND_PETS, schema, seedCedarPark, seedDemo, seedRiverbend, withClinic } from '@attendra/db';
 import { and, eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
@@ -370,8 +370,11 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     await calls.close(clinic.id, callId, {
       // the simulator's clock counts turns, not speech; scale it to a believable call length
       reason: transfer ? 'transferred' : 'caller_hangup', voiceSeconds: Math.round(8 + clock * 0.0032),
-      outcome: state.outcome, emergency: state.emergency !== null,
+      outcome: state.outcome, emergency: state.emergency !== null, emergencyResult: state.emergencyResult,
     });
+    // the two markers as a real call's runner records them, from the turns (the gap is the simulator's own pacing); the
+    // other quality numbers stay empty, as before, so the demo's Quality page is unchanged
+    await withClinic(db, clinic.id, (tx) => tx.update(schema.calls).set({ maxGapMs: maxGapMs(state.turns), repeatedQuestions: repeatedQuestions(state.turns).length }).where(eq(schema.calls.id, callId)));
   }
 
   const createdRows = await withClinic(db, clinic.id, (tx) => tx.select().from(schema.appointments).where(eq(schema.appointments.createdByCallId, callId)));

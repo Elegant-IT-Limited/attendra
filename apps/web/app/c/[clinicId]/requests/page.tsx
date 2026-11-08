@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import type { Task, TaskAssignees, TaskList } from '@attendra/api/contracts';
+import type { Task, TaskAssignees, TaskHistory, TaskList } from '@attendra/api/contracts';
 import { type CustomField, localDateOf, multiValues } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ChevronDown, ChevronRight, Flag, Hand, Info, Phone, PhoneCall, Pill, Plus, Search, SlidersHorizontal, UserCheck, Voicemail, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Flag, Hand, History, Info, Phone, PhoneCall, Pill, Plus, RotateCcw, Search, Siren, SlidersHorizontal, UserCheck, Voicemail, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
@@ -21,7 +21,7 @@ import { PhoneInput } from '@/components/ui/phone-input';
 import { Panel } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { ago, clinicTime, dayTitle, dob, personName, phone, requestNumber, ROLE_LABEL, TASK_KIND_ORDER, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, telHref, zoneLabel } from '@/lib/format';
+import { ago, clinicTime, dayTitle, dob, personName, personWithRole, phone, requestCreator, requestNumber, TASK_HISTORY, TASK_KIND_ORDER, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, telHref, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { Avatar, RelativeTime } from '@/components/ui/bits';
 import { Segmented } from '@/components/ui/tabs';
@@ -115,7 +115,7 @@ function Requests() {
   const team = useQuery({ queryKey: ['assignees', clinicId], queryFn: () => api<TaskAssignees>(`/clinics/${clinicId}/tasks/assignees`), enabled: can('tasks:reassign') });
   const key = ['tasks', clinicId, status, type, who, q, from, to];
   const toast = useToast();
-  type Act = { task: Task; action: 'claim' | 'done' | 'release' | 'notes' | 'assign' | 'plan'; body?: ActBody };
+  type Act = { task: Task; action: 'claim' | 'done' | 'release' | 'notes' | 'assign' | 'plan' | 'reopen'; body?: ActBody };
   // The screen changes at once and puts itself back if the server says no: a claim,
   // a close, an assignment or a note should never make the front desk wait.
   const act = useMutation({
@@ -135,7 +135,7 @@ function Requests() {
         if (action === 'assign') return { ...t, assigneeUserId: body!.userId!, assigneeName: team.data?.people.find((m) => m.userId === body!.userId)?.name ?? null };
         if (action === 'plan') return { ...t, ...(body!.urgent !== undefined ? { urgent: body!.urgent } : {}), ...(body!.dueOn !== undefined ? { dueOn: body!.dueOn } : {}) };
         if (action === 'notes') return { ...t, notes: [...t.notes, { id: -Date.now(), author: me?.user.name ?? null, authorAvatarUrl: me?.user.avatarUrl ?? null, at: new Date().toISOString(), body: body!.body! }] };
-        return null; // done: it leaves the open list
+        return null; // done: it leaves the open list; reopened: it leaves the done list
       };
       if (before) queries.setQueryData<TaskList>(key, { tasks: before.tasks.map(change).filter((t): t is Task => !!t) });
       // the request held open outside the list changes the same way
@@ -153,6 +153,11 @@ function Requests() {
     onSuccess: (_r, { task, action, body }) => {
       if (action === 'claim') toast({ tone: 'success', message: 'Claimed. It is yours now.', action: { label: 'Undo', onClick: () => act.mutate({ task, action: 'release' }) } });
       else if (action === 'done') { if (openId === task.id) closeTask(); toast({ tone: 'success', message: 'Marked done.' }); }
+      // back in the open queue: the panel closes with the done list it left, and the toast goes to it
+      else if (action === 'reopen') {
+        if (openId === task.id) closeTask();
+        toast({ tone: 'success', message: `Reopened. ${requestNumber(task.number)} is back in the open queue.`, action: { label: 'Show it', onClick: () => { setStatus('open'); setOpenId(task.id); } } });
+      }
       else if (action === 'assign') toast({ tone: 'success', message: body?.userId === me?.user.id ? 'It is yours now.' : `Given to ${personName(team.data?.people.find((m) => m.userId === body?.userId)?.name ?? 'your teammate')}.` });
       else if (action === 'notes') toast({ tone: 'success', message: 'Note added.' });
       else if (action === 'plan') toast({ tone: 'success', message: body?.urgent === true ? 'Marked urgent. It leads the queue.' : body?.urgent === false ? 'No longer urgent.' : body?.dueOn ? 'Due day set.' : 'Due day cleared.' });
@@ -318,8 +323,8 @@ function Requests() {
 const nameOf = (t: Task, patientWord: string) => t.patientName ?? t.details.pet_name ?? ([t.details.first_name, t.details.last_name].filter(Boolean).join(' ')
   || t.details.name || (t.callId ? 'Caller not verified' : `No ${patientWord} linked`));
 
-/** Who wrote a request down: "Added by Ana Front"; one from a call says so. */
-const madeBy = (t: Task) => (t.callId ? 'From a call' : t.createdBy ? `Added by ${t.createdBy.name === null ? 'a former team member' : personName(t.createdBy.name)}` : 'Added by the team');
+/** Who wrote a request down, with their role here (REQ-1): "Added by Jordan Lee (Front desk)", "Added by the assistant". */
+const madeBy = (t: Task) => `Added by ${requestCreator(t)}`;
 
 /** What a request needs, in one line, and the detail that goes with it: the most important things, without opening it. */
 function needOf(t: Task, patientWord: string): { main: string; sub: string } {
@@ -400,7 +405,7 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
   bare?: boolean;
   task: Task; fields: CustomField[]; patientWord: string; clinicId: string; tz: string; today: string; meId?: string; busy: boolean; teammates: TaskAssignees['people'];
   canWork: boolean; canReassign: boolean; canOpenPatient: boolean; canApprove: boolean;
-  onAct: (action: 'claim' | 'done' | 'release' | 'notes' | 'assign' | 'plan', body?: ActBody) => void;
+  onAct: (action: 'claim' | 'done' | 'release' | 'notes' | 'assign' | 'plan' | 'reopen', body?: ActBody) => void;
 }) {
   const [note, setNote] = useState('');
   const [closing, setClosing] = useState(false);
@@ -444,13 +449,24 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
         {fields.map((f) => (
           <div key={f.id} className="contents"><dt className="text-text-muted">{f.label}</dt><dd>{t.custom[f.id] ? shownValue(f, t.custom[f.id]) : <span className="text-text-muted">Not filled in</span>}</dd></div>
         ))}
-        {t.callId && <><dt className="text-text-muted">From</dt><dd><Link href={`/c/${clinicId}/calls/${t.callId}`} className="text-primary hover:underline">The call, {clinicTime(t.createdAt, tz)}</Link></dd></>}
+        {/* the call it came from; an urgent request an emergency left says so (REQ-2), open or done */}
+        {t.callId && (
+          <>
+            <dt className="text-text-muted">From</dt>
+            <dd>
+              <Link href={`/c/${clinicId}/calls/${t.callId}`} className={cn('inline-flex items-center gap-1.5 hover:underline', t.origin === 'emergency' ? 'font-medium text-danger' : 'text-primary')} data-testid="from-call">
+                {t.origin === 'emergency' ? <><Siren className="size-4" aria-hidden /> From an emergency call</> : 'The call'}, {clinicTime(t.createdAt, tz)}
+              </Link>
+              <span data-testid="added-by" className="block text-xs text-text-muted">{madeBy(t)}</span>
+            </dd>
+          </>
+        )}
         {!t.callId && (
           <>
             <dt className="text-text-muted">From</dt>
             <dd className="flex items-center gap-2">
               {t.createdBy && <Avatar name={t.createdBy.name ?? '?'} src={t.createdBy.avatarUrl} size="sm" />}
-              <span data-testid="added-by">{madeBy(t)}{t.createdBy?.role ? ` (${ROLE_LABEL[t.createdBy.role] ?? t.createdBy.role})` : ''}, {clinicTime(t.createdAt, tz)}</span>
+              <span data-testid="added-by">{madeBy(t)}, {clinicTime(t.createdAt, tz)}</span>
             </dd>
           </>
         )}
@@ -525,9 +541,54 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
           )}
         </div>
       )}
+      {/* a closed request can be opened again by anyone who works requests (REQ-3): it goes back in the queue */}
+      {!open && canWork && (
+        <div className="mt-auto flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+          <p className="mr-auto text-xs text-text-muted">Closed too soon? Reopen it: it goes back in the queue, unclaimed.</p>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => onAct('reopen')}><RotateCcw /> Reopen</Button>
+        </div>
+      )}
+      <RequestHistory clinicId={clinicId} task={t} tz={tz} />
     </Card>
   );
 }
+
+/**
+ * What was done to the request and by whom, oldest first (REQ-3): asked for when the panel opens, and again whenever the
+ * request changes (the change stream makes every ['tasks', clinic] query stale). Codes and names only, never a note.
+ */
+function RequestHistory({ clinicId, task: t, tz }: { clinicId: string; task: Task; tz: string }) {
+  const history = useQuery({
+    queryKey: ['tasks', clinicId, 'history', t.id, t.status, t.assigneeUserId, t.notes.length, t.urgent, t.dueOn],
+    queryFn: () => api<TaskHistory>(`/clinics/${clinicId}/tasks/${t.id}/history`),
+  });
+  return (
+    <details className="group border-t border-border text-sm" data-testid="request-history">
+      <summary className="focus-ring flex cursor-pointer list-none items-center gap-2 px-5 py-2.5 font-medium text-text-muted hover:text-text [&::-webkit-details-marker]:hidden">
+        <History className="size-4" aria-hidden /> History
+        <ChevronDown className="ml-auto size-4 transition-transform group-open:rotate-180" aria-hidden />
+      </summary>
+      <div className="px-5 pb-4">
+        {history.isPending ? <Skeleton className="h-16" />
+          : history.isError ? <p className="text-text-muted">The history did not load. Close and open the request to try again.</p>
+          : (
+            <ol className="space-y-1.5">
+              {history.data.events.map((e, i) => (
+                <li key={i} className="flex flex-wrap gap-x-2">
+                  <span className="font-medium">{TASK_HISTORY[e.action] ?? 'Changed'}</span>
+                  <span className="text-text-muted">{whoDid(e.by)}, {clinicTime(e.at, tz)}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+      </div>
+    </details>
+  );
+}
+
+/** Who did something to a request, as its history says it: the assistant, "Jordan Lee (Front desk)", a connected app or Attendra. */
+const whoDid = (by: TaskHistory['events'][number]['by']) => (by.kind === 'assistant' ? 'the assistant' : by.kind === 'app' ? 'a connected app' : by.kind === 'system' ? 'Attendra'
+  : personWithRole(by.name, by.role));
 
 /** A request written down by hand: a voicemail someone listened to, a walk-in's question, a call taken at the desk. */
 function NewRequest({ clinicId, open, onOpenChange, topics, fields, patientWord }: { clinicId: string; open: boolean; onOpenChange: (o: boolean) => void; topics: string[]; fields: CustomField[]; patientWord: string }) {

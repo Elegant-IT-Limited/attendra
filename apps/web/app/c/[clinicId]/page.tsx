@@ -318,7 +318,7 @@ function RecentCalls({ clinicId, tz, calls, canOpen, canTest }: { clinicId: stri
                     <p className="text-sm font-medium tabular-nums">{new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(new Date(c.startedAt))} {timeOf(c.startedAt, tz)}</p>
                     <p className="truncate text-xs text-text-muted">{c.tools.map((t) => TOOLS[t] ?? t).join(', ') || 'Talked only'}</p>
                   </div>
-                  <Outcome outcome={c.outcome} emergency={c.emergency} />
+                  <Outcome outcome={c.outcome} emergency={c.emergency} emergencyResult={c.emergencyResult} />
                 </>
               );
               return <li key={c.id}>{canOpen ? <Link href={`/c/${clinicId}/calls/${c.id}`} className="flex items-center gap-3 px-5 py-2.5 hover:bg-surface-sunken">{body}</Link> : <div className="flex items-center gap-3 px-5 py-2.5">{body}</div>}</li>;

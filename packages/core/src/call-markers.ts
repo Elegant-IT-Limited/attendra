@@ -5,6 +5,12 @@
  * The scripted evals fail a run on the same repeat rule (no_repeated_questions), so a call and an eval count alike.
  */
 
+/**
+ * A wait this long after the caller spoke reads as long on the call page: past a natural pause, short of the 5 s that
+ * counts as a stall (the runner's first nudge).
+ */
+export const LONG_WAIT_MS = 3_000;
+
 /** One turn of a call, on the call's own timeline. */
 export interface MarkedTurn { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }
 

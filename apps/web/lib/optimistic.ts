@@ -41,7 +41,8 @@ export function patchRequestElsewhere(queries: QueryClient, clinicId: string, ta
       if (!taken || !isWaiting(d) || !d.tasks.some((t) => t.id === taskId)) return undefined;
       return { ...d, tasks: d.tasks.filter((t) => t.id !== taskId), total: Math.max(0, d.total - 1) };
     }),
-    patchCached<unknown>(queries, ['tasks', clinicId, 'count'], (d) => (action === 'done' && isCount(d) ? { open: Math.max(0, d.open - 1) } : undefined)),
+    // the menu's count: one fewer for a close, one more for a reopen
+    patchCached<unknown>(queries, ['tasks', clinicId, 'count'], (d) => (!isCount(d) ? undefined : action === 'done' ? { open: Math.max(0, d.open - 1) } : action === 'reopen' ? { open: d.open + 1 } : undefined)),
   );
 }
 

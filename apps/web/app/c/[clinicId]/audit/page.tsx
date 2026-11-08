@@ -11,31 +11,22 @@ import { Card } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { api, useClinic, useClinicConfig } from '@/lib/api';
-import { clinicTime, dayTitle, personName, zoneLabel } from '@/lib/format';
+import { clinicTime, dayTitle, personName, TASK_HISTORY, zoneLabel } from '@/lib/format';
 import { pageData } from '@/lib/page-data';
 
 const ACTIONS: Record<string, string> = {
+  // what can happen to a request, as its own history says it too (lib/format TASK_HISTORY): one table for both
+  ...TASK_HISTORY,
   'call.transcript.viewed': 'Read a call transcript',
   'call.test.started': 'Started a browser test call',
   'call.test.called_as': 'Started a browser test call as a number',
   'patient.phone.called_as': 'Used a patient\'s number for a browser test call',
   'task.viewed': 'Viewed a request',
-  'task.claimed': 'Claimed a request',
-  'task.done': 'Closed a request',
-  'task.created.refill': 'Took a refill request',
-  'task.created.callback': 'Took a callback request',
   'patient.identified': 'Verified a caller',
   'clinic.settings.updated': 'Changed clinic settings',
   'clinic.emergency_list.reviewed': 'Recorded a review of the emergency lists',
   'appointment.booked': 'Booked an appointment',
   'appointment.cancelled': 'Cancelled an appointment',
-  'task.released': 'Released a request',
-  'task.released.override': 'Released someone else\'s request',
-  'task.created.voicemail': 'Took a voicemail',
-  'task.created.review': 'Added a new patient for the front desk to check',
-  'task.created.follow_up': 'Opened a follow-up request for a call left unfinished',
-  'task.assigned': 'Handed a request to a teammate',
-  'task.note.added': 'Added a note to a request',
   'schedule.viewed': 'Looked at the schedule',
   'appointment.viewed': 'Opened an appointment',
   'appointment.booked.staff': 'Booked an appointment at the desk',
@@ -103,7 +94,6 @@ const ACTIONS: Record<string, string> = {
   'patient.list.viewed': 'Looked at the patient list',
   'patient.confirmed': 'Confirmed a new patient\'s details',
   'patient.fields.updated': 'Changed the extra details on a patient\'s record',
-  'task.planned': 'Changed a request\'s urgency or due day',
   'appointment.rescheduled': 'Moved an appointment',
   'clinic.doctor.added': 'Added a provider',
   'clinic.doctor.updated': 'Changed a provider\'s details',
@@ -113,12 +103,8 @@ const ACTIONS: Record<string, string> = {
   'sms.opt_out': 'A number replied STOP: no more texts to it',
   'sms.opt_in': 'A number replied START: texts to it again',
   'patient.texts.viewed': 'Looked at the texts sent to a patient',
-  'task.done.refill_sent': 'Approved a refill (sent to the pharmacy)',
-  'task.done.refill_ready': 'Approved a refill (ready to pick up)',
-  'task.done.refill_declined': 'Declined a refill',
   'member.refill_approval.on': 'Allowed someone to approve refills',
   'member.refill_approval.off': 'Stopped someone approving refills',
-  'task.fields.updated': 'Changed the details on a request',
   'clinic.list.updated.specialties': 'Changed the list of specialties',
   'clinic.list.updated.categories': 'Changed the list of what doctors see',
   'clinic.list.updated.species': 'Changed the list of kinds of animal',

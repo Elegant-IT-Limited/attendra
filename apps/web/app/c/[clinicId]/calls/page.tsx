@@ -19,7 +19,7 @@ import { Input, Label, Select } from '@/components/ui/input';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { api, useClinic } from '@/lib/api';
 import { testCallBadge } from '@/lib/call-as';
-import { clinicTime, duration, OUTCOMES, phone, REFUSALS, TOOLS, zoneLabel } from '@/lib/format';
+import { clinicTime, duration, EMERGENCY_RESULTS, OUTCOMES, phone, REFUSALS, TOOLS, zoneLabel } from '@/lib/format';
 import { SPOOFED_SIGN, SPOOFING_DOC, shortFirstCalls } from '@/lib/spoofing';
 import { usePets } from '@/lib/terms';
 import { cn } from '@/lib/utils';
@@ -54,11 +54,13 @@ function Calls() {
   const [channel, setChannel] = useState(['phone', 'web'].includes(params.get('channel') ?? '') ? params.get('channel')! : '');
   // the emergency log is this page with ?emergency=true
   const [emergencyOnly, setEmergencyOnly] = useState(params.get('emergency') === 'true');
+  // how an emergency ended (CALL-2): asked of the server, so an older call is found too
+  const [emergencyResult, setEmergencyResult] = useState(Object.hasOwn(EMERGENCY_RESULTS, params.get('emergencyResult') ?? '') ? params.get('emergencyResult')! : '');
   const [text, setText] = useState('');
   const query = useSettled(text.trim());
   const filters = {
     ...(from ? { from } : {}), ...(to ? { to } : {}), ...(outcome ? { outcome } : {}), ...(channel ? { channel } : {}), ...(emergencyOnly ? { emergency: 'true' } : {}),
-    ...(filter === 'review' ? { review: 'needed' } : {}), ...(refusal ? { refusal } : {}),
+    ...(emergencyResult ? { emergencyResult } : {}), ...(filter === 'review' ? { review: 'needed' } : {}), ...(refusal ? { refusal } : {}),
   };
   // from the first character, like every search box
   const searching = query.length >= 1 && can('calls:read');
@@ -80,7 +82,7 @@ function Calls() {
   });
   const all = searching ? found.data?.calls ?? [] : calls.data?.pages.flatMap((p) => p.calls) ?? [];
   const pending = searching ? found.isPending : calls.isPending;
-  const filtered = !!(from || to || outcome || channel || emergencyOnly || searching || refusal);
+  const filtered = !!(from || to || outcome || channel || emergencyOnly || emergencyResult || searching || refusal);
   const shown = all.filter(FILTERS[filter].test);
   const tz = clinic?.timezone ?? 'UTC';
   const openable = can('calls:read');
@@ -103,7 +105,7 @@ function Calls() {
         </Alert>
       )}
       <Card className="mb-4 space-y-3 p-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))]">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.6fr)_repeat(5,minmax(0,1fr))]">
           {can('calls:read') && (
             <div className="space-y-1 sm:col-span-2 lg:col-span-1">
               <Label htmlFor="call-search" className="text-xs text-text-muted">Find a call</Label>
@@ -119,7 +121,7 @@ function Calls() {
             <Label htmlFor="call-outcome" className="text-xs text-text-muted">Outcome</Label>
             <Select id="call-outcome" value={outcome} onChange={(e) => setOutcome(e.target.value)}>
               <option value="">Any outcome</option>
-              {Object.entries(OUTCOMES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              {Object.entries(OUTCOMES).map(([k, v]) => <option key={k} value={k}>{v!.label}</option>)}
             </Select>
           </div>
           <div className="space-y-1">
@@ -130,12 +132,19 @@ function Calls() {
               <option value="web">Browser test</option>
             </Select>
           </div>
+          <div className="space-y-1">
+            <Label htmlFor="call-emergency-result" className="text-xs text-text-muted">Emergency result</Label>
+            <Select id="call-emergency-result" value={emergencyResult} onChange={(e) => setEmergencyResult(e.target.value)}>
+              <option value="">Any result</option>
+              {Object.entries(EMERGENCY_RESULTS).map(([k, v]) => <option key={k} value={k}>{v!.label}</option>)}
+            </Select>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3" data-toolbar="calls">
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4 accent-[var(--primary)]" checked={emergencyOnly} onChange={(e) => setEmergencyOnly(e.target.checked)} /> Emergencies only</label>
           {refusal && <Badge tone="warn" className="px-2 text-sm">Refused: {REFUSALS[refusal] ?? refusal}</Badge>}
           <p id="call-dates-hint" className="text-xs text-text-muted">Times and dates are the clinic&rsquo;s.</p>
-          {filtered && <Button size="sm" variant="ghost" className="ml-auto" onClick={() => { setFrom(''); setTo(''); setOutcome(''); setChannel(''); setEmergencyOnly(false); setText(''); setRefusal(''); }}><X /> Clear filters</Button>}
+          {filtered && <Button size="sm" variant="ghost" className="ml-auto" onClick={() => { setFrom(''); setTo(''); setOutcome(''); setChannel(''); setEmergencyOnly(false); setEmergencyResult(''); setText(''); setRefusal(''); }}><X /> Clear filters</Button>}
         </div>
       </Card>
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
