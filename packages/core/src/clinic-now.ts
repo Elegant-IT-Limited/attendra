@@ -102,3 +102,43 @@ export function clinicNowLine(clinic: Days, now: ClinicNow, lang: Language): str
     now.visitsNow === 'book' ? (now.open ? '' : 'Visits can still be booked on this call now.') : 'Visits are not booked right now: a request is taken for the team to call back.',
   ].filter(Boolean).join(' ');
 }
+
+/** One day ahead as clinic_now lists it: the date, and the answer to "is the clinic open that day?" in the call's language. */
+export interface ClinicDayAnswer { date: string; open: boolean; answer: string }
+
+/** How many days clinic_now lists, today first: enough for "tomorrow", "Friday" and "next Monday". */
+export const CLINIC_DAYS = 8;
+
+/**
+ * "Is the clinic open tomorrow?": a plain yes or no and that day's hours, for each of the next days, today first.
+ * Holidays and special days answer for themselves ("No, the clinic is closed on Thursday, November 26 (Thanksgiving)").
+ * A test call asked it and heard "This result doesn't say whether it's open tomorrow" (note 45, A1): the prompt promised
+ * a days list that clinic_now never had.
+ */
+export function clinicDays(clinic: Days, at: Date, lang: Language, count = CLINIC_DAYS): ClinicDayAnswer[] {
+  const today = localParts(at, clinic.timezone).date;
+  return Array.from({ length: count }, (_, i) => {
+    const date = addDays(today, i);
+    const windows = windowsOnDate(clinic, date);
+    const special = specialDayOf(clinic, date);
+    const holiday = !special && clinic.holidays.includes(date);
+    const note = special?.note ?? null;
+    const day = spokenDay(clinic, date, lang);
+    const hours = windows.map((w) => [spokenClock(clinic, date, w.open, lang), spokenClock(clinic, date, w.close, lang)] as const);
+    return { date, open: windows.length > 0, answer: dayAnswer({ lang, i, day, hours, holiday, note, special: !!special }) };
+  });
+}
+
+function dayAnswer(d: { lang: Language; i: number; day: string; hours: (readonly [string, string])[]; holiday: boolean; note: string | null; special: boolean }): string {
+  const why = d.note ? ` (${d.note})` : '';
+  // "p. m." already ends in a full stop: a sentence never ends in two
+  const end = (s: string) => (s.endsWith('.') ? s : `${s}.`);
+  if (d.lang === 'es') {
+    const when = d.i === 0 ? `hoy, ${d.day}` : d.i === 1 ? `mañana, ${d.day}` : `el ${d.day}`;
+    if (!d.hours.length) return end(`No, la clínica está cerrada ${when}${why || (d.holiday ? ' por un día festivo' : '')}`);
+    return end(`Sí, la clínica abre ${when}, ${d.hours.map(([o, c]) => `de ${o} a ${c}`).join(' y ')}${why || (d.special ? ' (horario especial)' : '')}`);
+  }
+  const when = d.i === 0 ? `today, ${d.day}` : d.i === 1 ? `tomorrow, ${d.day}` : `on ${d.day}`;
+  if (!d.hours.length) return end(`No, the clinic is closed ${when}${why || (d.holiday ? ' for a holiday' : '')}`);
+  return end(`Yes, the clinic is open ${when}, ${d.hours.map(([o, c]) => `from ${o} to ${c}`).join(' and ')}${why || (d.special ? ' (special hours)' : '')}`);
+}

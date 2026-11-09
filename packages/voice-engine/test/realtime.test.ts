@@ -47,6 +47,20 @@ describe('the Realtime engine', () => {
     expect(((calls.accept.mock.calls[1] as unknown[])[1] as { audio: { output: { voice: string } } }).audio.output.voice).toBe('marin');
   });
 
+  it('writes the caller\'s words down in the clinic\'s languages only (note 45, A2: an English caller transcribed as five other languages)', async () => {
+    const { e, calls } = engine();
+    const transcriptionOf = (i: number) => ((calls.accept.mock.calls[i] as unknown[])[1] as { audio: { input: { transcription: Record<string, unknown> } } }).audio.input.transcription;
+    await e.accept('rtc_en', { ...DEMO_CLINIC, languages: ['en'], primaryLanguage: 'en' }, NOW, undefined, { flow: 'tools' });
+    expect(transcriptionOf(0)).toEqual({ model: 'gpt-4o-transcribe', language: 'en' });
+    await e.accept('rtc_es', { ...DEMO_CLINIC, languages: ['es'], primaryLanguage: 'es' }, NOW);
+    expect(transcriptionOf(1)).toEqual({ model: 'gpt-4o-transcribe', language: 'es' });
+    // two languages: the transcriber takes one code, so both are named in its prompt and no other is
+    await e.accept('rtc_both', { ...DEMO_CLINIC, languages: ['en', 'es'], primaryLanguage: 'en' }, NOW);
+    const both = transcriptionOf(2);
+    expect(both.language).toBeUndefined();
+    expect(both.prompt).toBe('A phone call to a clinic. The caller speaks English or Spanish, nothing else.');
+  });
+
   it('turns transcripts and the hand-off into the events the call runner reads, and a clean close into the end of the call', () => {
     const { e, s } = engine();
     const sideband = e.attach('rtc_1');

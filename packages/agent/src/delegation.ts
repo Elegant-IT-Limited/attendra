@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addTokens, bySubject, claimsAuthority, EMERGENCY_LINES, type EmergencyMatch, emergencyRoute, clinicNow, clinicNowLine, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, detectLanguage, emergencyNumberFor, hospitalNow, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
+import { addTokens, bySubject, claimsAuthority, EMERGENCY_LINES, type EmergencyMatch, emergencyRoute, clinicDays, clinicNow, clinicNowLine, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, detectLanguage, emergencyNumberFor, hospitalNow, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
 import { coachingInstruction, DOING, type LiveEvent, shortName } from './live';
@@ -11,6 +11,13 @@ import { askedAboutRecording, askedIfHuman, askedWhy, claimsIn, DISPUTE_NOTE, di
 import { outOfScopeLine } from '@attendra/knowledge/scope';
 import { isVoiceTool, shapeForVoice, visitTypeChoices, type VoiceToolOutput } from './flow/voice-tools';
 import { type Backend, type CallContext, runTool, type ToolResult } from './tools';
+
+
+/**
+ * How the voice answers "is the clinic open <day>?" from clinic_now: that day's answer as written, never what a result
+ * does or does not say (a caller heard "This result doesn't say whether it's open tomorrow"; note 45, A1).
+ */
+export const OPEN_ON_DAY_NOTE = 'For "is the clinic open today, tomorrow, Friday or on a date?", say that day\'s answer from days as written: a yes or no, then its hours. A day after these: the closed days and special hours from get_clinic_info.';
 
 /** The assistant's words that promise the team will be in touch ("I'll pass that along", "someone will call you back"), in English and Spanish, after `normalise`. */
 const CALLBACK_PROMISE = new RegExp([
@@ -1000,7 +1007,8 @@ export class CallAgent {
     if (name === 'clinic_now') {
       const now = clinicNow(clinic, this.ctx.now());
       this.log.info({ call_id: this.ctx.callId, tool: name, ms: Date.now() - started, outcome: 'ok' }, 'tool answered');
-      return { output: { ok: true, outcome: 'ok', spoken: clinicNowLine(clinic, now, s.language), data: { ...now }, stage: flowStage(s, this.flow) }, controls: [] };
+      // the next days' answers to "is the clinic open <day>?", each a plain yes or no with that day's hours (note 45, A1)
+      return { output: { ok: true, outcome: 'ok', spoken: clinicNowLine(clinic, now, s.language), say: OPEN_ON_DAY_NOTE, data: { ...now, days: clinicDays(clinic, this.ctx.now(), s.language) }, stage: flowStage(s, this.flow) }, controls: [] };
     }
     const controls: Outbound[] = [];
     let result: ToolResult;

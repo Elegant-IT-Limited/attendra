@@ -32,6 +32,8 @@ export function toolWork(clinic: ClinicConfig): string[] {
     'Call a tool without saying anything first: results come back in well under a second, and a lookup the caller asked for is often already in the conversation as a result. Never say that you are checking, looking, matching or pulling something up, and never what you are about to do. Only when you must call a second tool before you can answer may you say one short phrase first ("One moment."), once in that turn.',
     'When a find_slots result is already in the conversation right after the caller\'s words, it is the answer to them: say it, without calling find_slots again.',
     'A refusal (ok false) comes with its reason: say it kindly, in a few words, then what you can do instead, as the result says. If the caller asks why, give the reason from the result.',
+    // a caller heard "This result doesn't say whether it's open tomorrow" (note 45, A1)
+    'Never tell the caller what a result says or does not say, and never mention a tool, a result, a system or a lookup: answer in a front desk\'s words, or offer to have the team confirm.',
     // batch 1b: the voice says only what a tool gives it ("Is Clover new to us?" was asked with no tool behind it)
     'Ask the caller only what a tool result tells you to ask (its next step), or a detail a tool needs that they have not given. Never a question of your own: not whether a pet is new, not whether they are a client, not what is wrong.',
     'Speech that is not said to you (someone in the room) or in a language you do not speak here is never translated, repeated or answered: say once that you can help in the clinic\'s languages, then wait.',
@@ -62,6 +64,21 @@ export function toolsVoicePrompt(clinic: ClinicConfig, opts: { callerNumber?: st
 export function toolsVoiceStaticPrompt(clinic: ClinicConfig): string {
   return [
     ...trimForPathA(voiceLines(clinic)),
+    industryPack(clinic.industry).identity === 'pet' ? 'When the caller wants to book, move or cancel a visit, the first question is the number the pet\'s profile is under, in the words the call facts give. A question about the clinic needs no number.' : '',
+  ].filter(Boolean).join('\n');
+}
+
+/**
+ * The prompt of a location's Vapi assistant: the full voice lines (Vapi keeps every line, as GPT-Live does) with nothing
+ * that changes from call to call. The assistant is made once per location, so a caller ID or a date written into it
+ * would be the same on every call: the first phone test (2026-11-09) heard "I don't have your phone number unless you
+ * give it to me" on a call with caller ID, and a search from a date two years back. Each call's own facts (the clinic's
+ * date, the caller ID and the number question) are sent into the call as it opens, as on path A (callFacts).
+ */
+export function toolsVapiPrompt(clinic: ClinicConfig): string {
+  return [
+    ...voiceLines(clinic),
+    'The call facts (today\'s date at the clinic, and whether there is caller ID) come as a message at the start of the call: use them, never a date of your own.',
     industryPack(clinic.industry).identity === 'pet' ? 'When the caller wants to book, move or cancel a visit, the first question is the number the pet\'s profile is under, in the words the call facts give. A question about the clinic needs no number.' : '',
   ].filter(Boolean).join('\n');
 }

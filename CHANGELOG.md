@@ -4,6 +4,12 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (phone tests, 2026-11-09: the Vapi path and dates)
+
+- **Vapi calls know their caller ID and the clinic's date.** A location's Vapi assistant is made once, so its prompt said "There is no caller ID on this call" on every call and carried no date. The prompt now holds nothing per call; each call's facts (today at the clinic, the caller ID's last four digits, the number question) go into the call as it opens, as on our own engine.
+- **`find_slots` refuses a day already gone** and says the clinic's today in every answer. A search from a past date used to move to today silently while describing the past day ("fully booked on Friday, June 7").
+- **"Is the clinic open tomorrow?" gets a yes or no and the hours.** `clinic_now` lists the next 8 days with that answer in the call's language, holidays and special days included, and the voice never tells a caller what a result does or does not say.
+- **The caller is transcribed in the clinic's languages only** (English, plus Spanish when it is on), so another language's words no longer reach the rules that check a yes.
 ### Fixed (phone tests, 2026-11-09: calls on our own engine)
 
 - **An unfinished change becomes a request for the team.** A booking or cancellation still waiting for a yes when the call ends is filed as a follow-up request with its read-back, on our engines and on Vapi; the call counts as a request taken.
@@ -11,6 +17,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **The time asked for is said to be taken** ("9:30 AM isn't free.") before a read-back of another time.
 - **A visit already booked is said first.** Before times for another visit, the caller hears the visit their pet already has, once per call, with how to move it instead.
 - **Vet clinics say nothing about the records before the number is confirmed**, not even that the number has called before.
+- **The desk's time picker never offers a time the patient is already booked at** (with any provider), so a move or booking it offers is never refused as "already has an appointment then"; the visit being moved keeps its own time.
 
 ### Fixed (privacy: a number the caller says)
 

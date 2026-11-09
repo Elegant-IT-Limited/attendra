@@ -2,7 +2,7 @@
 import { type ActionRecorder, type Backend, CallAgent, CallCache, cachedBackend, CallState, type Outbound, type Planner } from '@attendra/agent';
 import { ClinicConfig, isVapiTestClinic, maxGapMs, repeatedQuestions, vapiAlertAt } from '@attendra/core';
 import type { Alerter, Logger } from '@attendra/observability';
-import { type CallRecorder, VAPI_EVENTS_PATH, VAPI_SECRET_HEADER } from '@attendra/voice-engine';
+import { type CallRecorder, callFacts, VAPI_EVENTS_PATH, VAPI_SECRET_HEADER } from '@attendra/voice-engine';
 import type { FastifyInstance } from 'fastify';
 import { createHash, timingSafeEqual } from 'node:crypto';
 
@@ -52,6 +52,8 @@ interface VapiMessage {
   type?: string;
   status?: string;
   call?: { id?: string; type?: string; customer?: { number?: string }; monitor?: { controlUrl?: string } };
+  /** The caller, as Vapi also sends it beside the call on its server messages. */
+  customer?: { number?: string };
   toolCallList?: { id: string; function?: { name?: string; arguments?: unknown } }[];
   artifact?: { messages?: VapiLine[] };
   messages?: VapiLine[];
@@ -76,6 +78,11 @@ interface Session {
   controlUrl: string | null;
   /** Set once the call is over: a transfer or hang-up still waiting is dropped. */
   closed: boolean;
+  /**
+   * This call's own facts (the clinic's date, the caller ID and the number question; callFacts, as on path A), until
+   * they are sent into the call: the assistant's prompt is the same on every call of the location.
+   */
+  facts: string | null;
 }
 
 /** Vapi's own times, in ms from the call's start: when a line began and ended. */
@@ -216,6 +223,17 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
     }
   }
 
+  /**
+   * The call's own facts into the conversation, once, as soon as there is a control URL: a system message that starts
+   * no reply. Without one (none in the messages yet), they go with the first tool result instead (tool-calls below).
+   */
+  function sendFacts(s: Session) {
+    if (!s.facts || !s.controlUrl || s.closed) return;
+    const content = s.facts;
+    s.facts = null;
+    void control(s, { type: 'add-message', message: { role: 'system', content }, triggerResponseEnabled: false });
+  }
+
   /** The Vapi calls live at once: counted from the call's first message, with the alert at 70% of the limit, once a day. */
   async function live(vapiId: string) {
     if (!deps.calls) return;
@@ -237,7 +255,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
     const vapiId = m.call?.id;
     if (!vapiId) return null;
     const known = sessions.get(vapiId);
-    if (known) { known.controlUrl ??= controlUrlOf(m); return known; }
+    if (known) { known.controlUrl ??= controlUrlOf(m); sendFacts(known); return known; }
     // a call refused once stays refused, without a second alert for each of its messages
     if (refused.has(vapiId)) return null;
     const parsed = ClinicConfig.safeParse(await deps.clinicById(clinicId));
@@ -252,7 +270,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
       return null;
     }
     const web = m.call?.type === 'webCall';
-    const from = web ? null : m.call?.customer?.number ?? null;
+    const from = web ? null : m.call?.customer?.number ?? m.customer?.number ?? null;
     const callId = await deps.openCall(clinic.id, `vapi_${vapiId}`, from, web ? 'web' : 'phone', undefined, undefined, { engine: 'vapi', voiceFlow: 'tools' });
     const cache = new CallCache();
     // a test clinic's call texts nobody: what would have gone is recorded as not sent, as on a browser test call
@@ -261,8 +279,11 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
     cache.warmSchedule(deps.backend.scheduler, clinic.id, clinic.providers.map((p) => p.id), deps.now());
     const agent = new CallAgent(new CallState(), { clinic, callId, callerNumber: from, now: deps.now, log: deps.log, channel: web ? 'web' : 'phone', history: null }, backend, deps.planner, deps.log, deps.actionsFor(clinic.id, callId));
     agent.state.answersAcrossPieces = true;
-    const s: Session = { agent, clinicId: clinic.id, callId, fed: [], startedAt: Date.now(), notes: [], controlUrl: controlUrlOf(m), closed: false };
+    // the caller ID reaches every tool as on path A (the agent's callerNumber), and the voice hears it with the date
+    const s: Session = { agent, clinicId: clinic.id, callId, fed: [], startedAt: Date.now(), notes: [], controlUrl: controlUrlOf(m), closed: false,
+      facts: callFacts(clinic, deps.now(), from) };
     sessions.set(vapiId, s);
+    sendFacts(s);
     deps.log.info({ call_id: callId, clinic_id: clinic.id, engine: 'vapi' }, 'vapi call opened');
     return s;
   }
@@ -308,6 +329,8 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
       if (vapiId && !sessions.has(vapiId)) await live(vapiId);
       const s = await session(m, clinicId);
       if (!s) return reply.code(200).send({ results: (m.toolCallList ?? []).map((t) => ({ toolCallId: t.id, error: 'This call cannot be helped here.' })) });
+      // the call facts never sent (no control URL yet): with this result, before anything else
+      if (s.facts) { s.notes.unshift(s.facts); s.facts = null; }
       sync(s, m.artifact?.messages);
       const results = [];
       for (const t of m.toolCallList ?? []) {
@@ -325,7 +348,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
     // even when the model calls no tool (an emergency in the first sentence), and the call is on file from its start
     const opens = m.type === 'conversation-update' || m.type === 'end-of-call-report' || (m.type === 'status-update' && m.status === 'in-progress');
     const s = vapiId ? sessions.get(vapiId) ?? (opens ? await session(m, clinicId) ?? undefined : undefined) : undefined;
-    if (s) s.controlUrl ??= controlUrlOf(m);
+    if (s) { s.controlUrl ??= controlUrlOf(m); sendFacts(s); }
     if (m.type === 'conversation-update' && s) sync(s, m.messages);
     if (m.type === 'end-of-call-report' && s) {
       const lines = m.artifact?.messages ?? [];
