@@ -4,6 +4,13 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (phone tests, 2026-11-09: the Vapi path and dates)
+
+- **Vapi calls know their caller ID and the clinic's date.** A location's Vapi assistant is made once, so its prompt said "There is no caller ID on this call" on every call and carried no date. The prompt now holds nothing per call; each call's facts (today at the clinic, the caller ID's last four digits, the number question) go into the call as it opens, as on our own engine.
+- **`find_slots` refuses a day already gone** and says the clinic's today in every answer. A search from a past date used to move to today silently while describing the past day ("fully booked on Friday, June 7").
+- **"Is the clinic open tomorrow?" gets a yes or no and the hours.** `clinic_now` lists the next 8 days with that answer in the call's language, holidays and special days included, and the voice never tells a caller what a result does or does not say.
+- **The caller is transcribed in the clinic's languages only** (English, plus Spanish when it is on), so another language's words no longer reach the rules that check a yes.
+
 ### Fixed (privacy: a number the caller says)
 
 - **Nothing from a record before the caller is verified, on a number the caller says.** With no matching caller ID, the assistant used to name the pets on a spoken number before the owner's name was checked. Now the owner's name is asked first on every spoken number, whether or not anyone is on file, and only a name that matches the owner on file opens the record. A name that does not match, no name, and a number with no profile all get the same words ("I can't open a profile with those details on this call. I can take a message so the team can call you back." / its Spanish twin) and the same next step, a request for the team, so a caller can't tell whether a number belongs to a client. A pet named on such a number is not looked up. Caller ID still opens the pick question as before; a caller who says the pet is new can still add it.
