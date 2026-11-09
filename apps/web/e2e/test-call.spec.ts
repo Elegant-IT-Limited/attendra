@@ -113,7 +113,11 @@ test('before a call, the page says the limit the API gives: one call\'s, or the 
     const small = await openTestCall(page, clinic);
     expect(small.callSeconds).toBe(small.limitSeconds! - small.usedSeconds);
     expect(small.callSeconds!).toBeLessThan(small.perCallSeconds!);
-    await expect(label).toHaveText(`You have ${Math.floor(small.callSeconds! / 60)} minutes of test calls left`);
+    // shown text equals the server's number, in the one format (lib/test-call-limit testTimeLeft): "Test calls: 7 min 30 s left"
+    const m = Math.floor(small.callSeconds! / 60);
+    const r = small.callSeconds! % 60;
+    await expect(label).toHaveText(`Test calls: ${[m ? `${m} min` : '', r || !m ? `${r} s` : ''].filter(Boolean).join(' ')} left`);
+    await expect(page.getByText(/\d+:\d\d of test calls left/)).toHaveCount(0);
   } finally {
     expect((await limit(null)).status()).toBe(204);
   }

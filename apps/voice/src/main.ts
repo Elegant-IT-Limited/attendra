@@ -39,6 +39,7 @@ const app = createVoiceApp({
   smsMonthlyCap: env.ATTENDRA_SMS_MONTHLY_CAP,
   internalToken: env.VOICE_INTERNAL_TOKEN,
   vapiSecret: env.VAPI_SERVER_SECRET,
+  vapiMaxConcurrency: env.VAPI_MAX_CONCURRENCY,
   browserCallMaxSeconds: env.BROWSER_CALL_MAX_SECONDS,
   jobs: bossQueue(boss),
   // the same embedding model as the worker indexed with (ATTENDRA_EMBEDDING_MODEL)

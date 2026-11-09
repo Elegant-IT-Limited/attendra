@@ -8,7 +8,7 @@ import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigat
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { Agenda } from '@/components/schedule/agenda';
 import { AppointmentPanel } from '@/components/schedule/appointment-panel';
-import { BookingDialog, capital } from '@/components/schedule/booking-dialog';
+import { BookingDialog } from '@/components/schedule/booking-dialog';
 import { Calendar, MonthGrid, ScheduleList } from '@/components/schedule/calendar';
 import { CancelledHistory } from '@/components/schedule/cancelled-history';
 import { PatientPicker } from '@/components/patients/patient-picker';
@@ -20,7 +20,7 @@ import { Card } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
 import { api, useClinic, useClinicConfig } from '@/lib/api';
-import { dayTitle, VISIT_DOTS, zoneLabel } from '@/lib/format';
+import { dayTitle, firstWeekday, VISIT_DOTS, visitTypeName, zoneLabel } from '@/lib/format';
 import { capLanes, laneProviders, MANY_PROVIDERS, readChosen, readView, writeChosen, writeView } from '@/lib/schedule-lanes';
 import { cn } from '@/lib/utils';
 import { SAFETY_POLL_MS } from '@/lib/changes';
@@ -42,6 +42,13 @@ export default function SchedulePage() {
 }
 
 const mondayOf = (date: string) => addDays(date, -((weekdayOf(date) + 6) % 7));
+/** The first day of the week a date is in on the clinic's calendar: the Sunday before at a US clinic (lib/format firstWeekday). */
+const weekStartOf = (date: string) => addDays(date, -((weekdayOf(date) - firstWeekday() + 7) % 7));
+/**
+ * What the schedule shows when nobody chose: booked visits only, in every view, as ezyVet and Provet open theirs.
+ * Cancelled ones are a choice away (Booked and cancelled, or the Cancelled history), and the page says when any are hidden.
+ */
+const DEFAULT_SHOW = 'booked';
 /** The first of the month a date is in, and of the months before and after it. */
 const monthOf = (date: string) => `${date.slice(0, 7)}-01`;
 const shiftMonth = (date: string, by: number) => {
@@ -90,10 +97,9 @@ function ScheduleScreen() {
   const providerList = clinic?.providers;
   useEffect(() => { if (providerList) setChosen(readChosen(clinicId, providerList)); }, [clinicId, providerList]);
   const choose = (ids: string[]) => { setChosen(ids); writeChosen(clinicId, ids); };
-  // booked only, booked and cancelled, or cancelled only (a history list). In a week the columns are narrow
-  // and a cancelled block sits on top of the booking that replaced it, so a week starts with booked only
+  // booked only, booked and cancelled, or cancelled only (a history list); booked only unless chosen, in every view
   const shown = params.get('show');
-  const show: 'booked' | 'all' | 'cancelled' = shown === 'booked' || shown === 'all' || shown === 'cancelled' ? shown : view === 'day' || view === 'agenda' ? 'all' : 'booked';
+  const show: 'booked' | 'all' | 'cancelled' = shown === 'booked' || shown === 'all' || shown === 'cancelled' ? shown : DEFAULT_SHOW;
   // ?new=1 (the command palette and the N key) opens New booking straight away
   const [booking, setBookingState] = useState(params.get('new') === '1');
   const setBooking = (open: boolean) => { setBookingState(open); if (!open && params.get('new')) set({ new: null }); };
@@ -107,9 +113,9 @@ function ScheduleScreen() {
     router.replace(`${pathname}?${q}`, { scroll: false });
   };
 
-  // a month is six whole weeks, from the Monday before the 1st
+  // a month is six whole weeks, from the first day of the week the 1st is in (Sunday at a US clinic)
   const weekly = view === 'week' || agendaWeek;
-  const from = view === 'month' ? mondayOf(monthOf(date)) : weekly ? mondayOf(date) : date;
+  const from = view === 'month' ? weekStartOf(monthOf(date)) : weekly ? mondayOf(date) : date;
   const days = view === 'month' ? 42 : weekly ? 7 : 1;
   const schedule = useQuery({
     queryKey: ['schedule', clinicId, from, days, providerId],
@@ -154,28 +160,36 @@ function ScheduleScreen() {
       <PageHeader title="Schedule" description={<>Every booking, whoever made it. Times are {zoneLabel(tz)}.{named ? '' : ' Your role sees when visits are and with whom, without names.'}</>}
         actions={writable && <Button onClick={() => setBooking(true)}><Plus /> New booking</Button>} />
       <ConflictsAlert clinicId={clinicId} className="mb-4" />
-      <div className="mb-4 flex flex-wrap items-center gap-3" data-toolbar="schedule">
-        <div className="flex items-center gap-1">
-          <Button variant="outline" size="sm" onClick={() => go(-1)} aria-label={`Previous ${unit}`}><ChevronLeft /></Button>
-          <Button variant="outline" size="sm" onClick={() => set({ date: today })} disabled={view === 'month' ? monthOf(today) === monthOf(date) : weekly ? mondayOf(today) === from : date === today}>Today</Button>
-          <Button variant="outline" size="sm" onClick={() => go(1)} aria-label={`Next ${unit}`}><ChevronRight /></Button>
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="schedule-date" className="sr-only">Date</Label>
-          <Input id="schedule-date" type="date" className="h-8 w-40" value={date} onChange={(e) => e.target.value && set({ date: e.target.value })} />
-        </div>
-        <div className="flex rounded-md border border-border-strong p-0.5" role="tablist" aria-label="View">
-          {VIEWS.map((v) => (
-            <button key={v.value} id={`schedule-tab-${v.value}`} aria-controls="schedule-panel" role="tab" aria-selected={view === v.value} title={v.hint} aria-describedby="schedule-view-hint"
-              onClick={() => { set({ view: v.value }); setRemembered(v.value); writeView(clinicId, v.value); }}
-              className={cn('rounded px-3 py-1 text-sm focus-ring', view === v.value ? 'bg-primary text-on-primary' : 'text-text-muted hover:text-text')}>
-              {v.label}
-            </button>
-          ))}
-        </div>
-        <p id="schedule-view-hint" className="text-xs text-text-muted">{VIEWS.find((v) => v.value === view)!.hint}</p>
-        {view === 'agenda' && (
-          <div className="flex rounded-md border border-border-strong p-0.5" role="group" aria-label="Agenda range">
+      <div className="mb-4 space-y-2" data-testid="schedule-toolbar">
+        {/* Row 1, the same controls in the same places in every view: where you are, the date, the view, and the
+            Agenda's range last (it is the only one that comes and goes). Row 2: every filter, always in this order. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-7 pb-5" data-toolbar="schedule">
+          <div className="flex items-center gap-1">
+            <Button variant="outline" size="sm" onClick={() => go(-1)} aria-label={`Previous ${unit}`}><ChevronLeft /></Button>
+            <Button variant="outline" size="sm" onClick={() => set({ date: today })} disabled={view === 'month' ? monthOf(today) === monthOf(date) : weekly ? mondayOf(today) === from : date === today}>Today</Button>
+            <Button variant="outline" size="sm" onClick={() => go(1)} aria-label={`Next ${unit}`}><ChevronRight /></Button>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="schedule-date" className="sr-only">Date</Label>
+            <Input id="schedule-date" type="date" className="h-8 w-40" value={date} onChange={(e) => e.target.value && set({ date: e.target.value })} />
+          </div>
+          <div className="relative">
+            <div className="flex rounded-md border border-border-strong p-0.5" role="tablist" aria-label="View">
+              {VIEWS.map((v) => (
+                <button key={v.value} id={`schedule-tab-${v.value}`} aria-controls="schedule-panel" role="tab" aria-selected={view === v.value} title={v.hint} aria-describedby="schedule-view-hint"
+                  onClick={() => { set({ view: v.value }); setRemembered(v.value); writeView(clinicId, v.value); }}
+                  className={cn('rounded px-3 py-1 text-sm focus-ring', view === v.value ? 'bg-primary text-on-primary' : 'text-text-muted hover:text-text')}>
+                  {v.label}
+                </button>
+              ))}
+            </div>
+            {/* the view's hint, a small caption under the buttons: out of the flow, so its length never moves anything */}
+            <p id="schedule-view-hint" className="pointer-events-none absolute left-0 top-full mt-1 whitespace-nowrap text-xs text-text-muted">{VIEWS.find((v) => v.value === view)!.hint}</p>
+          </div>
+          {/* the Agenda's range keeps its place in every view (hidden and inert where the view has none), so row 1 wraps
+              the same way on a phone and nothing below it moves */}
+          <div className={cn('flex rounded-md border border-border-strong p-0.5', view !== 'agenda' && 'invisible')} role="group" aria-label="Agenda range"
+            aria-hidden={view !== 'agenda' || undefined} inert={view !== 'agenda' || undefined}>
             {([['1', date === today ? 'Today' : 'This day'], ['7', 'This week']] as const).map(([d, label]) => (
               <button key={d} type="button" aria-pressed={agendaWeek === (d === '7')} onClick={() => set({ days: d === '7' ? '7' : null })}
                 className={cn('rounded px-3 py-1 text-sm focus-ring', agendaWeek === (d === '7') ? 'bg-primary text-on-primary' : 'text-text-muted hover:text-text')}>
@@ -183,24 +197,27 @@ function ScheduleScreen() {
               </button>
             ))}
           </div>
-        )}
-        <div className="space-y-1">
-          <Label htmlFor="schedule-provider" className="sr-only">Provider</Label>
-          <Select id="schedule-provider" className="h-8 w-64" value={providerId} onChange={(e) => setProviderId(e.target.value)}>
-            <option value="">{pets ? 'All veterinarians' : 'All providers'}</option>
-            {listed.map((p) => <option key={p.id} value={p.id}>{p.specialty ? `${providerName(p)}, ${p.specialty}` : providerName(p)}</option>)}
-          </Select>
         </div>
-        {manyProviders && (view === 'day' || view === 'week') && (
-          <VetsPicker clinic={clinic} providers={listed} date={date} chosen={chosen} onChange={choose} word={pets ? 'veterinarians' : 'providers'} onGrid={providers.length} />
-        )}
-        <div className="space-y-1">
-          <Label htmlFor="schedule-show" className="sr-only">Show</Label>
-          <Select id="schedule-show" className="h-8 w-56" value={show} onChange={(e) => set({ show: e.target.value })}>
-            <option value="booked">Booked</option>
-            <option value="all">Booked and cancelled</option>
-            <option value="cancelled">Cancelled (history)</option>
-          </Select>
+        <div className="flex flex-wrap items-center gap-3" data-toolbar="schedule-filters">
+          <div className="space-y-1">
+            <Label htmlFor="schedule-provider" className="sr-only">Provider</Label>
+            <Select id="schedule-provider" className="h-8 w-64" value={providerId} onChange={(e) => setProviderId(e.target.value)}>
+              <option value="">{pets ? 'All veterinarians' : 'All providers'}</option>
+              {listed.map((p) => <option key={p.id} value={p.id}>{p.specialty ? `${providerName(p)}, ${p.specialty}` : providerName(p)}</option>)}
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="schedule-show" className="sr-only">Show</Label>
+            <Select id="schedule-show" className="h-8 w-56" value={show} onChange={(e) => set({ show: e.target.value })}>
+              <option value="booked">Booked</option>
+              <option value="all">Booked and cancelled</option>
+              <option value="cancelled">Cancelled (history)</option>
+            </Select>
+          </div>
+          {/* the vets picker (big clinics, Day and Week) comes last, so it never moves the filters before it */}
+          {manyProviders && (view === 'day' || view === 'week') && (
+            <VetsPicker clinic={clinic} providers={listed} date={date} chosen={chosen} onChange={choose} word={pets ? 'veterinarians' : 'providers'} onGrid={providers.length} />
+          )}
         </div>
       </div>
 
@@ -263,7 +280,7 @@ function Legend({ clinic }: { clinic: ClinicConfig }) {
   return (
     <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted" aria-label="Legend">
       {clinic.visitTypes.map((v, i) => (
-        <li key={v.id} className="flex items-center gap-1.5"><span className={cn('size-2.5 rounded-full', VISIT_DOTS[i % VISIT_DOTS.length])} aria-hidden />{capital(v.name)}</li>
+        <li key={v.id} className="flex items-center gap-1.5"><span className={cn('size-2.5 rounded-full', VISIT_DOTS[i % VISIT_DOTS.length])} aria-hidden />{visitTypeName(v.name)}</li>
       ))}
       <li className="flex items-center gap-1"><Bot className="size-3.5" aria-hidden /> Booked by the assistant</li>
       <li className="flex items-center gap-1"><User className="size-3.5" aria-hidden /> Booked by staff</li>

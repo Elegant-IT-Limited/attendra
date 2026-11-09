@@ -198,6 +198,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@attendra/agent':
+        specifier: workspace:*
+        version: link:../../packages/agent
       '@attendra/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -213,6 +216,9 @@ importers:
       '@attendra/scheduling':
         specifier: workspace:*
         version: link:../../packages/scheduling
+      '@attendra/voice-engine':
+        specifier: workspace:*
+        version: link:../../packages/voice-engine
       '@attendra/webhooks':
         specifier: workspace:*
         version: link:../../packages/webhooks
@@ -494,6 +500,9 @@ importers:
       '@attendra/scheduling':
         specifier: workspace:*
         version: link:../packages/scheduling
+      '@attendra/voice':
+        specifier: workspace:*
+        version: link:../apps/voice
       '@attendra/voice-engine':
         specifier: workspace:*
         version: link:../packages/voice-engine
@@ -503,6 +512,9 @@ importers:
       drizzle-orm:
         specifier: 0.45.4
         version: 0.45.4(@electric-sql/pglite@0.5.10)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.6)(pg@8.23.1)
+      fastify:
+        specifier: 5.12.7
+        version: 5.12.7
       openai:
         specifier: 7.33.0
         version: 7.33.0(ws@8.22.0)(zod@4.6.7)

@@ -164,6 +164,33 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await expect(page.getByRole('group', { name: 'Status' }).getByRole('button', { name: 'Open' })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  test('the Settings tab row stays put from tab to tab, and Fields and lists has one entry point', async ({ browser }) => {
+    const page = await openAs(browser, 'manager');
+    const clinic = new URL(page.url()).pathname.split('/')[2]!;
+    const row = page.getByRole('navigation', { name: 'Settings' });
+    const tops: Record<string, number> = {};
+    for (const width of [1280, 375]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const tab of ['', '/emergencies', '/texting', '/fields', '/knowledge', '/integrations', '/api-keys']) {
+        await page.goto(`/c/${clinic}/settings${tab}`);
+        await expect(row.getByRole('link', { name: 'Fields and lists' })).toBeVisible();
+        // once the tab's data is in (its loading state has the same header, but the row is drawn again)
+        await page.waitForLoadState('networkidle');
+        await expect.poll(async () => (await row.boundingBox())?.y ?? null).not.toBeNull();
+        tops[`${width}${tab}`] = Math.round((await row.boundingBox())!.y);
+      }
+      expect(new Set(Object.entries(tops).filter(([k]) => k.startsWith(String(width))).map(([, y]) => y)).size, `tab row at ${width}px: ${JSON.stringify(tops)}`).toBe(1);
+    }
+    // General has no part of its own for it any more: the tab in the row is the one way in
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`/c/${clinic}/settings`);
+    await expect(page.getByRole('navigation', { name: 'On this page' })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'On this page' }).getByRole('link', { name: 'Fields and lists' })).toHaveCount(0);
+    await expect(page.locator('#fields')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Fields and lists' })).toHaveCount(1);
+    await page.close();
+  });
+
   test('front desk cannot change settings or open the audit log', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
     await expect(page.getByRole('link', { name: 'Audit log' })).toHaveCount(0);
@@ -265,7 +292,9 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     // Menu links are hidden for now (one flag): no section and no entry in the side list
     await expect(page.locator('#links')).toHaveCount(0);
     await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Menu links', exact: true })).toHaveCount(0);
-    await page.getByRole('link', { name: 'Requests and kinds of request' }).click();
+    // Fields and lists has one entry point, its tab in the Settings row
+    await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Fields and lists' }).click();
+    await page.getByRole('tab', { name: 'Requests' }).click();
     await expect(page.locator('#request-fields').getByTestId('team-only')).toHaveText(line);
     await page.getByRole('tab', { name: /Doctors|Veterinarians/ }).click();
     const fields = page.locator('#provider-fields');

@@ -9,15 +9,18 @@
     "start": "tsx src/main.ts",
     "typecheck": "tsc --noEmit -p .",
     "add-member": "tsx scripts/add-member.ts",
+    "vapi-sip-credential": "tsx scripts/vapi-sip-credential.ts",
     "demo": "tsx scripts/demo-server.ts",
     "demo:seed": "tsx scripts/demo-seed.ts"
   },
   "dependencies": {
+    "@attendra/agent": "workspace:*",
     "@attendra/core": "workspace:*",
     "@attendra/db": "workspace:*",
     "@attendra/knowledge": "workspace:*",
     "@attendra/observability": "workspace:*",
     "@attendra/scheduling": "workspace:*",
+    "@attendra/voice-engine": "workspace:*",
     "@attendra/webhooks": "workspace:*",
     "@attendra/worker": "workspace:*",
     "@fastify/rate-limit": "11.2.1",

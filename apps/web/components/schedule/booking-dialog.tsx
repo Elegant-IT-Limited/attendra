@@ -13,7 +13,7 @@ import { Input, Label, Select, Textarea } from '@/components/ui/input';
 import { useProblem } from '@/components/ui/toast';
 import { api, ApiFailure, newKey } from '@/lib/api';
 import { vetChoices } from '@/lib/booking';
-import { dayTitle, timeOf } from '@/lib/format';
+import { dayTitle, timeOf, visitTypeName } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 export interface PatientChoice { id: string; name: string; detail?: string }
@@ -119,7 +119,7 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
             <div className="space-y-1.5">
               <Label htmlFor="visit-type">Visit type</Label>
               <Select id="visit-type" value={visitTypeId} onChange={(e) => { setVisitTypeId(e.target.value); setSlot(null); setProviderId(null); }}>
-                {clinic.visitTypes.map((v) => <option key={v.id} value={v.id}>{capital(v.name)} ({v.minutes} min)</option>)}
+                {clinic.visitTypes.map((v) => <option key={v.id} value={v.id}>{visitTypeName(v.name)} ({v.minutes} min)</option>)}
               </Select>
             </div>
             <div className="space-y-1.5">
@@ -168,7 +168,7 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
           <dt className="text-text-muted">{pets ? 'Pet' : 'Patient'}</dt><dd className="font-medium">{patient?.name}</dd>
           <dt className="text-text-muted">When</dt><dd className="font-medium">{dayTitle(localDateOf(new Date(picked.startsAt), clinic.timezone))} at {timeOf(picked.startsAt, clinic.timezone)}</dd>
           <dt className="text-text-muted">With</dt><dd>{provider ? providerName(provider) : null}</dd>
-          <dt className="text-text-muted">Visit</dt><dd>{capital(visit?.name ?? '')}, {visit?.minutes} minutes</dd>
+          <dt className="text-text-muted">Visit</dt><dd>{visitTypeName(visit?.name ?? '')}, {visit?.minutes} minutes</dd>
           {note.trim() && <><dt className="text-text-muted">Note</dt><dd className="whitespace-pre-wrap">{note.trim()}</dd></>}
           {override.on && <><dt className="text-text-muted">Override</dt><dd>{override.reason.trim()}</dd></>}
         </dl>
@@ -192,4 +192,3 @@ function Stepper({ step, pets }: { step: number; pets: boolean }) {
   );
 }
 
-export const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

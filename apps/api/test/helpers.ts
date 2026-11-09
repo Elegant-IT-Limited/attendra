@@ -7,7 +7,8 @@ import { Writable } from 'node:stream';
 import { type ApiDeps, createApi } from '../src/app';
 import { createAuth } from '../src/auth';
 import type { MailRequest } from '../src/mail-hook';
-import type { ApiOptions, VoiceClient } from '../src/http/tokens';
+import { type ApiOptions, VAPI, type VoiceClient } from '../src/http/tokens';
+import type { VapiLocations } from '../src/provisioning/vapi';
 import { addMember } from '../src/members';
 
 export const ORIGIN = 'http://localhost:3000';
@@ -29,7 +30,7 @@ export function totp(uri: string, at = Date.now()) {
 }
 
 /** `logs` collects every line the API and Better Auth log, for tests that prove something never reaches them. */
-export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null; now?: () => Date; logs?: string[]; liveStream?: ApiOptions['liveStream']; accountLinks?: ApiOptions['accountLinks']; mcpUrl?: string; twoFactor?: ApiOptions['twoFactor']; provisioningToken?: string; provisioningSignatures?: ApiOptions['provisioningSignatures']; changes?: boolean; mails?: MailRequest[] } & Pick<ApiDeps, 'jobs' | 'knowledge' | 'webhooks' | 'voiceSamples' | 'rateLimit' | 'trustProxy' | 'trustCloudflare'>) {
+export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null; now?: () => Date; logs?: string[]; liveStream?: ApiOptions['liveStream']; accountLinks?: ApiOptions['accountLinks']; mcpUrl?: string; twoFactor?: ApiOptions['twoFactor']; provisioningToken?: string; provisioningSignatures?: ApiOptions['provisioningSignatures']; changes?: boolean; mails?: MailRequest[] } & Pick<ApiDeps, 'jobs' | 'knowledge' | 'webhooks' | 'voiceSamples' | 'rateLimit' | 'trustProxy' | 'trustCloudflare' | 'vapi' | 'alerts'>) {
   const t = await openTestDatabase();
   const cipher = createPhiCipher(TEST_DATA_KEY);
   const { patientIds } = await seedDemo(t.db, cipher);
@@ -55,7 +56,7 @@ export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | 
   });
 
   const changes = opts.changes ? await pgliteChangeFeed(t.client) : null;
-  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode, liveStream: opts.liveStream, accountLinks: opts.accountLinks, mcpUrl: opts.mcpUrl, twoFactor: opts.twoFactor, provisioningToken: opts.provisioningToken, provisioningSignatures: opts.provisioningSignatures, passwordReset: !!opts.mails }, voice: opts.voice, now: opts.now, jobs: opts.jobs, knowledge: opts.knowledge, webhooks: opts.webhooks, changes, voiceSamples: opts.voiceSamples, mail, rateLimit: opts.rateLimit, trustProxy: opts.trustProxy, trustCloudflare: opts.trustCloudflare });
+  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode, liveStream: opts.liveStream, accountLinks: opts.accountLinks, mcpUrl: opts.mcpUrl, twoFactor: opts.twoFactor, provisioningToken: opts.provisioningToken, provisioningSignatures: opts.provisioningSignatures, passwordReset: !!opts.mails }, voice: opts.voice, now: opts.now, jobs: opts.jobs, knowledge: opts.knowledge, webhooks: opts.webhooks, changes, voiceSamples: opts.voiceSamples, mail, rateLimit: opts.rateLimit, trustProxy: opts.trustProxy, trustCloudflare: opts.trustCloudflare, vapi: opts.vapi, alerts: opts.alerts });
   const http = app.getHttpAdapter().getInstance();
 
   type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -87,5 +88,8 @@ export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | 
     return cookie;
   }
 
-  return { t, app, auth, request, signIn, users, patientIds, callId, taskId, close: async () => { await app.close(); await t.close(); } };
+  /** Waits for the Vapi assistant updates already due after a settings save (batch 6). */
+  const vapiIdle = async () => { await (app.get(VAPI, { strict: false }) as VapiLocations | null)?.idle(); };
+
+  return { t, app, auth, request, signIn, users, patientIds, callId, taskId, vapiIdle, close: async () => { await app.close(); await t.close(); } };
 }

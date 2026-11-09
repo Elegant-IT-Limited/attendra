@@ -9,3 +9,4 @@ export * from './router';
 export * from './simulated';
 export * from './tools-prompt';
 export * from './voices';
+export * from './vapi';

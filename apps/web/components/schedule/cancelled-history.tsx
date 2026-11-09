@@ -6,11 +6,10 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Bot, Search, User } from 'lucide-react';
 import { useState } from 'react';
 import { useSettled } from '@/components/patients/patient-search';
-import { capital } from '@/components/schedule/booking-dialog';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
 import { api } from '@/lib/api';
-import { CANCEL_REASONS, clinicTime, dayTitle, timeOf } from '@/lib/format';
+import { CANCEL_REASONS, clinicTime, dayTitle, timeOf, visitTypeName } from '@/lib/format';
 
 const SORTS = {
   'cancelled-newest': { label: 'Cancelled most recently', sort: 'cancelled', order: 'newest' },
@@ -76,7 +75,7 @@ export function CancelledHistory({ clinicId, clinic, providerId, onOpen }: { cli
                     <button type="button" onClick={() => onOpen(a.id)} className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-left text-sm hover:bg-surface-sunken focus-visible:bg-surface-sunken focus-visible:outline-none">
                       <span className="w-52 shrink-0">
                         <span className="block font-medium line-through decoration-text-muted">{dayTitle(localDateOf(new Date(a.startsAt), tz))}, {timeOf(a.startsAt, tz)}</span>
-                        <span className="block text-xs text-text-muted">{capital(visit(a.visitTypeId))} with {provider(a.providerId)}</span>
+                        <span className="block text-xs text-text-muted">{visitTypeName(visit(a.visitTypeId))} with {provider(a.providerId)}</span>
                       </span>
                       <span className="min-w-0 flex-1 truncate font-medium">{a.patientName}</span>
                       <span className="text-text-muted">{a.cancelReason ? CANCEL_REASONS[a.cancelReason] : 'No reason given'}</span>

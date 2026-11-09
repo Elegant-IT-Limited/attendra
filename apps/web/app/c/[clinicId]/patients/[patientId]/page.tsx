@@ -13,7 +13,7 @@ import { CustomFieldsForm } from '@/components/patients/custom-fields';
 import { PatientForm } from '@/components/patients/patient-form';
 import { RecordTools } from '@/components/patients/record-tools';
 import { AppointmentPanel } from '@/components/schedule/appointment-panel';
-import { BookingDialog, capital } from '@/components/schedule/booking-dialog';
+import { BookingDialog } from '@/components/schedule/booking-dialog';
 import { TextStatus } from '@/components/calls/text-status';
 import { MarkedBadge } from '@/components/schedule/visit-status';
 import { Badge } from '@/components/ui/badge';
@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { requestNumber, age, clinicTime, dayTitle, dob, duration, personName, phone, sexLabel, taskType, telHref, timeOf, zoneLabel } from '@/lib/format';
+import { requestNumber, age, clinicTime, dayTitle, dob, duration, personName, phone, sexLabel, taskType, telHref, timeOf, visitTypeName, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 
@@ -135,7 +135,7 @@ export default function PatientPage() {
                         <p className={cn('font-medium', a.status === 'cancelled' && 'line-through text-text-muted')}>
                           {dayTitle(localDateOf(new Date(a.startsAt), tz))} at {timeOf(a.startsAt, tz)}
                         </p>
-                        <p className="text-text-muted">{capital(visit(a.visitTypeId))} with {provider(a.providerId)}</p>
+                        <p className="text-text-muted">{visitTypeName(visit(a.visitTypeId))} with {provider(a.providerId)}</p>
                       </div>
                       <span className="inline-flex items-center gap-1 text-xs text-text-muted"><Icon className="size-3.5" aria-hidden />{a.bookedBy.kind === 'assistant' ? 'The assistant' : (a.bookedBy.name === null ? 'Staff' : personName(a.bookedBy.name))}</span>
                       {a.status === 'cancelled' ? <Badge>Cancelled</Badge> : a.status !== 'booked' ? <MarkedBadge status={a.status} /> : past ? <Badge>Past</Badge> : <Badge tone="ok">Upcoming</Badge>}

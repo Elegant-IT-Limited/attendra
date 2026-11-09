@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Path C of the bake-off (batch 1a, round 2): creates or updates one Vapi assistant for a test clinic, with our tools
-// as its function tools, pointed at a running Attendra voice service. Never for a real clinic.
+// as its function tools, pointed at a running Attendra voice service. Never for a real clinic: a location's assistant is
+// made by provisioning (batch 6), from the same builder.
 //   VAPI_API_KEY=... VAPI_SERVER_SECRET=... pnpm --filter @attendra/evals vapi-setup -- --url https://<public address> [--clinic clinic_bakeoff]
 // With --clinic (and DATABASE_URL), the clinic's settings come from the database (on a deployment: the bake-off clinic,
 // pnpm db:seed-bakeoff); without it, the demo clinic as the local demo seeds it. Vapi reaches /webhooks/vapi/v1/events
 // at the public address. Prints the assistant id (an id, not a secret) and keeps it in ~/.attendra-vapi-assistant.
-import { voiceToolDefinitions } from '@attendra/agent';
-import { ClinicConfig, RIVERBEND_CLINIC } from '@attendra/core';
+import { ClinicConfig, isVapiTestClinic, RIVERBEND_CLINIC } from '@attendra/core';
 import { clinicById, connect } from '@attendra/db';
-import { toolsVoicePrompt } from '@attendra/voice-engine';
+import { vapiAssistant, vapiServerUrl } from '@attendra/voice-engine';
 import { writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -25,43 +25,14 @@ const clinicId = flag('--clinic');
 if (clinicId && !process.env.DATABASE_URL) throw new Error('--clinic reads the clinic from DATABASE_URL');
 // the test clinic as the database holds it, or the demo clinic as the local demo seeds it (booking out of hours)
 const clinic = clinicId ? ClinicConfig.parse(await clinicById(connect(process.env.DATABASE_URL!), clinicId)) : ClinicConfig.parse({ ...RIVERBEND_CLINIC, afterHours: 'book' });
-if (!clinic.id.startsWith('clinic_bakeoff') && !clinic.id.startsWith('clinic_demo')) throw new Error(`${clinic.id} is not a test clinic: path C is for the bake-off only`);
+if (!isVapiTestClinic(clinic.id)) throw new Error(`${clinic.id} is not a test clinic: this script is for the bake-off only (a location's assistant is made by provisioning, PUT clinics/:id/vapi)`);
 const NAME = `Attendra bake-off (${clinic.id})`;
-const server = { url: `${base}/webhooks/vapi/v1/events?clinic=${clinic.id}`, headers: { 'x-vapi-secret': secret } };
-
-/**
- * Our tool parameters, as Vapi's validator takes them (it answers 400 otherwise): no "$schema" line, and every property
- * with a "type", so an optional field written as anyOf [{type: string, ...}, {type: null}] becomes
- * {type: [string, null], ...}, the same schema in the form Vapi reads.
- */
-type Schema = { [k: string]: unknown };
-const forVapi = (v: unknown): unknown => {
-  if (Array.isArray(v)) return v.map(forVapi);
-  if (!v || typeof v !== 'object') return v;
-  const o: Schema = Object.fromEntries(Object.entries(v).filter(([k]) => k !== '$schema').map(([k, x]) => [k, forVapi(x)]));
-  const branches = o.anyOf as Schema[] | undefined;
-  if (!('type' in o) && Array.isArray(branches) && branches.every((b) => typeof b.type === 'string')) {
-    const real = branches.filter((b) => b.type !== 'null');
-    const nullable = real.length < branches.length;
-    if (real.length === 1) { const rest = { ...o }; delete rest.anyOf; return { ...rest, ...real[0], type: nullable ? [real[0]!.type, 'null'] : real[0]!.type }; }
-    o.type = [...new Set(branches.map((b) => b.type))];
-  }
-  return o;
-};
-
+// the same assistant a location gets from provisioning (packages/voice-engine vapi.ts), with the deployment-wide test secret
+const built = vapiAssistant(clinic, { serverUrl: vapiServerUrl(base, clinic.id), secret, name: NAME });
 const assistant = {
-  name: NAME,
-  firstMessage: clinic.greeting,
-  firstMessageMode: 'assistant-speaks-first',
-  model: {
-    provider: 'openai', model: flag('--model') ?? 'gpt-4.1', temperature: 0.3,
-    messages: [{ role: 'system', content: toolsVoicePrompt(clinic, { callerNumber: null }) }],
-    tools: voiceToolDefinitions(clinic).map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: forVapi(t.parameters) }, server })),
-  },
-  voice: { provider: 'vapi', voiceId: flag('--voice') ?? 'Elliot' },
-  transcriber: { provider: 'deepgram', model: 'nova-3', language: 'multi' },
-  server,
-  serverMessages: ['conversation-update', 'end-of-call-report', 'status-update'],
+  ...built,
+  model: { ...built.model, ...(flag('--model') ? { model: flag('--model') } : {}) },
+  ...(flag('--voice') ? { voice: { provider: 'vapi', voiceId: flag('--voice') } } : {}),
   metadata: { attendra: 'bake-off', clinic: clinic.id },
 };
 

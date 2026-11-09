@@ -11,14 +11,13 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { LiveNow } from '@/components/calls/live-now';
 import { Outcome } from '@/components/calls/outcome';
 import { GoLiveCard, PlanMeter } from '@/components/plan';
-import { capital } from '@/components/schedule/booking-dialog';
 import { PageHeader } from '@/components/shell';
 import { AnimatedNumber, RelativeTime, StatCard } from '@/components/ui/bits';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { requestNumber, clinicTime, dayTitle, taskType, timeOf, TOOLS, usd, zoneLabel } from '@/lib/format';
+import { requestNumber, clinicTime, dayTitle, taskType, timeOf, TOOLS, usd, visitTypeName, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 import { SAFETY_POLL_MS, SAFETY_POLL_WORDS } from '@/lib/changes';
@@ -196,7 +195,7 @@ function TodaysSchedule({ clinicId, clinic, now, today, schedule, allowed }: { c
   const tz = clinic.timezone;
   const holiday = clinic.holidays.includes(today);
   const nowMin = localParts(new Date(now), tz).minutes;
-  const visit = (id: string) => capital(clinic.visitTypes.find((v) => v.id === id)?.name ?? id);
+  const visit = (id: string) => visitTypeName(clinic.visitTypes.find((v) => v.id === id)?.name ?? id);
   const clock = (m: number) => timeOf(new Date(Date.UTC(2000, 0, 1, Math.floor(m / 60), m % 60)), 'UTC');
 
   return (

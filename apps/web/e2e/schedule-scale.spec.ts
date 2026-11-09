@@ -242,7 +242,7 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     await page.getByRole('listbox', { name: 'Choices for veterinarian' }).getByRole('option', { name: 'None', exact: true }).click();
     await page.getByLabel('Specialty', { exact: true }).selectOption({ label: 'Surgery' });
     await expect(rows).toHaveCount(onDay.filter((x) => x.vet % SPECIALTIES.length === 0).length);
-    await page.getByLabel('Visit type').selectOption({ label: 'check-up' });
+    await page.getByLabel('Visit type').selectOption({ label: 'Check-up' });
     await expect(rows).toHaveCount(onDay.filter((x) => x.vet % SPECIALTIES.length === 0 && x.type[0] === 'vt_wellness').length);
     await page.getByLabel('Specialty', { exact: true }).selectOption({ index: 0 });
     await page.getByLabel('Visit type').selectOption({ index: 0 });

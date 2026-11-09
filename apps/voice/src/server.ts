@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, type Backend, CallAgent, CallCache, cachedBackend, CallState, type Planner, warmPatient } from '@attendra/agent';
-import { ClinicConfig, resolveTransfer, VOICE_ENGINES, type VoiceEngineName, type VoiceFlow, vipRoute } from '@attendra/core';
+import { ClinicConfig, openAiEngineOf, resolveTransfer, VOICE_ENGINES, type VoiceEngineName, type VoiceFlow, vipRoute } from '@attendra/core';
 import type { Alerter, Logger } from '@attendra/observability';
 import { callerNumber, dialledCandidates, maskedHeaders, SPEND_ALERT_PATH, spendAlertText, trimEnd, twilioSignatureValid, twiml } from '@attendra/telephony';
 import { callerContext, CallMarks, CallRunner, EngineRouter, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine, pausedOpening, vipOpening } from '@attendra/voice-engine';
@@ -10,7 +10,7 @@ import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { type ActionResult, LiveRegistry, type Numbered } from './live';
 import { mintToolToken, readToolToken, TOOL_TOKEN_MAX_MS } from './tool-tokens';
-import { registerVapi } from './vapi';
+import { registerVapi, type VapiOptions } from './vapi';
 
 /** An incoming phone call: GPT-Live sends a session id, the Realtime API a call id. */
 export interface IncomingCall { id: string; type: string; data: { session_id?: string; call_id?: string; sip_headers?: { name: string; value: string }[] } }
@@ -48,10 +48,10 @@ export interface VoiceDeps {
   /** A browser test call is ended after this long. Defaults to 900 (15 minutes), still capped by the clinic's test minutes left. */
   browserCallMaxSeconds?: number;
   /**
-   * Path C of the bake-off: the secret a Vapi assistant sends with its tool calls and call events to /webhooks/vapi/v1/events.
-   * Without it the route does not exist. Never set for a real clinic (batch 1a, round 2).
+   * Vapi, a location's backup engine (batch 6): how /webhooks/vapi/v1/events checks a location's own secret, counts the
+   * Vapi calls live at once, and reaches a call's control URL. Without it the route does not exist.
    */
-  vapiSecret?: string;
+  vapi?: VapiOptions;
   /**
    * gpt-realtime on the tools path: run a likely lookup before the reply (round 2). Defaults to off: on real audio it
    * saved no time (the wait for the caller's words costs about what it saves), so it stays behind this switch.
@@ -570,7 +570,9 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       for (const n of dialledCandidates(headers)) if ((stored = await deps.clinicForNumber(n))) break;
       // OpenAI sends one call once per engine: the clinic's engine answers it (GPT-Live unless it chose
       // another), the twin stays silent; a twin that waited and found no answer takes the call itself
-      const chosen = (stored as { voiceEngine?: string } | null)?.voiceEngine ?? 'gpt-live';
+      // a location on Vapi whose call still reaches us (Vapi full or down: Twilio's fallback to this path) is answered by
+      // the engine it had before it was switched (batch 6), as any other call
+      const chosen = (stored ? openAiEngineOf(stored as Pick<ClinicConfig, 'voiceEngine' | 'vapi'>) : undefined) ?? 'gpt-live';
       if (came !== chosen) await new Promise((r) => setTimeout(r, deps.pairWaitMs ?? 1500));
       if (!(await deps.claimDelivery(`call:${callKey(sessionId)}`))) {
         deps.log.info({ session_id: sessionId }, 'the same call came in for the other engine, which answers it');
@@ -584,9 +586,10 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       }
       const clinic = ClinicConfig.parse(stored);
       const from = callerNumber(headers, clinic);
-      if (router && clinic.voiceEngine && clinic.voiceEngine !== came) {
-        deps.log.warn({ session_id: sessionId, clinic_id: clinic.id, chosen: clinic.voiceEngine, came }, 'the clinic chose another engine, but OpenAI sent this kind of call: answering with the engine it came on');
+      if (router && openAiEngineOf(clinic) && openAiEngineOf(clinic) !== came) {
+        deps.log.warn({ session_id: sessionId, clinic_id: clinic.id, chosen: openAiEngineOf(clinic), came }, 'the clinic chose another engine, but OpenAI sent this kind of call: answering with the engine it came on');
       }
+      if (clinic.voiceEngine === 'vapi') deps.log.info({ session_id: sessionId, clinic_id: clinic.id, engine: came }, 'a call for a location on Vapi reached our own SIP path (overflow): answering it here');
       // a paused assistant (the clinic's plan) puts every caller through to the front desk while it takes
       // transfers, or tells them when to call back; a VIP is greeted by name and put through
       const front = clinic.answeringPaused ? resolveTransfer(clinic, 'front_desk', now()) : null;
@@ -613,8 +616,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
     }
   }
 
-  if (deps.vapiSecret) {
-    registerVapi(app, { secret: deps.vapiSecret, clinicById: deps.clinicById, openCall: deps.openCall, recorderFor: deps.recorderFor, actionsFor: deps.actionsFor, backend: deps.backend, planner: deps.planner, log: deps.log, now });
+  if (deps.vapi) {
+    registerVapi(app, { ...deps.vapi, clinicById: deps.clinicById, openCall: deps.openCall, recorderFor: deps.recorderFor, actionsFor: deps.actionsFor, backend: deps.backend, planner: deps.planner, log: deps.log, alerts: deps.alerts, now });
   }
   // tests read a live tools-path call's token here; nothing else does, and it is never logged
   app.decorate('toolTokenFor', (callId: string) => toolLines.get(callId)?.token ?? null);

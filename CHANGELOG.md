@@ -4,6 +4,23 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (batch 6: Vapi as a location's one-click backup engine; Attendra stays the default)
+
+- **A Vapi assistant per location, built from its settings** (`PUT /api/v1/provisioning/clinics/:clinicId/vapi`, `GET`, `DELETE`): our tools as its function tools, our voice prompt, a secret per location (kept encrypted and as a keyed hash, never shown), the location's own number as a BYO SIP number in Vapi. Every settings save updates the assistant when something it is built from changed. Our tools API still decides every booking, identity check and emergency route.
+- **`voiceEngine: 'vapi'`**: a location switched to Vapi takes its calls through Vapi; `PUT .../voice-engine` now answers `{ previous }`, so switching back restores exactly what the location had. A call that reaches our own SIP path for a location on Vapi (Twilio's fallback when Vapi can't take it) is answered by the previous engine. Migration 0056.
+- **Vapi concurrency**: live calls counted, the day's peak kept, an alert at 70% of `VAPI_MAX_CONCURRENCY` (`GET /api/v1/provisioning/vapi/concurrency`).
+- **Vapi quality settings** prepared: turn-taking (start and stop speaking plans, longer waits after a number question), greeting first, a voice per location (Vapi, ElevenLabs or Cartesia, billed through Vapi). Texts on a real location switched to Vapi are sent like on our own engines (the confirmation text is the safety net); a test clinic's never are.
+- **Costs per location and engine** (`GET /api/v1/provisioning/clinics/:clinicId/costs`), for the back office's margin.
+- **The scripted evals run on the Vapi path too**, through the webhook route in-process (13 scenarios with `pnpm eval`, every playable one with `--vapi`); no call to Vapi.
+
+### Changed (batch 6 polish)
+
+- **Schedule toolbar keeps one shape in all four views**: row 1 prev/Today/next, the date, the view buttons with the hint as a small caption under them, the Agenda's range last (its slot kept in every view); row 2 the filters in a fixed order. Every view now opens on Booked; the Month view starts on Sunday at North American clinics.
+- **One time format and one phone format everywhere**: 12-hour times for US and Canadian clinics (vet hours, time off, the schedule's hour marks, the time zone picker), and every phone shown as (303) 555-0142.
+- **Visit type names in sentence case** wherever the team reads them (stored names unchanged). Vet cards show the specialty alone.
+- **Settings**: the header keeps one height on every tab, so the tab row never moves; "Fields and lists" has one way in (its tab).
+- **Test calls** say "128 min 41 s left"; the Calls search placeholder fits its box at every width.
+
 ### Changed (batch 4b: dashboard, fields, requests and calls)
 
 - **Phone fields take numbers only, everywhere** (Transfers, the clinic's own line, a vet's other numbers, the emergency number, "Your number" on a live call): letters are dropped as typed and on paste with a note under the field, and the server refuses them (`PHONE_NUMBERS_ONLY`) before one normaliser turns the rest into E.164.

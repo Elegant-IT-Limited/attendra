@@ -54,3 +54,23 @@ test('every outcome is an option in the Calls filters, the caller who heard noth
   await expect(page.getByLabel('Outcome').locator('option', { hasText: 'Caller heard nothing' })).toHaveCount(1);
   await expect(page.getByLabel('Channel').locator('option')).toHaveText(['Any channel', 'Phone', 'Browser test']);
 });
+
+test('the Calls search hint is whole at desktop, laptop and phone widths, for a vet clinic\'s words too', async ({ browser }) => {
+  const page = await openAs(browser, 'manager');
+  const clinic = new URL(page.url()).pathname.split('/')[2]!;
+  await page.goto(`/c/${clinic}/calls`);
+  const search = page.locator('#call-search');
+  // the room the text has inside the box, against the hint in the box's own font; the vet clinic's hint is measured in the same box
+  const fits = async () => search.evaluate((el: HTMLInputElement, texts: string[]) => {
+    const css = getComputedStyle(el);
+    const room = el.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight);
+    const ctx = document.createElement('canvas').getContext('2d')!;
+    ctx.font = `${css.fontWeight} ${css.fontSize} ${css.fontFamily}`;
+    return texts.map((t) => ({ t, fits: ctx.measureText(t).width <= room }));
+  }, [(await search.getAttribute('placeholder'))!, 'Pet, owner, phone or R-1042']);
+  for (const width of [1440, 1280, 1024, 375]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(search).toBeVisible();
+    expect(await fits(), `at ${width}px`).toEqual([expect.objectContaining({ fits: true }), expect.objectContaining({ fits: true })]);
+  }
+});

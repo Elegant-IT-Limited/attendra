@@ -6,8 +6,7 @@ import { Copy, KeyRound, Plus } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import { Field } from '@/components/settings/section';
-import { SettingsNav } from '@/components/settings/settings-nav';
-import { PageHeader } from '@/components/shell';
+import { SettingsHeader, SettingsIntro } from '@/components/settings/settings-nav';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -61,12 +60,12 @@ export default function ApiKeysPage() {
   });
   const tz = clinic?.timezone ?? 'UTC';
 
-  if (!isPending && !allowed) return <><PageHeader title="Settings" /><SettingsNav clinicId={clinicId} /><Empty title="Not available">Only owners and practice managers manage API keys.</Empty></>;
+  if (!isPending && !allowed) return <><SettingsHeader clinicId={clinicId} /><Empty title="Not available">Only owners and practice managers manage API keys.</Empty></>;
   return (
     <>
-      <PageHeader title="Settings" description={<>Keys for another AI agent to work with the front desk over MCP. It can read and close requests, but it can never book or cancel.{' '}
-        <a href="https://github.com/Elegant-IT-Limited/attendra/blob/main/docs/mcp.md" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-2">How to connect an MCP client</a></>} />
-      <SettingsNav clinicId={clinicId} />
+      <SettingsHeader clinicId={clinicId} />
+      <SettingsIntro>Keys for another AI agent to work with the front desk over MCP. It can read and close requests, but it can never book or cancel.{' '}
+        <a href="https://github.com/Elegant-IT-Limited/attendra/blob/main/docs/mcp.md" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-2">How to connect an MCP client</a></SettingsIntro>
       {list.data?.mcpUrl && (
         <Card className="mb-6">
           <CardHeader><CardTitle>Where an MCP client connects</CardTitle></CardHeader>

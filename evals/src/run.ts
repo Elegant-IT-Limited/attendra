@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// Runs every scenario and prints a table. `pnpm eval` is scripted and offline;
+// Runs every scenario and prints a table. `pnpm eval` is scripted and offline (and plays the Vapi set through the voice
+// service's Vapi route too; `--vapi` plays only the Vapi path, every scenario it can);
 // `pnpm eval --live` swaps in the real planner model (needs OPENAI_API_KEY), and
 // `--judge` adds a model that scores each live transcript and writes
 // evals/reports/<run>.md, which git ignores. <run> is the run's start time in UTC (2026-11-03T01-23-45Z): every run
@@ -13,6 +14,7 @@ import { Judge, judgeReport, type Verdict } from './judge';
 import { loadScenarios, type Scenario } from './scenario';
 import { runScenario, type ScenarioResult } from './simulator';
 import { ToolsPathPlanner, type ToolsPath } from './tools-voice';
+import { playableOnVapi, runScenarioOnVapi, VAPI_PATH_SCENARIOS } from './vapi-path';
 
 const live = process.argv.includes('--live');
 const judging = process.argv.includes('--judge');
@@ -49,7 +51,11 @@ const followUp = live ? modelFollowUp(new OpenAI(), process.env.ATTENDRA_SIM_MOD
 const tag = process.argv.find((a) => a.startsWith('--tag='))?.slice(6);
 const transcripts = process.argv.includes('--transcripts');
 // `--only=a,b` keeps the scenarios whose id contains any of them
-const scenarios = loadScenarios().filter((s) => (!only || only.split(',').some((o) => o && s.id.includes(o))) && (!tag || s.tags.includes(tag)));
+// `--vapi` (batch 6): only the Vapi path, for every scenario it can play; a scripted run plays the Vapi set after the rest
+const vapiOnly = process.argv.includes('--vapi');
+if (vapiOnly && live) { console.error('--vapi is scripted and free: run it without --live'); process.exit(2); }
+const chosen = (s: Scenario) => (!only || only.split(',').some((o) => o && s.id.includes(o))) && (!tag || s.tags.includes(tag));
+const scenarios = vapiOnly ? [] : loadScenarios().filter(chosen);
 const c = (n: number) => (s: string) => (process.stdout.isTTY || process.env.FORCE_COLOR ? `\x1b[${n}m${s}\x1b[0m` : s);
 const [green, red, dim, bold] = [c(32), c(31), c(2), c(1)];
 
@@ -70,7 +76,25 @@ for (const s of scenarios) {
   console.log(`  ${r.passed ? green('pass') : red('FAIL')}  ${s.id.padEnd(34)} ${r.outcome.padEnd(13)} ${dim(`${String(r.ms).padStart(4)} ms`)}${refusals}`);
   for (const f of r.failures) console.log(`        ${red('·')} ${f}`);
 }
-console.log(`\n${failed ? red(`${failed} failed`) : green('all passed')}${dim(`, ${scenarios.length - failed}/${scenarios.length}`)}`);
+if (scenarios.length) console.log(`\n${failed ? red(`${failed} failed`) : green('all passed')}${dim(`, ${scenarios.length - failed}/${scenarios.length}`)}`);
+// the Vapi path (batch 6, item 8): the same scenarios as Vapi would post them to the voice service's Vapi route, in
+// process (no Vapi, no model), with the same outcomes checked
+if (!live) {
+  const set = new Set<string>(VAPI_PATH_SCENARIOS);
+  const onVapi = loadScenarios().filter((s) => chosen(s) && playableOnVapi(s) && (vapiOnly || set.has(s.id)));
+  if (onVapi.length) {
+    console.log(bold(`\nthe Vapi path`) + dim(`  ${onVapi.length} scenarios · Vapi's messages into /webhooks/vapi/v1/events in-process · no Vapi, no model\n`));
+    let vapiFailed = 0;
+    for (const s of onVapi) {
+      const r = await runScenarioOnVapi(s).catch((err: unknown) => ({ id: s.id, passed: false, failures: [`error: ${(err as Error).message}`], outcome: 'error', ms: 0 }));
+      if (!r.passed) vapiFailed++;
+      console.log(`  ${r.passed ? green('pass') : red('FAIL')}  ${s.id.padEnd(34)} ${r.outcome.padEnd(13)} ${dim(`${String(r.ms).padStart(4)} ms`)}`);
+      for (const f of r.failures) console.log(`        ${red('·')} ${f}`);
+    }
+    console.log(`\n${vapiFailed ? red(`${vapiFailed} failed on the Vapi path`) : green('all passed on the Vapi path')}${dim(`, ${onVapi.length - vapiFailed}/${onVapi.length}`)}`);
+    failed += vapiFailed;
+  }
+}
 // live: the planner model's own time per request (tools apart), simple turns and the rest, to compare speed settings
 if (timings.length) {
   const quantile = (values: number[], q: number) => { const s = [...values].sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(q * s.length))]! : null; };

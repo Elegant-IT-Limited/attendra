@@ -32,7 +32,7 @@ const JORDAN_PETS = [
   { firstName: 'Biscuit', dob: '2021-06-12', gender: 'male', species: 'dog' },
   { firstName: 'Pepper', dob: '2022-03-08', gender: 'female', species: 'cat' },
 ] as const;
-const defaultCaller = (scenario: Scenario) => ({ maple: DEMO_PATIENTS[0].phone, cedar_park: CEDAR_PARK_PATIENTS[0].phone, riverbend: RIVERBEND_PETS[0].phone })[scenario.clinic];
+export const defaultCaller = (scenario: Scenario) => ({ maple: DEMO_PATIENTS[0].phone, cedar_park: CEDAR_PARK_PATIENTS[0].phone, riverbend: RIVERBEND_PETS[0].phone })[scenario.clinic];
 /** Each demo clinic's seed: the clinic and its patients. */
 export const SEEDS = { maple: seedDemo, cedar_park: seedCedarPark, riverbend: seedRiverbend } as const;
 
@@ -182,24 +182,12 @@ function nextThursday(clinic: ClinicConfig, now: Date): Date {
 }
 
 /**
- * Plays one scenario against a database that already holds the demo clinic and its
- * patients. The eval gives each scenario a fresh in-process database; the demo seed
- * plays them all into one.
+ * What a scenario's tags put on file before its call: a visit on Thursday to move or cancel, past visits, another household
+ * on the same number. Shared by every way a scenario is played (our engines, and the Vapi path through its HTTP route).
  */
-export async function playScenario(db: Database, cipher: PhiCipher, patientIds: Record<string, string>, scenario: Scenario, opts: PlayOptions = {}): Promise<ScenarioResult> {
-  const started = performance.now();
-  const clinic = clinicOf(scenario);
-  const now = opts.now ?? (scenario.local_time ? zonedInstant('2026-09-28', scenario.local_time, clinic.timezone) : SIM_NOW);
-  const callerNumber = scenario.caller_number === undefined ? defaultCaller(scenario) : scenario.caller_number;
-  const { livePlanner } = opts;
+export async function prepareScenario(db: Database, cipher: PhiCipher, patientIds: Record<string, string>, scenario: Scenario, clinic: ClinicConfig, now: Date) {
   const scheduler = new BuiltinScheduler(db, 'voice-agent', cipher);
-  const sms: string[] = [];
-  const messenger: Messenger = { async sendTemplate(_c, m) { sms.push(m.template); return { status: 'sent', messageId: `sms-${sms.length}` }; } };
-  // the demo clinic's documents, with local embeddings: fixed, so every run finds the same passages
-  const knowledge = new HybridKnowledgeBase(new KnowledgeRepository(db), new LocalEmbedder());
-  const backend = { patients: new PostgresPatientDirectory(db, cipher), scheduler, tasks: new PostgresTaskQueue(db, cipher), audit: new PostgresAuditLog(db), messenger, knowledge };
   const calls = new CallRepository(db, cipher);
-
   // an existing appointment on Thursday (Maria's sick visit, or Biscuit's wellness exam at the vet), for the reschedule and cancel scenarios
   if (scenario.tags.includes('has-appointment')) {
     const setupCall = await calls.open(clinic.id, `setup_${scenario.id}`, null);
@@ -232,6 +220,28 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   if (scenario.tags.includes('last-four-twin') && scenario.clinic === 'riverbend' && (await seeded.findPet(clinic.id, 'Biscuit', LAST_FOUR_TWIN_PHONE)).status === 'not_found') {
     await seeded.create(clinic.id, { firstName: 'Biscuit', lastName: 'Marsh', dob: '2020-06-01', phone: LAST_FOUR_TWIN_PHONE, guardianName: 'Robin Marsh', gender: 'male', species: 'dog' });
   }
+}
+
+/**
+ * Plays one scenario against a database that already holds the demo clinic and its
+ * patients. The eval gives each scenario a fresh in-process database; the demo seed
+ * plays them all into one.
+ */
+export async function playScenario(db: Database, cipher: PhiCipher, patientIds: Record<string, string>, scenario: Scenario, opts: PlayOptions = {}): Promise<ScenarioResult> {
+  const started = performance.now();
+  const clinic = clinicOf(scenario);
+  const now = opts.now ?? (scenario.local_time ? zonedInstant('2026-09-28', scenario.local_time, clinic.timezone) : SIM_NOW);
+  const callerNumber = scenario.caller_number === undefined ? defaultCaller(scenario) : scenario.caller_number;
+  const { livePlanner } = opts;
+  const scheduler = new BuiltinScheduler(db, 'voice-agent', cipher);
+  const sms: string[] = [];
+  const messenger: Messenger = { async sendTemplate(_c, m) { sms.push(m.template); return { status: 'sent', messageId: `sms-${sms.length}` }; } };
+  // the demo clinic's documents, with local embeddings: fixed, so every run finds the same passages
+  const knowledge = new HybridKnowledgeBase(new KnowledgeRepository(db), new LocalEmbedder());
+  const backend = { patients: new PostgresPatientDirectory(db, cipher), scheduler, tasks: new PostgresTaskQueue(db, cipher), audit: new PostgresAuditLog(db), messenger, knowledge };
+  const calls = new CallRepository(db, cipher);
+
+  await prepareScenario(db, cipher, patientIds, scenario, clinic, now);
   const callId = await calls.open(clinic.id, opts.sessionId ?? `live_${scenario.id}`, callerNumber);
   // a name on file in the scenario's history is the one the records give for the number when the call starts, as the voice service reads it
   const historyName = /^Name on file for this number: (.+)\.$/m.exec(scenario.history ?? '')?.[1] ?? null;

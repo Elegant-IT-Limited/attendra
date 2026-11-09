@@ -29,6 +29,7 @@
     "@electric-sql/pglite": "0.5.10"
   },
   "exports": {
-    "./runtime": "./src/runtime.ts"
+    "./runtime": "./src/runtime.ts",
+    "./vapi": "./src/vapi.ts"
   }
 }

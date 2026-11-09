@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { age, ago, clinicTime, NEW_MEMBER, personName, phone, setClinicCountry, telHref, tenDigitPhones, timeOf, usd } from '../lib/format';
+import { weeklyHoursLine } from '@attendra/core';
+import { age, ago, clinicTime, firstWeekday, hourMark, localTime, NEW_MEMBER, personName, phone, setClinicCountry, telHref, tenDigitPhones, timeOf, usd, visitTypeName, weekdayHeads } from '../lib/format';
 
 afterEach(() => setClinicCountry(['+13035550100']));
 
@@ -72,5 +73,49 @@ describe('a team member\'s name as it shows', () => {
     expect(personName('')).toBe(NEW_MEMBER);
     expect(personName('   ')).toBe('New team member');
     expect(personName('Kit Rowan')).toBe('Kit Rowan');
+  });
+});
+
+describe('local times (hours, time off) on the clinic\'s clock', () => {
+  it('writes HH:MM as 12-hour at a US clinic and 24-hour in the United Kingdom, like every other time', () => {
+    setClinicCountry(['+15055550142']);
+    // the same clock as a timestamp: 14:00 UTC is 8:00 AM in Denver
+    expect(localTime('08:00')).toBe(timeOf('2026-09-29T14:00:00Z', 'America/Denver'));
+    expect(localTime('08:00')).toBe('8:00 AM');
+    expect(localTime('18:30')).toBe('6:30 PM');
+    expect(localTime('12:00')).toBe('12:00 PM');
+    expect(localTime('24:00')).toBe('12:00 AM');
+    expect(hourMark(8 * 60)).toBe('8 AM');
+    expect(hourMark(13 * 60)).toBe('1 PM');
+    expect(weeklyHoursLine({ '1': [{ open: '08:00', close: '18:00' }] }, localTime)).toBe('Mon 8:00 AM-6:00 PM');
+    setClinicCountry(['+442079460123']);
+    expect(localTime('08:00')).toBe('08:00');
+    expect(localTime('18:30')).toBe('18:30');
+    expect(hourMark(8 * 60)).toBe('08:00');
+    expect(weeklyHoursLine({ '1': [{ open: '08:00', close: '18:00' }] }, localTime)).toBe('Mon 08:00-18:00');
+  });
+
+  it('leaves the assistant\'s hours line as stored when no clock is given', () => {
+    expect(weeklyHoursLine({ '1': [{ open: '08:00', close: '18:00' }] })).toBe('Mon 08:00-18:00');
+  });
+});
+
+describe('a visit type\'s name as a label', () => {
+  it('is sentence case wherever it stands alone, whatever the clinic typed', () => {
+    expect(visitTypeName('wellness exam')).toBe('Wellness exam');
+    expect(visitTypeName('Dental cleaning')).toBe('Dental cleaning');
+    expect(visitTypeName('X-ray')).toBe('X-ray');
+    expect(visitTypeName('')).toBe('');
+  });
+});
+
+describe('the first day of the week', () => {
+  it('is Sunday at a North American clinic and Monday elsewhere', () => {
+    setClinicCountry(['+13035550100']);
+    expect(firstWeekday()).toBe(0);
+    expect(weekdayHeads()).toEqual(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
+    setClinicCountry(['+442079460123']);
+    expect(firstWeekday()).toBe(1);
+    expect(weekdayHeads()).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
   });
 });

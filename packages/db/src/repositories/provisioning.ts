@@ -173,7 +173,7 @@ export type PurgeOutcome =
 const CLINIC_TABLES = [
   'webhook_attempts', 'webhook_events', 'webhook_endpoints', 'task_notes', 'tasks', 'clinic_counters', 'appointments',
   'call_summaries', 'call_costs', 'call_actions', 'call_segments', 'call_search_keys', 'patient_search_keys', 'calls', 'patients',
-  'knowledge_chunks', 'knowledge_documents', 'invitations', 'sms_messages', 'sms_opt_outs', 'api_keys', 'audit_logs', 'phone_numbers',
+  'knowledge_chunks', 'knowledge_documents', 'invitations', 'sms_messages', 'sms_opt_outs', 'api_keys', 'vapi_secrets', 'audit_logs', 'phone_numbers',
 ] as const;
 
 /** Thrown inside a dry run's transaction, so everything it did is rolled back. */

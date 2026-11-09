@@ -6,7 +6,7 @@ import type { Answerer } from '@attendra/knowledge';
 import { StaffScheduler } from '@attendra/scheduling';
 import { type GuardOptions, type Resolver } from '@attendra/webhooks';
 import { eventSink, type JobQueue, noJobs } from '@attendra/worker/queue';
-import type { Logger } from '@attendra/observability';
+import type { Alerter, Logger } from '@attendra/observability';
 import rateLimit from '@fastify/rate-limit';
 import { Module, type DynamicModule } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR, NestFactory } from '@nestjs/core';
@@ -29,13 +29,14 @@ import { compressReply } from './http/compress';
 import { rateLimitKey } from './http/rate-key';
 import { StaffGuard, toHeaders } from './http/staff.guard';
 import { IdempotencyInterceptor } from './http/idempotency';
-import { API_OPTIONS, type ApiOptions, AUTH, CHANGES, CIPHER, CLOCK, DB, EVENTS, FRONT_DESK, JOBS, KNOWLEDGE, WEBHOOK_GUARD, LOGGER, MAIL, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VOICE, VOICE_SAMPLES, type VoiceClient, type VoiceSampler } from './http/tokens';
+import { API_OPTIONS, type ApiOptions, AUTH, CHANGES, CIPHER, CLOCK, DB, EVENTS, FRONT_DESK, JOBS, KNOWLEDGE, WEBHOOK_GUARD, LOGGER, MAIL, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VAPI, VOICE, VOICE_SAMPLES, type VoiceClient, type VoiceSampler } from './http/tokens';
 import { MeController } from './me/me.controller';
 import { UsersController } from './me/users.controller';
 import { OverviewController } from './overview/overview.controller';
 import { PlanController } from './overview/plan.controller';
 import { PatientsController } from './patients/patients.controller';
 import { ProvisioningController } from './provisioning/provisioning.controller';
+import { type VapiSetup, VapiLocations } from './provisioning/vapi';
 import { QualityController } from './quality/quality.controller';
 import { AppointmentsController } from './schedule/appointments.controller';
 import { EmergencyReviewController } from './settings/emergency-review.controller';
@@ -77,6 +78,10 @@ export interface ApiDeps {
   voiceSamples?: VoiceSampler | null;
   /** The hosting layer's mail hook. With it, Team invitations are emailed and nobody is shown a temporary password. */
   mail?: Mailer | null;
+  /** Vapi, a location's backup engine (batch 6): its client and settings. Without a client, the Vapi provisioning routes answer 503. */
+  vapi?: VapiSetup | null;
+  /** Where alerts go (Slack): a Vapi update that failed. */
+  alerts?: Alerter;
 }
 
 // The Better Auth routes the dashboard uses. Everything else Better Auth could serve
@@ -96,6 +101,11 @@ const AUTH_ROUTES = new Set([
 @Module({})
 class ApiModule {
   static with(deps: ApiDeps): DynamicModule {
+    const desk = new FrontDeskRepository(deps.db, deps.cipher, { scan: deps.options.searchScan });
+    const vapi = deps.vapi ? new VapiLocations(deps.db, deps.cipher, desk, deps.vapi, deps.log, deps.alerts, deps.now) : null;
+    // every settings save through the API reaches a Vapi location's assistant (batch 6): the location is marked, and its
+    // assistant updated a moment later if what it is built from changed
+    if (vapi) onSettingsSaved(desk, (clinicId) => vapi.touched(clinicId));
     return {
       module: ApiModule,
       controllers: [HealthController, MeController, UsersController, ChangesController, OverviewController, PlanController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, TextsController, AppointmentsController, PatientsController, DoctorsController, TeamController, TeamInvitationsController, MyInvitationsController, SettingsController, VoiceSamplesController, EmergencyReviewController, AuditController, ProvisioningController],
@@ -113,7 +123,8 @@ class ApiModule {
         { provide: CHANGES, useValue: deps.changes ?? null },
         { provide: VOICE_SAMPLES, useValue: deps.voiceSamples ?? null },
         { provide: MAIL, useValue: deps.mail ?? null },
-        { provide: FRONT_DESK, useValue: new FrontDeskRepository(deps.db, deps.cipher, { scan: deps.options.searchScan }) },
+        { provide: FRONT_DESK, useValue: desk },
+        { provide: VAPI, useValue: vapi },
         { provide: SCHEDULE, useValue: new ScheduleRepository(deps.db, deps.cipher) },
         { provide: PATIENTS, useValue: new PatientRecords(deps.db, deps.cipher, { scanWindow: deps.options.searchScan ? PATIENT_SCAN_LIMIT : undefined }) },
         { provide: STAFF_SCHEDULER, useValue: new StaffScheduler(deps.db, deps.cipher, deps.now) },
@@ -328,4 +339,23 @@ export class RouteTimings {
     this.seen.clear();
     return out.sort((a, b) => b.p95 - a.p95);
   }
+}
+
+/**
+ * Calls `saved` after each save of a clinic's settings through this repository (Settings, Doctors, provisioning): both
+ * ways a save is made. A change that saved nothing still calls it; what it does is cheap (VapiLocations.touched).
+ */
+export function onSettingsSaved(desk: FrontDeskRepository, saved: (clinicId: string) => void) {
+  const save = desk.saveSettings.bind(desk);
+  const update = desk.updateSettings.bind(desk);
+  desk.saveSettings = async (clinicId, ...rest) => {
+    const out = await save(clinicId, ...rest);
+    if (out.status === 'saved') saved(clinicId);
+    return out;
+  };
+  desk.updateSettings = (async (clinicId: string, ...rest: Parameters<typeof update> extends [string, ...infer R] ? R : never) => {
+    const out = await update(clinicId, ...rest);
+    saved(clinicId);
+    return out;
+  }) as typeof desk.updateSettings;
 }

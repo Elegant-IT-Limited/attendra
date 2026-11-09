@@ -105,13 +105,14 @@ function Calls() {
         </Alert>
       )}
       <Card className="mb-4 space-y-3 p-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.6fr)_repeat(5,minmax(0,1fr))]">
+        {/* the search box gets the room its hint needs, whole at every width (it was cut off: "Pet or owner name, phone n") */}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_repeat(5,minmax(0,1fr))]">
           {can('calls:read') && (
             <div className="space-y-1 sm:col-span-2 lg:col-span-1">
               <Label htmlFor="call-search" className="text-xs text-text-muted">Find a call</Label>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
-                <Input id="call-search" type="search" autoComplete="off" className="pl-8" value={text} onChange={(e) => setText(e.target.value)} placeholder={pets ? 'Pet or owner name, phone number, or R-1042' : 'Caller name, phone number, or R-1042'} />
+                <Input id="call-search" type="search" autoComplete="off" className="pl-8" value={text} onChange={(e) => setText(e.target.value)} placeholder={pets ? 'Pet, owner, phone or R-1042' : 'Name, phone or R-1042'} />
               </div>
             </div>
           )}

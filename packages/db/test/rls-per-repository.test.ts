@@ -7,7 +7,7 @@ import {
   ApiKeyRepository, authenticateApiKey, avatarFor, CallRepository, callStats, callTimeline, CallSummaryRepository, cleanTitles, createPhiCipher, type Database,
   FrontDeskRepository, householdOf, inviteToTeam, KnowledgeRepository, listMembers, normalisePhones, PatientRecords, PatientRemoval, phoneUsage, PostgresAuditLog,
   PostgresPatientDirectory, PostgresTaskQueue, qualityRows, saveAvatar, ScheduleRepository, seedCedarPark, seedDemo, seedDemoSchedule, staffNames,
-  teamInvitations, visitTypeCoverageReport, WebhookRepository, withClinic, withClinicScope,
+  teamInvitations, clinicCosts, saveVapiSecret, vapiCallEnded, vapiCallLive, vapiConcurrency, vapiSecretHashOf, vapiSecretOf, visitTypeCoverageReport, WebhookRepository, withClinic, withClinicScope,
 } from '../src';
 import { openTestDatabase, TEST_DATA_KEY } from '../src/testing';
 
@@ -108,6 +108,25 @@ const CASES: Record<string, Case> = {
     },
     other: async () => {
       expect(JSON.stringify(await new FrontDeskRepository(db, cipher).listCalls(B, { limit: 50 }))).not.toContain(callA);
+    },
+  },
+  'vapi.ts': {
+    tables: ['vapi_secrets', 'calls', 'call_costs'],
+    own: async () => {
+      await saveVapiSecret(db, cipher, A, 'location-a-secret-for-the-rls-test-0123456789');
+      expect(await vapiSecretOf(db, cipher, A)).toBe('location-a-secret-for-the-rls-test-0123456789');
+      expect(await vapiSecretHashOf(db, A)).toMatch(/\S+/);
+      expect((await clinicCosts(db, A, SINCE, UNTIL)).engines.reduce((n, e) => n + e.calls, 0)).toBeGreaterThan(0);
+      // the live Vapi calls are the deployment's (no clinic): counted and ended on the services' role
+      const at = new Date();
+      expect((await vapiCallLive(db, 'rls-vapi-1', at, 100)).live).toBeGreaterThanOrEqual(1);
+      await vapiCallEnded(db, 'rls-vapi-1', at);
+      expect((await vapiConcurrency(db, at)).live).toBe(0);
+    },
+    other: async () => {
+      expect(await vapiSecretOf(db, cipher, B)).toBeNull();
+      expect(await vapiSecretHashOf(db, B)).toBeNull();
+      expect((await clinicCosts(db, B, SINCE, UNTIL)).engines).toEqual([]);
     },
   },
   'invitations.ts': {

@@ -551,6 +551,28 @@ describe('two engines: GPT-Live and the Realtime API', () => {
     expect(live.accept).toHaveBeenCalledWith('live_abc', expect.anything(), expect.any(Date), undefined, { callerNumber: expect.toBeOneOf([null, expect.any(String)]), flow: 'planner' });
   });
 
+  it('answers a call for a location on Vapi that reaches our own SIP path (overflow) with the engine it had before', async () => {
+    const live = fake('gpt-live');
+    const realtime = fake('gpt-realtime');
+    const onVapi = { ...DEMO_CLINIC, voiceEngine: 'vapi' as const, vapi: { assistantId: 'asst_1', phoneNumberId: 'pn_1', overflowEngine: 'gpt-realtime' as const } };
+    const openCall = vi.fn(async () => 'call_overflow');
+    // OpenAI sends the call to both engines: the Realtime twin answers at once, the GPT-Live one waits and finds it taken
+    const { d } = deps({ engine: new EngineRouter({ 'gpt-live': live, 'gpt-realtime': realtime }, 'gpt-live'), pairWaitMs: 1000, clinicForNumber: async (n) => (n === '+13035550100' ? onVapi : null), openCall });
+    const app = buildServer(d);
+    const twin = (id: string, type: string, session: string) => JSON.stringify({ sig: 'ok', id, type, data: { type: 'sip', session_id: session, call_id: session, sip_headers: [{ name: 'To', value: '<sip:+13035550100@x>' }] } });
+    await post(app, twin('wh_ov_1', 'realtime.call.incoming', 'rtc_ov_same'));
+    await post(app, twin('wh_ov_2', 'live.transport.incoming', 'live_ov_same'));
+    await app.close();
+    expect(realtime.accept).toHaveBeenCalledWith('rtc_ov_same', expect.objectContaining({ id: DEMO_CLINIC.id }), expect.any(Date), undefined, { callerNumber: expect.toBeOneOf([null, expect.any(String)]), flow: 'planner' });
+    expect(live.accept).not.toHaveBeenCalled();
+    // recorded as a call on our engine, as any other
+    expect(openCall).toHaveBeenCalledWith(DEMO_CLINIC.id, 'rtc_ov_same', null, 'phone', undefined, undefined, { engine: 'gpt-realtime', voiceFlow: 'planner' });
+    // with no engine kept, the deployment's default answers it, as for any clinic that chose none
+    const fallback = new EngineRouter({ 'gpt-live': live, 'gpt-realtime': realtime }, 'gpt-live');
+    expect(fallback.engineFor({ voiceEngine: 'vapi' })).toBe(live);
+    expect(fallback.engineFor(onVapi)).toBe(realtime);
+  });
+
   it('starts a test call with the engine the clinic was given', async () => {
     const live = fake('gpt-live');
     const realtime = fake('gpt-realtime');

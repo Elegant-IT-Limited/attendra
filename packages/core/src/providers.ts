@@ -34,11 +34,14 @@ export function agesLine(p: Pick<Provider, 'ages'>): string {
   return `ages ${p.ages.min} to ${p.ages.max}`;
 }
 
-/** "Mon 08:00-12:00, 13:00-17:00; Tue 09:00-15:00", from the provider's own hours or the clinic's. */
-export function weeklyHoursLine(hours: ClinicConfig['hours']): string {
+/**
+ * "Mon 08:00-12:00, 13:00-17:00; Tue 09:00-15:00", from the provider's own hours or the clinic's. The assistant reads
+ * it as is; the dashboard passes its clock (localTime, apps/web lib/format) for "Mon 8:00 AM-12:00 PM" at a US clinic.
+ */
+export function weeklyHoursLine(hours: ClinicConfig['hours'], time: (hhmm: string) => string = (t) => t): string {
   const days = [1, 2, 3, 4, 5, 6, 0].flatMap((d) => {
     const w = windowsOn(hours, d);
-    return w.length ? [`${DAYS[d]} ${w.map((x) => `${x.open}-${x.close}`).join(', ')}`] : [];
+    return w.length ? [`${DAYS[d]} ${w.map((x) => `${time(x.open)}-${time(x.close)}`).join(', ')}`] : [];
   });
   return days.length ? days.join('; ') : 'no regular hours';
 }

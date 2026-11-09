@@ -163,14 +163,14 @@ describe('provisioning', () => {
     expect(await voiceOf(other.clinicId)).toEqual(pathA);
     // one step back for one clinic: the planner hand-off, the others stay on path A
     expect((await api.request('PUT', `${P}/clinics/${location.clinicId}/voice-flow`, { body: { flow: 'planner' }, authorization: auth })).statusCode).toBe(204);
-    expect((await api.request('PUT', `${P}/clinics/${location.clinicId}/voice-engine`, { body: { engine: 'gpt-live' }, authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('PUT', `${P}/clinics/${location.clinicId}/voice-engine`, { body: { engine: 'gpt-live' }, authorization: auth })).statusCode).toBe(200);
     expect(await voiceOf(location.clinicId)).toEqual({ flow: 'planner', engine: 'gpt-live', model: null });
     expect(await voiceOf(opened.clinicId)).toEqual(pathA);
   });
 
   it('sets which voice engine answers a clinic, which Settings cannot change', async () => {
     const S = `/api/v1/clinics/${DEMO_CLINIC.id}/settings`;
-    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/voice-engine`, { body: { engine: 'gpt-realtime' }, authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/voice-engine`, { body: { engine: 'gpt-realtime' }, authorization: auth })).statusCode).toBe(200);
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/voice-engine`, { body: { engine: 'grok' }, authorization: auth })).statusCode).toBe(422);
     expect((await api.request('PUT', `${P}/clinics/clinic_none/voice-engine`, { body: { engine: null }, authorization: auth })).statusCode).toBe(404);
     const cookie = await api.signIn('olga@maple.example', true);
@@ -178,7 +178,7 @@ describe('provisioning', () => {
     expect(settings.voiceEngine).toBe('gpt-realtime');
     // a save from Settings that drops or changes it keeps the operator's choice
     expect((await api.request('PUT', S, { cookie, body: { ...settings, voiceEngine: 'gpt-live' } })).json().voiceEngine).toBe('gpt-realtime');
-    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/voice-engine`, { body: { engine: null }, authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/voice-engine`, { body: { engine: null }, authorization: auth })).statusCode).toBe(200);
     expect((await api.request('GET', S, { cookie })).json().voiceEngine).toBeUndefined();
     // and how its turns are answered (the tools API or the planner, batch 1a): the operator's too, with one step back
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/voice-flow`, { body: { flow: 'tools' }, authorization: auth })).statusCode).toBe(204);

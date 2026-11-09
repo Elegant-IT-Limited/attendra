@@ -7,6 +7,20 @@ export function minutesText(seconds: number): string {
   return m < 1 ? 'less than a minute' : m === 1 ? '1 minute' : `${m} minutes`;
 }
 
+/**
+ * The clinic's test-call time left, the one way every page writes it: "128 min 41 s left", "15 min left", "41 s left".
+ * Whole seconds, rounded down, so it never promises more than the server gives. The cloud's setup page says the same.
+ */
+export function testTimeLeft(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${[m ? `${m} min` : '', r || !m ? `${r} s` : ''].filter(Boolean).join(' ')} left`;
+}
+
+/** The line under the Test call button: the clinic's test time left, from the API's allowance. */
+export const testTimeLeftLine = (seconds: number) => (seconds <= 0 ? 'No test-call time left.' : `Test calls: ${testTimeLeft(seconds)}`);
+
 type Limits = Pick<TestCallAllowance, 'perCallSeconds' | 'callSeconds'>;
 
 /** The clinic's test time left is shorter than one call, so that is what the next call gets. */
@@ -21,6 +35,6 @@ export function limitIsTimeLeft(allowance: Limits | undefined): boolean {
 export function testCallLimitLabel(allowance: Limits | undefined): string {
   const { perCallSeconds, callSeconds } = allowance ?? { perCallSeconds: null, callSeconds: null };
   if (perCallSeconds === null || callSeconds === null) return 'A test call stops on its own at its time limit.';
-  if (limitIsTimeLeft(allowance)) return `You have ${minutesText(callSeconds)} of test calls left`;
+  if (limitIsTimeLeft(allowance)) return `Test calls: ${testTimeLeft(callSeconds)}`;
   return `One test call can last up to ${minutesText(perCallSeconds)}`;
 }

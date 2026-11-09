@@ -219,6 +219,20 @@ test.describe.serial('the schedule', () => {
 
 // The desk marks what happened to a visit from its panel (SCH-1): a key on a keyboard, a button on a phone. Each state
 // is one the server allows now; the block on the grid says it.
+test('one status default in every view (booked only), and a US clinic\'s month starts on Sunday', async ({ browser }) => {
+  const page = await openAs(browser, 'frontdesk');
+  const clinic = clinicOf(page);
+  for (const view of ['day', 'week', 'month', 'agenda']) {
+    await page.goto(`/c/${clinic}/schedule?view=${view}`);
+    await expect(page.locator('#schedule-show'), view).toHaveValue('booked');
+  }
+  // the demo clinic is in the US (+1): Sunday first, as its own calendars count
+  await page.goto(`/c/${clinic}/schedule?view=month`);
+  await expect(page.getByRole('columnheader')).toHaveText(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
+  const first = await page.getByTestId('month-day').first().getAttribute('aria-label');
+  expect(first).toMatch(/^Sunday /);
+});
+
 test('the desk marks a visit arrived with a key, the grid says so, and puts it back to booked on a phone', async ({ browser }) => {
   const page = await openAs(browser, 'frontdesk');
   const clinic = clinicOf(page);
