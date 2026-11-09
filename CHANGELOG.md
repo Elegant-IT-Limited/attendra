@@ -4,6 +4,14 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (phone tests, 2026-11-09: calls on our own engine)
+
+- **An unfinished change becomes a request for the team.** A booking or cancellation still waiting for a yes when the call ends is filed as a callback request with its read-back, on our engines and on Vapi; the call counts as a request taken.
+- **A goodbye is a hang-up, not a dropped line.** A line that closes after the caller's goodbye, or while the assistant's hang-up is on its way, is recorded as a normal hang-up; a hang-up the line beat to it is no longer logged as an error.
+- **The time asked for is said to be taken** ("9:30 AM isn't free.") before a read-back of another time.
+- **A visit already booked is said first.** Before times for another visit, the caller hears the visit their pet already has, once per call, with how to move it instead.
+- **Vet clinics say nothing about the records before the number is confirmed**, not even that the number has called before.
+
 ### Fixed (privacy: a number the caller says)
 
 - **Nothing from a record before the caller is verified, on a number the caller says.** With no matching caller ID, the assistant used to name the pets on a spoken number before the owner's name was checked. Now the owner's name is asked first on every spoken number, whether or not anyone is on file, and only a name that matches the owner on file opens the record. A name that does not match, no name, and a number with no profile all get the same words ("I can't open a profile with those details on this call. I can take a message so the team can call you back." / its Spanish twin) and the same next step, a request for the team, so a caller can't tell whether a number belongs to a client. A pet named on such a number is not looked up. Caller ID still opens the pick question as before; a caller who says the pet is new can still add it.
