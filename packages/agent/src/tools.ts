@@ -815,7 +815,12 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const outside = near && one && !exactSlot ? vetHoursLine(clinic, one, from, near.time, lang, near.direction) : null;
       // a visit they already have, once per call, before anything else, to a caller the record is open to
       const next = theirs.sort((a, b) => a.start.getTime() - b.start.getTime())[0];
-      const booked = next && patient && !moving && recordOpen && !state.upcomingSaid.has(patient.id)
+      // never on a call about a visit they already have: a move or a cancel (said, or by the model), or their visits just
+      // read out by list_appointments. A move is not a second booking (a new call that moved a pet's visit heard
+      // "already has a visit booked" and "move it instead" in the middle of moving it)
+      const intent = state.memory.get('intent');
+      const aboutTheirVisit = !!moving || intent === 'move' || intent === 'cancel' || state.toolLog.some((t) => t.name === 'list_appointments' && t.ok);
+      const booked = next && patient && !aboutTheirVisit && recordOpen && !state.upcomingSaid.has(patient.id)
         ? pack.slots.alreadyBooked({ name: patient.firstName, visit: (() => { const v = clinic.visitTypes.find((x) => x.id === next.visitTypeId); return v ? localName(v, lang).toLowerCase() : lang === 'es' ? 'cita' : 'visit'; })(), when: when(next.start), provider: nameOf(next.providerId) ?? null, more: theirs.length - 1 })
         : null;
       if (booked && patient) {

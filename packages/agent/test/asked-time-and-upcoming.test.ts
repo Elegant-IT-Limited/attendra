@@ -76,4 +76,36 @@ describe('a pet that already has a visit booked (note 45)', () => {
     const again = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: '2026-10-05', part_of_day: 'any', from_time: null } }]);
     expect(String(again.results[0]!.data.say_as)).not.toContain('already has a visit booked');
   });
+
+  it('is never said on a call that moves that same visit: a move is not a second booking (a new call, or after list_appointments)', async () => {
+    const c = await w.call('+17205550172', { clinic });
+    c.caller('Hi, I need to move Biscuit\'s wellness exam to the week after.');
+    const listed = await c.delegate([
+      { tool: 'verify_caller', args: { owner_name: null, pet_name: 'Biscuit', phone: null } },
+      { tool: 'list_appointments', args: {} },
+    ]);
+    const visit = (listed.results[1]!.data.appointments as { appointment_id: string; when: string }[]).find((a) => a.when.startsWith('Friday, October 2'))!;
+    const found = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2026-10-05', part_of_day: 'any', from_time: null } }]);
+    expect(String(found.results[0]!.data.say_as)).not.toContain('already has a visit booked');
+    expect(String(found.results[0]!.data.note)).not.toContain('replaces_appointment_id');
+    const slot = (found.results[0]!.data.slots as Slot[])[0]!;
+    const proposed = await c.delegate([{ tool: 'propose_booking', args: { slot_id: slot.slot_id, replaces_appointment_id: visit.appointment_id } }]);
+    expect(c.state.pending?.readback).toMatch(/^move Biscuit's wellness exam from Friday, October 2, at 10:00 AM to /);
+    expect(String(proposed.results[0]!.data.spoken)).not.toContain('already has');
+    c.readBack('Shall I go ahead?');
+    c.caller('Yes please.');
+    expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).results[0]!.data.booked).toBe(true);
+    expect(c.state.outcome).toBe('rescheduled');
+
+    // the caller's words say nothing about moving, but the visit was just read out by list_appointments: not said again
+    const d = await w.call('+17205550172', { clinic });
+    d.caller('What does Biscuit have coming up? I might want a sick visit too.');
+    await d.delegate([
+      { tool: 'verify_caller', args: { owner_name: null, pet_name: 'Biscuit', phone: null } },
+      { tool: 'list_appointments', args: {} },
+    ]);
+    const more = await d.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any', from_time: null } }]);
+    expect(String(more.results[0]!.data.say_as)).not.toContain('already has a visit booked');
+  });
 });
+
