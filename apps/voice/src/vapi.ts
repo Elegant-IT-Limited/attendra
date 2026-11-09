@@ -331,6 +331,8 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
       const lines = m.artifact?.messages ?? [];
       sync(s, lines);
       s.closed = true;
+      // a change waiting for a yes when the call ended becomes a request for the team (note 45, A4), as on our engines
+      await s.agent.onCallEnd();
       // the waits for an answer that needed our tools, and the first audio, from Vapi's own times: as exact as our engines'
       for (const w of vapiAnswerWaits(lines)) s.agent.recordAnswerTiming({ ...w, flow: 'tools' });
       const recorder = deps.recorderFor(s.clinicId, s.callId);

@@ -88,7 +88,8 @@ export class CallRunner {
   /** Delegations still running: the agent says "still checking" for those itself. */
   private pending = 0;
   /** A transfer or a hang-up is on its way: the assistant is meant to be quiet. */
-  private ending = false;
+  /** A transfer or hang-up on its way (one at a time), by kind; null when none is. */
+  private ending: 'transfer' | 'hangup' | null = null;
   private watchdog: NodeJS.Timeout | null = null;
   /** When the runner started, and whether the silent-start nudge went out. */
   private startedAt = 0;
@@ -180,7 +181,11 @@ export class CallRunner {
         // a socket that drops before session.closed leaves the call without final usage
         // resolve even when the final write fails, or the call never counts as over
         if (!this.closed) {
-          void this.finish('connection_lost', null, `socket closed ${code} before session.closed`)
+          // a call that was already ending normally is not a dropped line: the assistant's hang-up on its way, or the
+          // caller's goodbye before the line went (a test call said "Okay, bye" and was listed as "Connection dropped";
+          // note 45, A6)
+          const normal = this.ending === 'hangup' ? 'agent_hangup' : this.mayEnd() ? 'caller_hangup' : null;
+          void (normal ? this.finish(normal, null) : this.finish('connection_lost', null, `socket closed ${code} before session.closed`))
             .catch((err) => this.log.error({ session_id: this.sessionId, err }, 'closing the call record failed'))
             .finally(resolve);
         }
@@ -439,12 +444,18 @@ export class CallRunner {
         // one call-control action at a time: a second transfer or hang-up while one is on its
         // way would race it (and fail, and tell staff it failed)
         if (this.ending) { this.log.info({ session_id: this.sessionId, action: o.type }, 'a transfer or hang-up is already on its way; this one is dropped'); continue; }
-        this.ending = true;
+        this.ending = o.type;
         const act = () => (o.type === 'transfer' ? this.engine.transfer(this.sessionId, o.uri) : this.engine.hangup(this.sessionId))
           .catch((err) => {
+            // a hang-up the line beat to it: the caller is gone already (OpenAI answers 404 "No session found"). Nothing
+            // failed and nobody is told (note 45, A6: logged as an error after a normal goodbye)
+            if (o.type === 'hangup' && (this.closed || (err as { status?: number }).status === 404)) {
+              this.log.info({ session_id: this.sessionId }, 'the call had already ended before the hang-up');
+              return;
+            }
             this.log.error({ session_id: this.sessionId, err }, `${o.type} failed`);
             // the caller is still there: tell staff, and have the assistant offer a callback
-            this.ending = false;
+            this.ending = null;
             if (!this.closed) return this.dispatch(this.agent.onControlFailed(o.type));
           });
         if (!o.afterMs) { await act(); continue; }
@@ -607,6 +618,8 @@ export class CallRunner {
     if (this.watchdog) clearInterval(this.watchdog);
     await this.flushFinishedTurns(true);
     this.timing();
+    // a change waiting for a yes when the line went becomes a request for the team (note 45, A4), before the outcome is read
+    await this.agent.onCallEnd();
     const state = this.agent.state;
     // a hang-up staff asked for is recorded as theirs; a dropped line is still a dropped line
     if (state.endedByStaff && !note && reason !== 'connection_lost') reason = 'ended_by_staff';

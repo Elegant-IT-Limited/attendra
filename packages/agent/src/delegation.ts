@@ -442,6 +442,37 @@ export class CallAgent {
     if (task.created) this.emit({ type: 'staff', action: 'urgent_request' });
   }
 
+  /**
+   * The call is over: a change read back (or proposed) and never confirmed becomes a request for the team, so a person
+   * finishes it. A test call heard its read-back, said "Okay, bye" (transcribed oddly first) and hung up: no booking and
+   * no request, though the site promises an unfinished request reaches the team (note 45, A4). Once per call; never
+   * thrown into the close, which must still be recorded.
+   */
+  async onCallEnd(): Promise<void> {
+    const s = this.state;
+    const p = s.pending;
+    if (!p || this.unfinishedFiled || s.emergencyLocked) return;
+    this.unfinishedFiled = true;
+    const { clinic } = this.ctx;
+    const callback = this.ctx.callerNumber;
+    try {
+      const task = await this.backend.tasks.create(clinic.id, {
+        type: 'callback', callId: this.ctx.callId, patientId: s.verifiedPatient?.id ?? null, idempotencyKey: `${this.ctx.callId}:unfinished:${p.seq}`,
+        details: {
+          reason: p.readbackAtMs === null
+            ? `The call ended before this was read back and confirmed: ${p.readback}. Call them back to finish it.`
+            : `The call ended after the read-back, without a clear yes: ${p.readback}. Nothing was ${p.kind === 'cancel' ? 'cancelled' : 'booked'}. Call them back to finish it.`,
+          ...(callback ? { callback_number: callback } : {}),
+        },
+      });
+      if (s.outcome === 'abandoned' || s.outcome === 'info') s.outcome = 'task_created';
+      this.log.info({ call_id: this.ctx.callId, kind: p.kind, read_back: p.readbackAtMs !== null, created: task.created }, 'an unfinished change became a request for the team');
+    } catch (err) {
+      this.log.error({ call_id: this.ctx.callId, err }, 'the unfinished change could not be made a request');
+    }
+  }
+  private unfinishedFiled = false;
+
   /** A clear no: the flag clears, the call books as usual with a note for the team, and the caller hears once what to do if it comes back. */
   private clearEmergencyCase(): Outbound[] {
     const s = this.state;
