@@ -67,6 +67,21 @@ export function toolsVoiceStaticPrompt(clinic: ClinicConfig): string {
 }
 
 /**
+ * The prompt of a location's Vapi assistant: the full voice lines (Vapi keeps every line, as GPT-Live does) with nothing
+ * that changes from call to call. The assistant is made once per location, so a caller ID or a date written into it
+ * would be the same on every call: the first phone test (2026-11-09) heard "I don't have your phone number unless you
+ * give it to me" on a call with caller ID, and a search from a date two years back. Each call's own facts (the clinic's
+ * date, the caller ID and the number question) are sent into the call as it opens, as on path A (callFacts).
+ */
+export function toolsVapiPrompt(clinic: ClinicConfig): string {
+  return [
+    ...voiceLines(clinic),
+    'The call facts (today\'s date at the clinic, and whether there is caller ID) come as a message at the start of the call: use them, never a date of your own.',
+    industryPack(clinic.industry).identity === 'pet' ? 'When the caller wants to book, move or cancel a visit, the first question is the number the pet\'s profile is under, in the words the call facts give. A question about the clinic needs no number.' : '',
+  ].filter(Boolean).join('\n');
+}
+
+/**
  * Path A only (gpt-realtime calling our tools; batch 1e, cost per call): the lines and sentences of the shared voice
  * lines whose rule code now enforces on every call, or that another line sent by code already says. They cost tokens on
  * every request of every call and change nothing the model does. Tone, language, the greeting and the word-for-word

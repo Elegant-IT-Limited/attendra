@@ -176,6 +176,40 @@ describe('Vapi calling our tools', () => {
     expect(row).toEqual({ outcome: 'emergency', emergency_flag: true, engine: 'vapi' });
   });
 
+  it('tells the assistant each call\'s own facts as it opens: the clinic\'s date and the caller ID, once (note 45, V1 and V2)', async () => {
+    controls.length = 0;
+    // a phone call with caller ID: the facts go through the control URL as a system message that starts no reply
+    // the vet test clinic: the number question comes with the caller ID's last four digits
+    const c = { id: 'vapi-oak-facts', type: 'inboundPhoneCall', customer: { number: '+13035550147' }, monitor: { controlUrl: CONTROL } };
+    await post({ type: 'status-update', status: 'in-progress', call: c });
+    await post({ type: 'conversation-update', call: c, messages: [{ role: 'bot', message: clinic.greeting, secondsFromStart: 0.5, duration: 3000 }] });
+    const facts = controls.filter((x) => x.body.type === 'add-message');
+    expect(facts).toHaveLength(1);
+    expect(facts[0]!.body.triggerResponseEnabled).toBe(false);
+    const content = String((facts[0]!.body.message as { content: string }).content);
+    expect(content).toMatch(/^Call facts\. Today at the clinic is \w+, \w+ \d+ \(\d{4}-\d{2}-\d{2}\)/);
+    expect(content).toContain('ending 0147');
+    expect(content).not.toContain('no caller ID');
+    // the tools have the caller ID too: a lookup with no number given is under the caller's own
+    const r = resultOf(await post({ type: 'tool-calls', call: c, toolCallList: [{ id: 'f1', function: { name: 'clinic_now', arguments: {} } }] }));
+    expect(r.say ?? '').not.toContain('Call facts');
+    await post({ type: 'end-of-call-report', call: c, endedReason: 'customer-ended-call', durationSeconds: 10 });
+    await t.client.query(`select set_config('app.clinic_id', $1, false)`, [clinic.id]);
+    const [row] = (await t.client.query(`select from_hash is not null as has_from from calls where openai_session_id = 'vapi_vapi-oak-facts'`)).rows;
+    expect(row).toEqual({ has_from: true });
+
+    // no control URL in the messages: the facts go with the first tool result instead, and only once
+    controls.length = 0;
+    const d = { id: 'vapi-oak-facts-2', type: 'inboundPhoneCall', customer: { number: '+13035550148' } };
+    const first = resultOf(await post({ type: 'tool-calls', call: d, toolCallList: [{ id: 'g1', function: { name: 'clinic_now', arguments: {} } }] }));
+    expect(first.say ?? '').toContain('Call facts. Today at the clinic is');
+    expect(first.say ?? '').toContain('ending 0148');
+    const second = resultOf(await post({ type: 'tool-calls', call: d, toolCallList: [{ id: 'g2', function: { name: 'clinic_now', arguments: {} } }] }));
+    expect(second.say ?? '').not.toContain('Call facts');
+    expect(controls).toEqual([]);
+    await post({ type: 'end-of-call-report', call: d, endedReason: 'customer-ended-call', durationSeconds: 5 });
+  });
+
   it('counts the Vapi calls live at once, keeps the day\'s peak and says it once at 70% of the limit', async () => {
     const ids = ['live-1', 'live-2', 'live-3', 'live-4'];
     for (const id of ids) await post({ type: 'status-update', status: 'in-progress', call: { id } }, LOCATION_SECRET, OAK);

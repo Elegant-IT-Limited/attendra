@@ -2,7 +2,7 @@
 import { voiceToolDefinitions } from '@attendra/agent';
 import type { ClinicConfig, VapiVoiceChoice } from '@attendra/core';
 import { createHash } from 'node:crypto';
-import { toolsVoicePrompt } from './tools-prompt';
+import { toolsVapiPrompt } from './tools-prompt';
 
 /**
  * A location's Vapi assistant, built from its settings (batch 6), and the small client that creates it at Vapi. The
@@ -122,7 +122,7 @@ const endpointingFor = (clinic: ClinicConfig) => (clinic.languages.every((l) => 
 
 /**
  * The assistant for a location, from its settings: create and update send the same body, so an update replaces what Vapi
- * had. The prompt and the tools are the tools path's, word for word; the greeting is the location's own (it discloses the
+ * had. The prompt and the tools are the tools path's (the prompt without a call's own facts: toolsVapiPrompt); the greeting is the location's own (it discloses the
  * AI). Recording at Vapi follows the location's own recording setting (off unless it plays a notice).
  */
 export function vapiAssistant(clinic: ClinicConfig, input: VapiAssistantInput) {
@@ -136,7 +136,8 @@ export function vapiAssistant(clinic: ClinicConfig, input: VapiAssistantInput) {
     firstMessageInterruptionsEnabled: VAPI_DEFAULTS.firstMessageInterruptionsEnabled,
     model: {
       ...VAPI_DEFAULTS.model,
-      messages: [{ role: 'system', content: toolsVoicePrompt(clinic, { callerNumber: null }) }],
+      // the same on every call of the location: each call's own facts are sent as it opens (apps/voice vapi.ts)
+      messages: [{ role: 'system', content: toolsVapiPrompt(clinic) }],
       tools: voiceToolDefinitions(clinic).map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: forVapi(t.parameters) }, server })),
     },
     voice: vapiVoice(clinic.vapi?.voice),
