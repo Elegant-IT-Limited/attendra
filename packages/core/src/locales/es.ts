@@ -186,6 +186,7 @@ export const es: LanguagePack = {
   },
   notSeenPet: ({ pet }) => `No veo a ${pet} con ese número.`,
   noPetsOnNumber: 'No veo ninguna ficha con ese número.',
+  numberNotOpened: 'No puedo abrir una ficha con esos datos en esta llamada. Puedo dejarle un mensaje al equipo para que le devuelvan la llamada.',
   lastFourQuestion: ({ after }) => (after === 'no_profile'
     ? '¿Cuáles son los últimos cuatro dígitos del número con el que podría estar la ficha, y el nombre de su mascota? Si es nueva para nosotros, la puedo registrar.'
     : 'Probemos de otra forma. ¿Cuáles son los últimos cuatro dígitos del número con el que está la ficha, y el nombre de su mascota?'),

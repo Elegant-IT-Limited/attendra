@@ -84,8 +84,9 @@ describe('a number from abroad or without its area code is read back once and ke
     const c = await w.call(null, { clinic, channel: 'web' });
     c.caller('Hola, soy Linh, llamo por Biscuit.');
     const out = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: 'Biscuit', phone: '555 0172' } }]);
-    expect(out.errors).toEqual(['not_verified']);
-    expect(say(out)).toContain(PACKS.es.phoneAsGiven({ digits: '555 0172' }));
+    // a short number the caller said, unconfirmed: the one answer, in the caller's language (2026-11-09), never asked again
+    expect(out.errors).toEqual(['number_not_opened']);
+    expect(say(out)).toContain(PACKS.es.numberNotOpened);
     const again = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: 'Biscuit', phone: '555 0172' } }]);
     expect(again.errors).not.toContain('phone_required');
     expect(say(again)).not.toContain(PACKS.es.phoneAsGiven({ digits: '555 0172' }));

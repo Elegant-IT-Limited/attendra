@@ -1272,6 +1272,8 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   if (readBack) return readBack;
   const check = await checkOwner(phone, args.phone, state, ctx, backend, lang);
   if (check) return check;
+  // a spoken number the owner's name has not confirmed: no lookup, so "found", "not found" and "no profile" never differ
+  if (unconfirmedSpokenNumber(phone, args.phone, state, ctx)) return numberNotOpened(lang);
   const found = await findPetOnce(pet, phone, tried, state, ctx, backend);
   if (found.status === 'found') {
     // the result first, in one short sentence, before any times: a caller had to ask "have you found her?" (a test call).
@@ -1344,6 +1346,11 @@ async function whichPet(phone: string, state: CallState, ctx: CallContext, backe
   if (readBack) return readBack;
   const check = await checkOwner(phone, said, state, ctx, backend, lang);
   if (check) return check;
+  // A number the caller SAID (not their caller ID) and not confirmed by the owner's name: nothing from its record is
+  // said, not even its pets' names (the FINAL rule: nothing from a record before the caller is verified). The caller
+  // is asked the pet's name instead. Caller ID, or a name that matches the owner on file, keeps the pick question;
+  // a number with no owner on file has no pets to give away.
+  if (unconfirmedSpokenNumber(phone, said, state, ctx)) return numberNotOpened(lang);
   const known = await knownHousehold(phone, state, ctx, backend);
   const pets = known ?? await backend.patients.petsOnNumber(ctx.clinic.id, phone, ctx.callId);
   // an unknown number: a new owner and a new pet, the usual way
@@ -1369,6 +1376,20 @@ async function whichPet(phone: string, state: CallState, ctx: CallContext, backe
 }
 
 /**
+ * A number the caller said, other than their caller ID, that the owner's name has not confirmed: a name that does not
+ * match, no name given, or no profile on the number at all. All three get the same answer and the same next step
+ * (numberNotOpened, then a request for the team), so a caller can't tell whether a number belongs to a client.
+ */
+function unconfirmedSpokenNumber(phone: string, said: unknown, state: CallState, ctx: CallContext): boolean {
+  const spoken = typeof said === 'string' && said.trim() !== '';
+  if (!spoken || (ctx.callerNumber && samePhone(phone, ctx.callerNumber, ctx.clinic))) return false;
+  return state.memory.verified !== 'name_match';
+}
+
+/** The one answer for an unconfirmed spoken number, whatever is or isn't on file, and the one next step: a request. */
+const numberNotOpened = (lang: CallState['language']) => refuse('number_not_opened', `Say first, in these words: "${PACKS[lang].numberNotOpened}" Then, if they want, take a request for the team to call them back with create_callback (what they want, and the best number to call). Do not look anything up again on this number, and never say a name, a pet or anything else from the records. A new pet is still added with register_patient if the caller says it is new.`);
+
+/**
  * Who the caller is to the number, checked once per number before its records are used (2026-11-14). Caller ID is
  * enough. A number they said is checked against the owner on file by the name they give: "And your name?" is asked once
  * when they have not given one. A match opens the record (the owner's name, the pets' visits). No match still books, as
@@ -1388,7 +1409,9 @@ async function checkOwner(phone: string, said: unknown, state: CallState, ctx: C
   if (m.nameCheck || !backend.patients.ownerMatches) return null;
   const name = m.get('saidName') ?? null;
   const result = await backend.patients.ownerMatches(ctx.clinic.id, phone, name, ctx.callId);
-  if (result === 'name_needed') {
+  // the name is asked on every spoken number, whether or not anyone is on file: a caller can't tell a client's number
+  // from the question (2026-11-09)
+  if (result === 'name_needed' || (result === 'no_owner' && !name)) {
     if (m.nameAskedFor === digits) { m.nameCheck = { digits, result: 'not_given' }; return null; }
     m.nameAskedFor = digits;
     return refuse('owner_check', `Ask, in these words: "${PACKS[lang].yourNameQuestion}" When they answer, call verify_caller again with the same number and owner_name as they said it. Never say a name from the records first, and never say you don't have their name.`);

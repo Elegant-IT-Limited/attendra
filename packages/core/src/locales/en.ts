@@ -167,6 +167,7 @@ export const en: LanguagePack = {
   foundPet: ({ pet, species }) => (species ? `I found ${pet}, your ${species.toLowerCase()}.` : `I found ${pet}.`),
   notSeenPet: ({ pet }) => `I don't see ${pet} under that number.`,
   noPetsOnNumber: "I don't see a profile under that number.",
+  numberNotOpened: "I can't open a profile with those details on this call. I can take a message so the team can call you back.",
   lastFourQuestion: ({ after }) => (after === 'no_profile'
     ? "What are the last four digits of the number the profile might be under, and your pet's name? Or if your pet is new to us, I can add them."
     : "Let's try another way. What are the last four digits of the number the profile is under, and your pet's name?"),

@@ -35,6 +35,78 @@ describe('an owner caller ID knows picks from their pets', () => {
     expect(picked.results[0]!.data).toMatchObject({ verified: true, pet_name: 'Mochi' });
   });
 
+  it('a number the caller SAYS, with a name that is not the owner\'s or no name at all, never names the pets on it (FINAL rule, 2026-11-09)', async () => {
+    for (const lang of ['en', 'es'] as const) {
+      // a wrong name: the check says no match, and the pick question is never asked
+      const wrong = await w.call(null, { clinic, channel: 'web' });
+      if (lang === 'es') wrong.caller('Hola, soy Jordan. Quiero una cita, por favor.');
+      const readBack = await wrong.delegate([{ tool: 'verify_caller', args: { owner_name: 'Jordan Lee', pet_name: null, phone: '720 555 0172' } }]);
+      expect(readBack.errors).toEqual(['confirm_number']);
+      wrong.assistant(lang === 'es' ? '¿Es el 720-555-0172?' : "That's 720-555-0172?");
+      wrong.caller(lang === 'es' ? 'Sí.' : 'Yes.');
+      const out = await wrong.delegate([{ tool: 'verify_caller', args: { owner_name: 'Jordan Lee', pet_name: null, phone: '720 555 0172' } }]);
+      expect(out.errors).toEqual(['number_not_opened']);
+      expect(handed(out)).not.toMatch(/biscuit|mochi|linh/i);
+      expect(out.results[0]!.data.pets_on_number).toBeUndefined();
+      expect(wrong.state.memory.verified).toBeNull();
+      expect(await audited('patient.owner_check.no_match', wrong.callId)).toBe(1);
+      // the pets on the number were never read
+      expect(await audited('patient.pets_on_number.read', wrong.callId)).toBe(0);
+      expect(await audited('patient.household.read.call', wrong.callId)).toBe(0);
+
+      // no name given, even after "And your name?": the same, nothing from the record
+      const nameless = await w.call(null, { clinic, channel: 'web' });
+      await nameless.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: null, phone: '720 555 0172' } }]);
+      nameless.assistant("That's 720-555-0172?");
+      nameless.caller('Yes.');
+      const asked = await nameless.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: null, phone: '720 555 0172' } }]);
+      expect(asked.errors).toEqual(['owner_check']);
+      const still = await nameless.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: null, phone: '720 555 0172' } }]);
+      expect(still.errors).toEqual(['number_not_opened']);
+      expect(handed(still)).not.toMatch(/biscuit|mochi|linh/i);
+      expect(await audited('patient.pets_on_number.read', nameless.callId)).toBe(0);
+    }
+  });
+
+  it('a spoken number with no profile and a client\'s number with a wrong name get the same words and the same next step, EN and ES (2026-11-09)', async () => {
+    for (const lang of ['en', 'es'] as const) {
+      const said = async (phone: string, spoken: string, name: string) => {
+        const c = await w.call(null, { clinic, channel: 'web' });
+        if (lang === 'es') c.caller('Hola, quiero una cita, por favor.');
+        // the name is asked first on both numbers: the question itself tells nothing
+        const first = await c.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: null, phone } }]);
+        expect(first.errors).toEqual(['confirm_number']);
+        c.assistant(lang === 'es' ? `¿Es el ${spoken}?` : `That's ${spoken}?`);
+        c.caller(lang === 'es' ? 'Sí.' : 'Yes.');
+        const asked = await c.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: null, phone } }]);
+        expect(asked.errors).toEqual(['owner_check']);
+        expect(handed(asked)).toContain(PACKS[lang].yourNameQuestion);
+        const out = await c.delegate([{ tool: 'verify_caller', args: { owner_name: name, pet_name: null, phone } }]);
+        // a pet named straight away gets the same answer too, with nothing looked up
+        const named = await c.delegate([{ tool: 'verify_caller', args: { owner_name: name, pet_name: 'Biscuit', phone } }]);
+        // the next step is a request for the team, which goes through
+        const request = await c.delegate([{ tool: 'create_callback', args: { reason: 'wants a check-up', callback_number: null, topic: null } }]);
+        return { c, out, named, request };
+      };
+      const client = await said('720 555 0172', '720-555-0172', 'Jordan Lee');
+      const stranger = await said('720 555 0199', '720-555-0199', 'Jordan Lee');
+      for (const r of [client, stranger]) {
+        expect(r.out.errors).toEqual(['number_not_opened']);
+        expect(r.named.errors).toEqual(['number_not_opened']);
+        expect(handed(r.out)).toContain(PACKS[lang].numberNotOpened);
+        expect(handed(r.out)).toContain('create_callback');
+        expect(handed(r.out)).not.toMatch(/biscuit|mochi|linh|don't see|no veo/i);
+        expect(r.request.errors).toEqual([null]);
+        expect(r.c.state.verifiedPatient).toBeNull();
+      }
+      // word for word the same, both answers
+      expect(handed(client.out)).toBe(handed(stranger.out));
+      expect(handed(client.named)).toBe(handed(stranger.named));
+      // and the client's pets were never read
+      expect(await audited('patient.pets_on_number.read', client.c.callId)).toBe(0);
+    }
+  });
+
   it('asks in Spanish on a Spanish call', async () => {
     const c = await w.call(LINH, { clinic });
     c.caller('Hola, buenos días, soy Linh. Quiero una cita, por favor.');
@@ -66,15 +138,16 @@ describe('an owner caller ID knows picks from their pets', () => {
     expect(web.state.memory.verified).toBe('name_match');
     expect(await audited('patient.household.read.call', web.callId)).toBe(1);
     expect(await audited('patient.owner_check.match', web.callId)).toBe(1);
-    // a number with nothing on it: the plain question, no name
+    // a number with nothing on it, said by the caller: the same answer as a client's number with a name that does not
+    // match, so a caller can't tell which numbers are clients' (2026-11-09)
     const unknown = await w.call(null, { clinic, channel: 'web' });
     await unknown.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: null, phone: '720 555 0199' } }]);
     unknown.assistant("That's 720-555-0199?");
     unknown.caller('Yes, that is right.');
     const none = await unknown.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: null, phone: '720 555 0199' } }]);
-    expect(none.errors).toEqual(['no_pets_on_number']);
-    expect(handed(none)).toContain("I don't see a profile under that number.");
-    expect(handed(none)).not.toMatch(/biscuit|mochi/i);
+    expect(none.errors).toEqual(['number_not_opened']);
+    expect(handed(none)).toContain(PACKS.en.numberNotOpened);
+    expect(handed(none)).not.toMatch(/biscuit|mochi|don't see a profile/i);
   });
 
   it('a number is one household: whoever calls from it hears every pet on it, whatever name they give, and the owner\'s name never unlocks or blocks a pet', async () => {

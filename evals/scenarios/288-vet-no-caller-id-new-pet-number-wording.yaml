@@ -12,7 +12,7 @@ turns:
     delegate:
       - register_patient: { pet_name: Nova, owner_name: null, species: null, sex: null, birthday_or_age: null, phone: null }
   - caller: It's 303 555 0187.
-    reply: "And your first name?"
+    reply: "And your name?"
     delegate:
       - register_patient: { pet_name: Nova, owner_name: null, species: null, sex: null, birthday_or_age: null, phone: "303 555 0187" }
   - caller: Sam.
@@ -31,7 +31,7 @@ turns:
 expect:
   outcome: booked
   verified: true
-  refusals: [phone_required, owner_name]
+  refusals: [phone_required, owner_check]
   bookings_created: 1
   sms_sent: 0
   spoken_contains: ["What phone number is your pet's profile under?"]
