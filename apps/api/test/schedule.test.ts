@@ -123,6 +123,25 @@ describe('reading', () => {
     expect(moving.json().slots.map((s: { startsAt: string }) => s.startsAt)).toContain(at('2026-09-29', '09:00'));
   });
 
+  it('with a patient, never offers a time they are already booked at with another provider, except the visit being moved', async () => {
+    // the setup visit: James with Dr. Okafor on Tuesday at 9:00. Dr. Lindqvist is free then
+    const at9 = at('2026-09-29', '09:00');
+    const starts = async (extra: string) => (await api.request('GET', `${C}/slots?visitTypeId=vt_sick&providerId=prov_lindqvist&from=2026-09-29&days=1${extra}`, { cookie: as.staff })).json().slots.map((s: { startsAt: string }) => s.startsAt) as string[];
+    expect(await starts('')).toContain(at9);
+    // the desk's Move picker and New booking ask with the patient: the time they are already booked at is not offered
+    // (it was, and the move was then refused as patient_busy)
+    expect(await starts(`&patientId=${api.patientIds.james}`)).not.toContain(at9);
+    // moving that very visit: its own time is free for it, with any provider
+    const moving = await starts(`&patientId=${api.patientIds.james}&excluding=${booked}`);
+    expect(moving).toContain(at9);
+    // with any provider, none of the times offered overlaps the visit they already have (reads only: later tests count
+    // the bookings, moves and audit rows)
+    const offered = (await api.request('GET', `${C}/slots?visitTypeId=vt_sick&from=2026-09-29&days=1&patientId=${api.patientIds.james}`, { cookie: as.staff })).json().slots as { startsAt: string; endsAt: string }[];
+    expect(offered.length).toBeGreaterThan(0);
+    const end9 = new Date(Date.parse(at9) + 20 * 60_000).getTime();
+    expect(offered.filter((s) => Date.parse(s.startsAt) < end9 && Date.parse(s.endsAt) > Date.parse(at9))).toEqual([]);
+  });
+
   it('reads a month view: six weeks in one request', async () => {
     const res = await api.request('GET', `${C}?from=2026-09-28&days=42`, { cookie: as.staff });
     expect(res.statusCode).toBe(200);

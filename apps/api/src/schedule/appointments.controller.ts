@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ageOn, bookingOf, ClinicConfig, DESK_LEAD_MINUTES, DESK_STATUS_REFUSED, type EventSink, localDateOf, normalizeName, strandedReason, zonedInstant } from '@attendra/core';
+import { addDays, ageOn, bookingOf, type BusyInterval, ClinicConfig, DESK_LEAD_MINUTES, DESK_STATUS_REFUSED, type EventSink, localDateOf, normalizeName, strandedReason, zonedInstant } from '@attendra/core';
 import { appointmentFacts, type Database, type FrontDeskRepository, nameMatches, type ScheduleEntry, type ScheduleRepository } from '@attendra/db';
 import { openSlots, type SlotProblem, type StaffChange, type StaffScheduler, type StatusChange } from '@attendra/scheduling';
 import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
@@ -104,9 +104,14 @@ export class AppointmentsController {
     const fit = q.patientId ? await this.desk.bookingFit(clinicId, q.patientId) : null;
     if (q.patientId && !fit) throw this.invalid('patientId', 'unknown patient');
     const from = q.from && q.from > today ? q.from : today;
-    const busy = await this.desk.busy(clinicId, {
-      from: zonedInstant(from, '00:00', clinic.timezone), to: zonedInstant(addDays(from, q.days), '00:00', clinic.timezone), except: q.excluding,
-    });
+    const range = { from: zonedInstant(from, '00:00', clinic.timezone), to: zonedInstant(addDays(from, q.days), '00:00', clinic.timezone), except: q.excluding };
+    const busy: BusyInterval[] = await this.desk.busy(clinicId, range);
+    // the patient's own other visits hold those times with every provider: a time offered here is one the booking or the
+    // move then accepts (the Move picker offered a time the patient was already booked at with another doctor, and the
+    // move was refused as patient_busy)
+    if (q.patientId) {
+      for (const v of await this.desk.patientBusy(clinicId, q.patientId, range)) for (const p of clinic.providers) busy.push({ providerId: p.id, start: v.start, end: v.end });
+    }
     // every opening in the days asked for: the picker shows them by day, and a cap would drop the last days
     const slots = openSlots(clinic, busy, { visitTypeId: q.visitTypeId, providerId: q.providerId, from, days: q.days, partOfDay: q.partOfDay, now, limit: 5000,
       patient: fit ? { age: ageOn(fit.dob, today), isNew: fit.isNew } : undefined });
