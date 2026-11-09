@@ -35,6 +35,11 @@ describe('a booking on the tools path', () => {
     const clock = await tool('clinic_now');
     expect(clock).toMatchObject({ ok: true, outcome: 'ok', data: { zone: 'America/Denver', afterHours: 'book', visitsNow: 'book' } });
     expect(clock.spoken).toMatch(/clinic time \(M[DS]T\)/);
+    // "is the clinic open tomorrow?": each of the next days answers yes or no with its hours (note 45, A1)
+    const days = (clock.data as { days: { date: string; open: boolean; answer: string }[] }).days;
+    expect(days).toHaveLength(8);
+    expect(days[1]!.answer).toMatch(/^(Yes, the clinic is open tomorrow, \w+, \w+ \d+, from |No, the clinic is closed tomorrow, )/);
+    expect(clock.say).toContain('say that day\'s answer from days as written');
 
     // the number first, read back before it is searched
     const asked = await tool('verify_caller', { owner_name: null, pet_name: 'Biscuit', phone: '720 555 0172' });

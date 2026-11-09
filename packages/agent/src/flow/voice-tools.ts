@@ -9,7 +9,7 @@ import type { CallState } from '../call-state';
 export const CLINIC_NOW = {
   type: 'function' as const,
   name: 'clinic_now',
-  description: 'The clinic\'s local time, date and time zone, whether it is open now, when it closes or next opens, and whether a visit can be booked right now or is taken as a request for the team. Call it before saying anything about the time, the day, opening hours today, or "good morning/afternoon/evening" after the greeting. Never say the clinic is open or closed without it.',
+  description: 'The clinic\'s local time, date and time zone, whether it is open now, when it closes or next opens, and whether a visit can be booked right now or is taken as a request for the team. Call it before saying anything about the time, the day, opening hours today, or "good morning/afternoon/evening" after the greeting. Never say the clinic is open or closed without it. Its days list answers "is the clinic open <day>?" for the next days, today first, holidays and special days included.',
   strict: true,
   parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
 };

@@ -77,6 +77,10 @@ describe('Vapi per location (provisioning)', () => {
     const secret = assistant.server.headers['x-vapi-secret']!;
     expect(secret.length).toBeGreaterThanOrEqual(40);
     expect(assistant.model.tools.every((t) => t.server.headers['x-vapi-secret'] === secret)).toBe(true);
+    // the same on every call: no caller ID claim and no date written in (each call's own facts come as it opens; note 45)
+    const prompt = assistant.model.messages[0]!.content;
+    expect(prompt).not.toMatch(/no caller ID|Caller ID shows|Today at the clinic is|\d{4}-\d{2}-\d{2}/);
+    expect(prompt).toContain('The call facts (today\'s date at the clinic, and whether there is caller ID) come as a message at the start of the call');
     expect(assistant.voice).toEqual({ provider: 'vapi', voiceId: 'Elliot' });
     expect(assistant.serverMessages).toEqual(['conversation-update', 'end-of-call-report', 'status-update']);
     expect(vapi.sent.find((s) => s.op === 'createPhoneNumber')!.body).toEqual({ provider: 'byo-phone-number', credentialId: 'cred_twilio_vapi', number: NUMBER, numberE164CheckEnabled: true, assistantId: 'asst_1', name: `Attendra ${C}` });

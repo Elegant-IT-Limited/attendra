@@ -92,3 +92,21 @@ describe('"next Wednesday" said on a Monday', () => {
     expect(String(data(slots).say_as)).toMatch(/^On Wednesday, September 30, I have/);
   });
 });
+
+describe('a day already gone (note 45, V2: a Vapi call searched from June 7, 2024 and booked the wrong day)', () => {
+  it('is refused with the clinic\'s today, never searched or said, and every search says today\'s date', async () => {
+    const c = await w.call('+17205550172', { clinic });
+    c.caller('Can I bring Biscuit in tomorrow afternoon?');
+    const past = await c.delegate([
+      { tool: 'verify_caller', args: { owner_name: null, pet_name: 'Biscuit', phone: null } },
+      { tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2024-06-07', part_of_day: 'afternoon', from_time: null } },
+    ]);
+    expect(data(past, 1).error).toBe('date_in_past');
+    expect(String(data(past, 1).say)).toContain('Today at the clinic is Monday, September 28 (2026-09-28), so 2024-06-07 has already gone.');
+    expect(JSON.stringify(data(past, 1))).not.toMatch(/fully booked|June 7/);
+    expect(c.state.offered.size).toBe(0);
+    const next = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2026-09-29', part_of_day: 'afternoon', from_time: null } }]);
+    expect(data(next).today).toBe('Monday, September 28 (2026-09-28)');
+    expect((data(next).slots as unknown[]).length).toBeGreaterThan(0);
+  });
+});

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { voiceToolDefinitions } from '@attendra/agent';
-import { type ClinicConfig, DEFAULT_VOICE, industryPack, REALTIME_VOICES, type VoiceFlow } from '@attendra/core';
+import { type ClinicConfig, DEFAULT_VOICE, industryPack, PACKS, REALTIME_VOICES, type VoiceFlow } from '@attendra/core';
 import OpenAI from 'openai';
 import { OpenAIRealtimeWS } from 'openai/realtime/ws';
 import type { CallOptions, Sideband, SidebandCommand, SidebandEvent, VoiceEngine } from './engine';
@@ -98,6 +98,18 @@ export const TOOLS_TRUNCATION = { type: 'retention_ratio' as const, retention_ra
  */
 /** The model that writes down the caller's words on these calls. */
 const TRANSCRIBE_MODEL = 'gpt-4o-transcribe';
+
+/**
+ * How the caller's words are written down: in the clinic's own languages only. Left to guess, the transcription of an
+ * English speaker drifted into five other languages on a test call (note 45, A2), and our rules read
+ * those words: "yes" was heard as "Ja, ok" and the booking never got its clear yes. One language is fixed; a clinic that
+ * also speaks Spanish gets both named (the transcriber takes one language code, so the two go in its prompt).
+ */
+export function transcriptionFor(clinic: Pick<ClinicConfig, 'languages'>): { model: string; language?: string; prompt?: string } {
+  const langs = [...new Set(clinic.languages)];
+  if (langs.length === 1) return { model: TRANSCRIBE_MODEL, language: langs[0] };
+  return { model: TRANSCRIBE_MODEL, prompt: `A phone call to a clinic. The caller speaks ${langs.map((l) => PACKS[l].name).join(' or ')}, nothing else.` };
+}
 
 /** A Realtime reply's usage, as response.done reports it. */
 interface RealtimeUsage {
@@ -228,7 +240,7 @@ export class RealtimeEngine implements VoiceEngine {
       audio: {
         // on the tools path the reply is a tool call away, so the turn ends sooner: semantic_vad at high eagerness answers
         // once the caller has clearly finished, instead of waiting out a longer pause (real-audio runs, batch 1a)
-        input: { transcription: { model: TRANSCRIBE_MODEL }, turn_detection: tools ? TOOLS_TURNS : { type: 'semantic_vad' as const } },
+        input: { transcription: transcriptionFor(clinic), turn_detection: tools ? TOOLS_TURNS : { type: 'semantic_vad' as const } },
         output: { voice: voiceFor(clinic.voice) },
       },
       tools: tools ? realtimeTools(clinic) : [ASK_BACKEND],

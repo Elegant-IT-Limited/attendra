@@ -716,6 +716,13 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       }
       const now = ctx.now();
       const today = localDateOf(now, clinic.timezone);
+      // the clinic's today, in every answer, so no model counts days from a calendar of its own
+      const todayIs = `${PACKS.en.fullDay(today)} (${today})`;
+      // a day already gone is never searched from: a model with no date of its own (a Vapi call, 2026-11-09) searched
+      // from a day two years back, heard "fully booked on Friday, June 7" and booked the wrong day
+      if (args.from_date && String(args.from_date) < today) {
+        return refuse('date_in_past', `Today at the clinic is ${todayIs}, so ${String(args.from_date)} has already gone. Work out the day the caller meant counting from today (clinic_now's days list has the dates) and call find_slots again with it, or with from_date null for the next openings. Never say a past date to the caller.`);
+      }
       // "next Wednesday" said early in a week could be this week's or the next: asked once, never guessed
       const said = state.memory.fact('day');
       if (said?.source === 'caller' && said.value && 'either' in said.value && !state.memory.whichWeekAsked
@@ -830,7 +837,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
           // what is said before the read-back: the front-desk sentence for a time the vet keeps while the desk is closed
           const before = frontDeskLine(clinic, [exact], lang);
           if (proposed.ok) {
-            return { ok: true, data: { slots: found, proposed_slot_id: exact.id, ...(near ? { exact: { time: near.time, free: !!exactSlot } } : {}), ...proposed.data,
+            return { ok: true, data: { today: todayIs, slots: found, proposed_slot_id: exact.id, ...(near ? { exact: { time: near.time, free: !!exactSlot } } : {}), ...proposed.data,
               ...(before && typeof proposed.data.spoken === 'string' ? { spoken: `${before} ${proposed.data.spoken}`, say: `Say first, in these words: "${before}" Then: ${String(proposed.data.say)}` } : {}) } };
           }
         }
@@ -838,6 +845,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       return {
         ok: true,
         data: {
+          today: todayIs,
           slots: found,
           // the times in the caller's language, each day said once with its full date
           ...(sayAs.length ? { say_as: sayAs.join(' ') } : {}),
