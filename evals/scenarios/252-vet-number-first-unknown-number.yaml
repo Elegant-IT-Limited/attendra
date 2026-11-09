@@ -1,11 +1,11 @@
 id: vet-number-first-unknown-number
-title: 'Number first: a number with nothing on it is said so, then a new owner and pet are added the usual way and booked'
+title: 'Number first: a number with nothing on it is asked the name like any number (never told "no profile", 2026-11-09), then a new owner and pet are added the usual way and booked'
 clinic: riverbend
 local_time: "10:00"
 caller_number: null
 channel: web
 tags: [no-demo, number-first]
-facts: "A browser test call, no caller ID. You are Sam Rivera. Asked for a number, give only 720 555 0186 and nothing else; say yes when it is read back. When told there is no profile, say your dog Rex is new, male and three years old. Any time works. Say yes to the first time and the read-back."
+facts: "A browser test call, no caller ID. You are Sam Rivera. Asked for a number, give only 720 555 0186 and nothing else; say yes when it is read back. When asked your name, give it and say your dog Rex is new, male and three years old. Any time works. Say yes to the first time and the read-back."
 turns:
   - caller: Hi, I'd like to book a check-up for my dog.
     reply: "Sure. What phone number is your pet's profile under?"
@@ -15,7 +15,7 @@ turns:
       - verify_caller: { owner_name: null, pet_name: null, phone: "720 555 0186" }
   - assistant: "That's 720-555-0186?"
   - caller: Yes.
-    reply: "I don't see a profile under that number. What's your dog's name, and is he new to us?"
+    reply: "And your name?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: null, phone: "720 555 0186" }
   - caller: Rex, he's new. I'm Sam Rivera, he's three.
@@ -34,7 +34,8 @@ turns:
 expect:
   outcome: booked
   verified: true
-  refusals: [confirm_number, no_pets_on_number]
+  refusals: [confirm_number, owner_check]
   bookings_created: 1
-  returned: ["That's 720-555-0186?", "I don't see a profile under that number."]
+  returned: ["That's 720-555-0186?", "And your name?"]
+  never_returned: ["I don't see a profile under that number."]
   household: { phone: "+17205550186", names: [Rex] }

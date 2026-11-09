@@ -103,12 +103,22 @@ describe('after two wrong read-backs', () => {
 });
 
 describe('a number with no profile', () => {
-  it('says so, then asks for the last four digits and the pet\'s name, or offers to add a new pet', async () => {
+  it('said by the caller: the name is asked as on any number, then the same answer as a client\'s number with a wrong name, and no second way (2026-11-09)', async () => {
     const c = await w.call(null, { clinic, channel: 'web' });
     await c.delegate([verify('720 555 0190')]);
     c.assistant("That's 720-555-0190?");
     c.caller('Yes.');
-    const out = await c.delegate([verify('720 555 0190')]);
+    const asked = await c.delegate([verify('720 555 0190')]);
+    expect(asked.errors).toEqual(['owner_check']);
+    const out = await c.delegate([{ ...verify('720 555 0190'), args: { ...verify('720 555 0190').args, owner_name: 'Jordan Lee' } }]);
+    expect(out.errors).toEqual(['number_not_opened']);
+    expect(said(out)).not.toContain("I don't see a profile under that number.");
+    expect(c.state.lastFourAsked).toBeNull();
+  });
+
+  it('on caller ID: says so, then asks for the last four digits and the pet\'s name, or offers to add a new pet', async () => {
+    const c = await w.call('+17205550190', { clinic });
+    const out = await c.delegate([verify(null)]);
     expect(out.errors).toEqual(['no_pets_on_number']);
     expect(said(out)).toContain("I don't see a profile under that number.");
     expect(said(out)).toContain('What are the last four digits of the number the profile might be under');

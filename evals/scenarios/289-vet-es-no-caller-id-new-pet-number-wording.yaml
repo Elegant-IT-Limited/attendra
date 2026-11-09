@@ -32,7 +32,7 @@ expect:
   outcome: booked
   verified: true
   language: es
-  refusals: [phone_required, owner_name]
+  refusals: [phone_required, owner_check]
   bookings_created: 1
   sms_sent: 0
   spoken_contains: ["¿Con qué número de teléfono está registrada la ficha de su mascota?"]

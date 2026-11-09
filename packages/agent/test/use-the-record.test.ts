@@ -63,44 +63,37 @@ describe('a number the caller says', () => {
     expect(c.state.memory.verified).toBe('name_match');
   });
 
-  it('a name that does not match still books, says nothing from the record, and notes who booked it', async () => {
+  it('a name that does not match says nothing from the record and books nothing: the same answer as no profile, then a request for the team (2026-11-09)', async () => {
     const c = await onWeb();
     await c.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: null, phone: '720 555 0172' } }]);
     c.assistant('And your name?');
     c.caller('Alex.');
     const pick = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Alex', pet_name: null, phone: '720 555 0172' } }]);
-    expect(pick.results[0]!.data).toMatchObject({ pets_on_number: ['Biscuit', 'Mochi'] });
-    expect(handed(pick)).not.toMatch(/linh|nguyen|thanks,/i);
+    expect(pick.errors).toEqual(['number_not_opened']);
+    expect(pick.results[0]!.data.pets_on_number).toBeUndefined();
+    expect(handed(pick)).not.toMatch(/linh|nguyen|thanks,|biscuit|mochi/i);
     c.caller('Biscuit.');
-    const found = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Alex', pet_name: 'Biscuit', phone: '720 555 0172' } }]);
-    expect(found.results[0]!.data).toMatchObject({ verified: true, pet_name: 'Biscuit' });
-    // nothing from the record
+    // the pet named is not looked up: "found" and "not found" never differ on a number the name has not confirmed
+    const named = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Alex', pet_name: 'Biscuit', phone: '720 555 0172' } }]);
+    expect(named.errors).toEqual(['number_not_opened']);
+    expect(c.state.verifiedPatient).toBeNull();
     const visits = await c.delegate([{ tool: 'visit_summary', args: {} }]);
     expect(visits.errors).toEqual(['not_verified']);
     expect(handed(visits)).not.toMatch(/linh|ruiz|last visit/i);
-    // still books, with a note for the team
-    c.caller('Wednesday morning please.');
-    const slots = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2026-09-30', part_of_day: 'morning' } }]);
-    const slot = (slots.results[0]!.data.slots as { slot_id: string }[])[0]!.slot_id;
-    await c.delegate([{ tool: 'propose_booking', args: { slot_id: slot, replaces_appointment_id: null } }]);
-    c.readBack('Shall I book it?');
-    c.caller('Yes.');
-    const booked = await c.delegate([{ tool: 'commit_pending', args: {} }]);
-    expect(booked.results[0]!.data.booked).toBe(true);
-    expect(handed(booked)).not.toMatch(/linh/i);
-    const [row] = (await w.t.owner.execute(sql`select note_enc from appointments where created_by_call_id = ${c.callId}`)).rows as { note_enc: string | null }[];
-    expect(row!.note_enc).not.toBeNull();
-    expect(cipher.decrypt(row!.note_enc!, phiContext(clinic.id, 'appointments.note'))).toBe('booked by caller: Alex');
+    // the request for the team goes through
+    const request = await c.delegate([{ tool: 'create_callback', args: { reason: 'wants a check-up for Biscuit', callback_number: null, topic: null } }]);
+    expect(request.errors).toEqual([null]);
     expect(c.state.memory.verified).toBeNull();
   });
 
-  it('a caller who does not give a name is asked once, then helped without the record', async () => {
+  it('a caller who does not give a name is asked once, then gets the same answer as any unconfirmed number (2026-11-09)', async () => {
     const c = await onWeb();
     const asked = await c.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: 'Biscuit', phone: '720 555 0172' } }]);
     expect(asked.errors).toEqual(['owner_check']);
     c.caller('Why do you need that? It\'s for Biscuit.');
     const out = await c.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: 'Biscuit', phone: '720 555 0172' } }]);
-    expect(out.errors).toEqual([null]);
+    expect(out.errors).toEqual(['number_not_opened']);
+    expect(c.state.verifiedPatient).toBeNull();
     expect(c.state.memory.nameCheck).toMatchObject({ result: 'not_given' });
     expect((await c.delegate([{ tool: 'visit_summary', args: {} }])).errors).toEqual(['not_verified']);
   });

@@ -4,6 +4,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (privacy: a number the caller says)
+
+- **Nothing from a record before the caller is verified, on a number the caller says.** With no matching caller ID, the assistant used to name the pets on a spoken number before the owner's name was checked. Now the owner's name is asked first on every spoken number, whether or not anyone is on file, and only a name that matches the owner on file opens the record. A name that does not match, no name, and a number with no profile all get the same words ("I can't open a profile with those details on this call. I can take a message so the team can call you back." / its Spanish twin) and the same next step, a request for the team, so a caller can't tell whether a number belongs to a client. A pet named on such a number is not looked up. Caller ID still opens the pick question as before; a caller who says the pet is new can still add it.
+
 ### Added (batch 6: Vapi as a location's one-click backup engine; Attendra stays the default)
 
 - **A Vapi assistant per location, built from its settings** (`PUT /api/v1/provisioning/clinics/:clinicId/vapi`, `GET`, `DELETE`): our tools as its function tools, our voice prompt, a secret per location (kept encrypted and as a keyed hash, never shown), the location's own number as a BYO SIP number in Vapi. Every settings save updates the assistant when something it is built from changed. Our tools API still decides every booking, identity check and emergency route.

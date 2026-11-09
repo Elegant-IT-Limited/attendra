@@ -146,6 +146,8 @@ export interface LanguagePack {
   notSeenPet: (v: { pet: string }) => string;
   /** Said first when a number has no pets on file at all: then a new owner and pet the usual way. */
   noPetsOnNumber: string;
+  /** A number the caller said, not confirmed by the owner's name (or with no profile on it): the one answer for both, so a caller can't tell whether the number belongs to a client (2026-11-09). */
+  numberNotOpened: string;
   /**
    * The second way to find a pet's profile, asked once: after two read-backs the caller said were wrong
    * ('wrong_readbacks'), or a number with no profile on it ('no_profile', which also offers to add a new pet). The

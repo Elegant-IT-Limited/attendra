@@ -1,11 +1,11 @@
 id: vet-es-number-first-unknown-number
-title: 'Number first, in Spanish: a number with nothing on it is said so, then a new owner and pet are added and booked'
+title: 'Number first, in Spanish: a number with nothing on it is asked the name like any number (never told "no profile", 2026-11-09), then a new owner and pet are added and booked'
 clinic: riverbend
 local_time: "10:00"
 caller_number: null
 channel: web
 tags: [no-demo, number-first, language, es]
-facts: "Llamada de prueba, sin identificador. Usted es Sam Rivera. Cuando le pidan un número, diga solo 720 555 0187; diga que sí cuando se lo repitan. Cuando le digan que no hay ficha, diga que su perro Rex es nuevo, macho y tiene tres años. Cualquier hora sirve. Diga que sí a la primera hora y a la confirmación."
+facts: "Llamada de prueba, sin identificador. Usted es Sam Rivera. Cuando le pidan un número, diga solo 720 555 0187; diga que sí cuando se lo repitan. Cuando le pregunten su nombre, déselo y diga que su perro Rex es nuevo, macho y tiene tres años. Cualquier hora sirve. Diga que sí a la primera hora y a la confirmación."
 turns:
   - caller: Hola, quiero reservar una revisión para mi perro.
     reply: "Claro. ¿Con qué número de teléfono está registrada la ficha de su mascota?"
@@ -15,7 +15,7 @@ turns:
       - verify_caller: { owner_name: null, pet_name: null, phone: "720 555 0187" }
   - assistant: "¿Es el 720-555-0187?"
   - caller: Sí.
-    reply: "No veo ninguna ficha con ese número. ¿Cómo se llama su perro, y es nuevo con nosotros?"
+    reply: "¿Y su nombre?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: null, phone: "720 555 0187" }
   - caller: Rex, es nuevo. Soy Sam Rivera, tiene tres años.
@@ -34,8 +34,9 @@ turns:
 expect:
   outcome: booked
   verified: true
-  refusals: [confirm_number, no_pets_on_number]
+  refusals: [confirm_number, owner_check]
   bookings_created: 1
   language: es
-  returned: ["¿Es el 720-555-0187?", "No veo ninguna ficha con ese número."]
+  returned: ["¿Es el 720-555-0187?", "¿Y su nombre?"]
+  never_returned: ["No veo ninguna ficha con ese número."]
   household: { phone: "+17205550187", names: [Rex] }

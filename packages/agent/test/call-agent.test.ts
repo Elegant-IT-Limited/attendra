@@ -154,7 +154,8 @@ describe('booking over the phone', () => {
     vet.caller('Yes.');
     for (let i = 0; i < 3; i++) await vet.delegate([{ tool: 'verify_caller', args: { owner_name: 'Jamie Cole', pet_name: 'Pepper', phone: '+17205550165' } }]);
     await vet.delegate([{ tool: 'verify_caller', args: { owner_name: 'jamie cole', pet_name: 'PEPPER', phone: '(720) 555-0165' } }]);
-    expect(vet.state.verifyAttempts).toBe(1);
+    // a number the caller said, with no owner on file to confirm it: never looked up, so no try is used at all (2026-11-09)
+    expect(vet.state.verifyAttempts).toBe(0);
   });
 
   it('tells apart two patients with the same name and DOB by the phone on their file, and never guesses without it', async () => {
@@ -362,7 +363,8 @@ describe('safety', () => {
     c.assistant("That's 720-555-0165?");
     c.caller('Yes.');
     const one = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Jamie', pet_name: 'Pepper', phone: '+17205550165' } }]);
-    expect(one.errors).toEqual(['not_verified']); // looked up (no such pet here), not refused for a missing last name
+    // not refused for a missing last name; the number has no owner on file, so the one answer for an unconfirmed number (2026-11-09)
+    expect(one.errors).toEqual(['number_not_opened']);
     expect(JSON.stringify(one.results)).not.toMatch(/last name/);
   });
 
