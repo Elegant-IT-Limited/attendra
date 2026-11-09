@@ -96,6 +96,10 @@ export class CallState {
   /** Slots the caller has actually been offered. A booking can only use one of these. */
   readonly offered = new Map<string, Slot>();
   pending: PendingChange | null = null;
+  /** The time the caller asked for (HH:MM) that the caller has already heard is not free; null until then (note 45, A3). */
+  askedTimeTold: string | null = null;
+  /** Patients the caller has heard already have a visit booked, before times for another (once each per call). */
+  upcomingSaid = new Set<string>();
   proposals = 0;
   /** Requests the planner has taken on this call: the first one says "One moment." when it has nothing to say after a second. */
   requestsPlanned = 0;

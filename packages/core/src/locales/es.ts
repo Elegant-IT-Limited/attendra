@@ -204,6 +204,8 @@ export const es: LanguagePack = {
     exactFree: ({ date, time, provider }) => { const h = hora(time.hour, time.minute); return `Sí, el ${fullDay(date)} ${h.at} ${h.time} ${partOfDay(time.hour, time.minute)} está libre${provider ? ` con ${provider}` : ''}. ¿Se la reservo?`; },
     notAt: ({ time, day }) => { const h = hora(time.hour, time.minute); return `${mayuscula(h.at)} ${h.time} no, pero el ${fullDay(day.date)} tengo ${horas(day)}.`; },
     nearest: ({ day }) => `Lo más cercano es el ${fullDay(day.date)} ${horas(day)}.`,
+    askedNotFree: ({ time }) => { const h = hora(time.hour, time.minute); return `${mayuscula(h.at)} ${h.time} no hay disponibilidad.`; },
+    alreadyBooked: ({ name, visit, when, provider, more }) => `${name} ya tiene una cita: ${visit}, ${when}${provider ? `, con ${provider}` : ''}${more ? `, y ${more === 1 ? 'una más' : `${more} más`} después` : ''}.`,
     vetHours: ({ provider, weekday, starts, ends }) => (starts
       ? `${provider} empieza ${aLas(starts)} ${losDias(weekday)}.`
       : `${provider} termina ${aLas(ends!)} ${losDias(weekday)}.`),

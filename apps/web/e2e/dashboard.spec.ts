@@ -14,7 +14,7 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     // named for what it holds; Today's Needs attention is a different, wider list
     await expect(page.getByRole('tab', { name: 'Needs attention' })).toHaveCount(0);
     await page.getByRole('tab', { name: 'Emergencies and requests' }).click();
-    await expect(page.locator('tbody tr')).toHaveCount(9); // 6 requests for staff, 3 emergencies
+    await expect(page.locator('tbody tr')).toHaveCount(12); // 9 requests for staff (3 of them unfinished bookings, filed when the call ended), 3 emergencies
   });
 
   test('the Calls outcome filter finds the calls where the caller heard nothing (no_audio)', async ({ browser }) => {

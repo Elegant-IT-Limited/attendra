@@ -289,6 +289,10 @@ export interface SlotLines {
   notAt: (v: { time: Clock; day: OfferDay }) => string;
   /** "The nearest is 9:00 AM on Friday, November 6." */
   nearest: (v: { day: OfferDay }) => string;
+  /** Before a read-back of another time than the one the caller asked for: "9:30 AM isn't free." */
+  askedNotFree: (v: { time: Clock }) => string;
+  /** Before times for a patient who already has one booked: "Biscuit already has a visit booked: wellness exam, ... with Dr. Ruiz." */
+  alreadyBooked: (v: { name: string; visit: string; when: string; provider: string | null; more: number }) => string;
   /** The asked time is outside the vet's hours that day: "Dr. Vance starts at 9 on Fridays." (or "finishes at 6"). */
   vetHours: (v: { provider: string; weekday: number; starts: Clock | null; ends: Clock | null }) => string;
   /**

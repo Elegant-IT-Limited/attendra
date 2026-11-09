@@ -185,6 +185,8 @@ export const en: LanguagePack = {
     exactFree: ({ date, time, provider }) => `Yes, ${timeWords(time)} on ${fullDay(date)} is free${provider ? ` with ${provider}` : ''}. Shall I book it?`,
     notAt: ({ time, day }) => `Not at ${clock12(time.hour, time.minute).hour}:${clock12(time.hour, time.minute).minutes}, but ${dayTimes(day)} on ${fullDay(day.date)}.`,
     nearest: ({ day }) => `The nearest ${day.times.length > 1 ? 'are' : 'is'} ${dayTimes(day)} on ${fullDay(day.date)}.`,
+    askedNotFree: ({ time }) => `${timeWords(time)} isn't free.`,
+    alreadyBooked: ({ name, visit, when, provider, more }) => `${name} already has a visit booked: ${visit}, ${when}${provider ? `, with ${provider}` : ''}${more ? `, and ${more === 1 ? 'one more' : `${more} more`} after it` : ''}.`,
     vetHours: ({ provider, weekday, starts, ends }) => (starts
       ? `${provider} starts at ${hourWords(starts)} on ${WEEKDAYS[weekday]}s.`
       : `${provider} finishes at ${hourWords(ends!)} on ${WEEKDAYS[weekday]}s.`),

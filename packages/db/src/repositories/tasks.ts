@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { AuditLog, TaskQueue, TaskType } from '@attendra/core';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, ne, sql } from 'drizzle-orm';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { auditLogs, calls, clinicCounters, patients, tasks } from '../schema';
@@ -39,6 +39,19 @@ export class PostgresTaskQueue implements TaskQueue {
    * Idempotent: the same key twice returns the first task, so a retried delegation cannot open two refills. The key
    * is looked for before a number is taken, so a retry costs no number; the number and the household go in with the row.
    */
+  /** One open request per caller (the worker's rule, SummaryRepository.openRequestFromSameNumber): for the call's own end. */
+  async openRequestFromSameNumber(clinicId: string, callId: string, now = new Date()): Promise<boolean> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const [call] = await tx.select({ fromHash: calls.fromHash }).from(calls).where(and(eq(calls.clinicId, clinicId), eq(calls.id, callId)));
+      if (!call?.fromHash) return false;
+      const since = new Date(now.getTime() - 14 * 86_400_000);
+      const [row] = await tx.select({ id: tasks.id }).from(tasks).innerJoin(calls, eq(calls.id, tasks.callId))
+        .where(and(eq(tasks.clinicId, clinicId), eq(calls.fromHash, call.fromHash), ne(calls.id, callId), eq(tasks.status, 'open'),
+          inArray(tasks.type, ['follow_up', 'callback']), gt(calls.startedAt, since))).limit(1);
+      return !!row;
+    });
+  }
+
   async create(clinicId: string, input: { type: TaskType; callId: string | null; patientId: string | null; idempotencyKey: string; details: Record<string, string>; urgent?: boolean; origin?: 'emergency' }) {
     return withClinic(this.db, clinicId, async (tx) => {
       const [existing] = await tx.select({ id: tasks.id, number: tasks.number }).from(tasks)

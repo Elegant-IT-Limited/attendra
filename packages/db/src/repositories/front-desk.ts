@@ -694,6 +694,17 @@ export class FrontDeskRepository {
   }
 
   /**
+   * When one patient is already booked in [from, to), other than `except` (the visit being moved): times only, for the
+   * desk's open-slot search, so it never offers a time the booking or the move would then refuse as patient_busy (the
+   * same rule: every status that holds time, any provider). No patient data, so no audit row.
+   */
+  async patientBusy(clinicId: string, patientId: string, q: { from: Date; to: Date; except?: string }): Promise<{ start: Date; end: Date }[]> {
+    return withClinic(this.db, clinicId, (tx) => tx.select({ start: appointments.startsAt, end: appointments.endsAt })
+      .from(appointments).where(and(eq(appointments.clinicId, clinicId), eq(appointments.patientId, patientId), inArray(appointments.status, [...HOLDS_TIME]),
+        lt(appointments.startsAt, q.to), sql`${appointments.endsAt} > ${q.from}`, q.except ? sql`${appointments.id} <> ${q.except}` : undefined)));
+  }
+
+  /**
    * Booked visits that start in [from, to), with their ids and whether they were squeezed in outside the hours: what a
    * change of hours is checked against (strandedReason). No patient data, so no audit row.
    */

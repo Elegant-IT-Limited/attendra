@@ -130,7 +130,11 @@ export function callerContext(history: string | null, industry?: string): string
       : name
         ? `When the caller first says what they need, ask before anything else: "Am I speaking with ${name}?" (in Spanish, "¿Hablo con ${name}?") On a yes, use the name and pass it on to the backend; on a no, ask who they are and never say that name again.`
         : 'You do not know who is calling yet: when it helps, ask for their first name to bring up their details.',
-    `If the caller asks whether you know them or have their history, say yes, you can see they have called before${name ? '' : industry === 'vet' ? ', and ask for the phone number their pet\'s profile is under to bring up their details' : ', and ask for their first name to bring up their details'}. Never say you have no history, no record, or that you just answer calls as they come in. What earlier calls were about is said only after the backend has checked who they are.`,
+    industry === 'vet'
+      // nothing about the records before the number is confirmed: not that this number called before, not that it has
+      // none (a test call heard "Yes, I can see you've called before" before any number was checked; note 45, A5)
+      ? 'If the caller asks whether you know them, whether they have called before or what is on file, say nothing about any record, earlier call or this number until the backend has confirmed the number and found the pet: say you can bring up their details once you have the phone number their pet\'s profile is under, and ask for it. Never say you have no history, no record, or that you just answer calls as they come in.'
+      : `If the caller asks whether you know them or have their history, say yes, you can see they have called before${name ? '' : ', and ask for their first name to bring up their details'}. Never say you have no history, no record, or that you just answer calls as they come in. What earlier calls were about is said only after the backend has checked who they are.`,
   ].join(' ');
 }
 

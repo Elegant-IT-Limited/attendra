@@ -117,6 +117,12 @@ describe('GptLiveEngine browser calls', () => {
     expect(vet).not.toContain('Am I speaking with');
     expect(vet).toContain('the number comes first');
     expect(callerContext('Calls from this number in the last 30 days: 2.', 'vet')).toContain("the phone number their pet's profile is under");
+    // nothing about the records before the number is confirmed (note 45, A5: "Yes, I can see you've called before")
+    for (const v of [vet, callerContext('Calls from this number in the last 30 days: 2.', 'vet')!]) {
+      expect(v).not.toMatch(/say yes|you can see they have called before/);
+      expect(v).toContain('say nothing about any record, earlier call or this number until the backend has confirmed the number');
+      expect(v).toContain('Never say you have no history');
+    }
   });
 
   it('never sends a browser session to the SIP endpoints', async () => {

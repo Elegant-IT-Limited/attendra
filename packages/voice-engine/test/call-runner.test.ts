@@ -435,6 +435,54 @@ it('counts the call as over when the socket drops and the final write fails', as
   await expect(done).resolves.toBeUndefined();
 });
 
+describe('a line that goes after a goodbye (note 45, A6: a caller said "Okay, bye" and the call was listed as "Connection dropped")', () => {
+  const dropping = (hangup: () => Promise<void> = async () => {}) => {
+    const engine = { name: 'fake', accept: vi.fn(), startBrowserCall: vi.fn(), reject: vi.fn(), attach: vi.fn(), transfer: vi.fn(async () => {}), hangup: vi.fn(hangup) } satisfies VoiceEngine;
+    let drop: (code: number) => void = () => {};
+    const sideband: Sideband = { send: vi.fn(), onEvent: () => {}, onError: () => {}, onClose: (h) => { drop = h; }, close: vi.fn() };
+    const lines: { level: string; msg: string }[] = [];
+    const logger = createLogger({ name: 'test', level: 'info', destination: new Writable({ write: (c, _e, done) => { const j = JSON.parse(String(c)) as { level: number | string; msg: string }; lines.push({ level: String(j.level), msg: j.msg }); done(); } }) });
+    const backend = { tasks: { create: vi.fn() }, audit: { record: vi.fn(async () => {}) } };
+    const agent = new CallAgent(new CallState(), { clinic: DEMO_CLINIC, callId: 'call_1', callerNumber: null, now: () => NOW }, backend as never, new ScriptedPlanner([]), logger);
+    const closes: { reason: string }[] = [];
+    const runner = new CallRunner('live_1', engine, sideband, agent, { appendSegment: async () => {}, close: async (c) => { closes.push(c); } }, logger);
+    return { engine, runner, agent, closes, lines, drop: (code: number) => drop(code) };
+  };
+
+  it('is the caller hanging up when their last words were a goodbye', async () => {
+    const h = dropping();
+    const done = h.runner.start();
+    await h.runner.handle(delta('out', 'o1', 'Is there anything else I can help you with?', 1000));
+    await h.runner.handle(delta('in', 'i1', 'No, okay, bye.', 3000));
+    h.drop(1006);
+    await done;
+    expect(h.closes).toEqual([expect.objectContaining({ reason: 'caller_hangup' })]);
+  });
+
+  it('is still a dropped line when nobody was leaving', async () => {
+    const h = dropping();
+    const done = h.runner.start();
+    await h.runner.handle(delta('in', 'i1', 'I wanted to book a visit for', 1000));
+    h.drop(1006);
+    await done;
+    expect(h.closes).toEqual([expect.objectContaining({ reason: 'socket closed 1006 before session.closed' })]);
+  });
+
+  it('a hang-up the line beat to it is no failure: logged as information, and nobody is told', async () => {
+    const gone = Object.assign(new Error('404 No session found for the provided call_id'), { status: 404 });
+    const h = dropping(async () => { throw gone; });
+    const done = h.runner.start();
+    await h.runner.act([{ type: 'hangup' }]);
+    expect(h.engine.hangup).toHaveBeenCalledTimes(1);
+    expect(h.lines.filter((l) => l.level === 'error' || l.level === '50')).toEqual([]);
+    expect(h.lines.some((l) => l.msg === 'the call had already ended before the hang-up')).toBe(true);
+    // and the line that then goes is the assistant's hang-up, not a dropped line
+    h.drop(1006);
+    await done;
+    expect(h.closes).toEqual([expect.objectContaining({ reason: 'agent_hangup' })]);
+  });
+});
+
 describe('the conversation prompt', () => {
   it('sounds like a front desk by default, and follows the clinic\'s pace, style and acknowledgements', () => {
     const plain = conversationPrompt(DEMO_CLINIC, NOW);

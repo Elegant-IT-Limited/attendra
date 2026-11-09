@@ -754,9 +754,13 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if (moving) {
         for (let i = busy.length - 1; i >= 0; i--) if (busy[i]!.providerId === moving.providerId && busy[i]!.start.getTime() === moving.start.getTime()) busy.splice(i, 1);
       }
+      // their visits still to come, other than one booked on this call or the one being moved: said before times for
+      // another (note 45: a pet with a visit booked was offered a second one with no word about the first)
+      const theirs: { id: string; providerId: string; visitTypeId: string; start: Date }[] = [];
       if (patient) {
         for (const a of await backend.scheduler.upcoming(clinic.id, patient.id, now)) {
           if (a.id === moving?.appointmentId) continue;
+          if (a.id !== state.memory.visit?.appointmentId) theirs.push(a);
           for (const p of providers) busy.push({ providerId: p.id, start: a.start, end: a.end });
         }
       }
@@ -807,6 +811,8 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         }
       }
       for (const s of slots) state.offered.set(s.id, s);
+      // the answer leads with "not at 9:30": the read-back need not say it again
+      if (near && !exactSlot) state.askedTimeTold = near.time;
       // a caller who can't pick ("I don't know which time", "no sé qué hora"): the first one, for a yes. Live runs asked
       // them to choose again and again, then took a request or put them through to the desk (batch 1d)
       if (slots.length > 1) note += ` If the caller can't choose ("I don't know which", "any is fine", "no sé"), offer the first time alone, ${when(slots[0]!.start)}, and ask whether to book it; never ask them to pick again.`;
@@ -814,7 +820,21 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const why = whyNot(clinic, { date: args.from_date as string | null, provider: one, providers, noticeHours: visitType.noticeHours, now, today });
       // the answer in the caller's language, the direct one first: "Yes, 4:00 PM ... is free", "Not at 4:00, but 3:50 or 4:20 PM"
       const outside = near && one && !exactSlot ? vetHoursLine(clinic, one, from, near.time, lang, near.direction) : null;
-      const sayAs = [reason?.line, outside, frontDeskLine(clinic, slots, lang)].filter((x): x is string => !!x);
+      // a visit they already have, once per call, before anything else, to a caller the record is open to
+      const next = theirs.sort((a, b) => a.start.getTime() - b.start.getTime())[0];
+      // never on a call about a visit they already have: a move or a cancel (said, or by the model), or their visits just
+      // read out by list_appointments. A move is not a second booking (a new call that moved a pet's visit heard
+      // "already has a visit booked" and "move it instead" in the middle of moving it)
+      const intent = state.memory.get('intent');
+      const aboutTheirVisit = !!moving || intent === 'move' || intent === 'cancel' || state.toolLog.some((t) => t.name === 'list_appointments' && t.ok);
+      const booked = next && patient && !aboutTheirVisit && recordOpen && !state.upcomingSaid.has(patient.id)
+        ? pack.slots.alreadyBooked({ name: patient.firstName, visit: (() => { const v = clinic.visitTypes.find((x) => x.id === next.visitTypeId); return v ? localName(v, lang).toLowerCase() : lang === 'es' ? 'cita' : 'visit'; })(), when: when(next.start), provider: nameOf(next.providerId) ?? null, more: theirs.length - 1 })
+        : null;
+      if (booked && patient) {
+        state.upcomingSaid.add(patient.id);
+        note = `${note} ${patient.firstName} already has a visit booked (the first line of say_as): say it first. If they would rather move that visit than book another, move it with propose_booking and replaces_appointment_id ${next!.id}.`;
+      }
+      const sayAs = [booked, reason?.line, outside, frontDeskLine(clinic, slots, lang)].filter((x): x is string => !!x);
       const askedTime = { hour: Math.floor(target / 60), minute: target % 60 };
       if (slots === anyone && exactSlot) sayAs.push(pack.slots.exactFree({ date: from, time: askedTime, provider: nameOf(exactSlot.providerId) ?? null }));
       else if (slots === anyone && near && sameDay.length) {
@@ -835,7 +855,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         if (exact) {
           const proposed = await runTool('propose_booking', { slot_id: exact.id, replaces_appointment_id: null }, state, ctx, backend, revision);
           // what is said before the read-back: the front-desk sentence for a time the vet keeps while the desk is closed
-          const before = frontDeskLine(clinic, [exact], lang);
+          const before = [booked, frontDeskLine(clinic, [exact], lang)].filter(Boolean).join(' ') || null;
           if (proposed.ok) {
             return { ok: true, data: { today: todayIs, slots: found, proposed_slot_id: exact.id, ...(near ? { exact: { time: near.time, free: !!exactSlot } } : {}), ...proposed.data,
               ...(before && typeof proposed.data.spoken === 'string' ? { spoken: `${before} ${proposed.data.spoken}`, say: `Say first, in these words: "${before}" Then: ${String(proposed.data.say)}` } : {}) } };
@@ -914,6 +934,12 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const shift = replacesStart ? dayShift(replacesStart, slot.start, clinic.timezone, lang) : null;
       const pet = trade.identity === 'pet' ? state.verifiedPatient?.firstName ?? null : null;
       const readback = pack.readbackBooking({ when: when(slot.start), provider, providerKind, visit, replacing, pet, shift });
+      // the caller asked for another time ("9:30") and has not heard it is taken: said first, before the read-back of
+      // the time on offer (a test call asked for 9:30 and heard 9:00 read back with no word about it; note 45, A3)
+      const asked = state.memory.fact('time');
+      const askedTime = asked?.source === 'caller' && (asked.value.mode === 'at' || asked.value.mode === 'around') ? asked.value.time : null;
+      const notFree = askedTime && askedTime !== state.askedTimeTold && toMinutes(askedTime) !== localParts(slot.start, clinic.timezone).minutes
+        ? pack.slots.askedNotFree({ time: { hour: Math.floor(toMinutes(askedTime) / 60), minute: toMinutes(askedTime) % 60 } }) : null;
       // the same change proposed again after it was read back keeps its read-back, so the yes the caller gave still counts
       const same = state.pending;
       if (same?.kind === 'book' && same.slot.id === slot.id && same.replacesAppointmentId === replaces && same.readbackAtMs !== null) {
@@ -937,7 +963,9 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         return { ok: true, data: { say: `The caller already heard this and said yes: ${readback}. Call commit_pending now; do not read it back again.` } };
       }
       if (textNote) TEXT_NOTE_SAID.add(state);
-      return { ok: true, data: { say: textNote ? `Read this back, say "${textNote}", and ask for a clear yes: ${readback}.` : `Read this back and ask for a clear yes: ${readback}.`, spoken: pack.spoken.readback({ readback, textNote, move: !!replaces }) } };
+      if (notFree) state.askedTimeTold = askedTime;
+      const first = notFree ? `Say first, in these words: "${notFree}" Then: ` : '';
+      return { ok: true, data: { say: `${first}${textNote ? `Read this back, say "${textNote}", and ask for a clear yes: ${readback}.` : `Read this back and ask for a clear yes: ${readback}.`}`, spoken: [notFree, pack.spoken.readback({ readback, textNote, move: !!replaces })].filter(Boolean).join(' ') } };
     }
 
     case 'propose_cancellation': {
