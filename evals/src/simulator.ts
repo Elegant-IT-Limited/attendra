@@ -375,6 +375,9 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     }
   }
 
+  // the call is over, as the runner and the Vapi route end it: a change still waiting for a yes becomes a request (note 45, A4)
+  await agent.onCallEnd();
+
   if (opts.record) {
     const transfer = outbound.find((o) => o.type === 'transfer');
     await calls.close(clinic.id, callId, {

@@ -123,8 +123,9 @@ describe('demo calls', () => {
     const open = (await t.db.execute(sql`select type, patient_id from tasks where clinic_id = ${DEMO_CLINIC.id} and status = 'open' and patient_id is not null`)).rows as { type: string; patient_id: string }[];
     const kinds = open.map((r) => `${r.patient_id}|${r.type}`);
     expect(new Set(kinds).size).toBe(kinds.length);
-    // every call that made a request still made it: six refills and callbacks, and one new patient to check
-    expect((await t.db.execute(sql`select count(*)::int as n from tasks where clinic_id = ${DEMO_CLINIC.id}`)).rows[0]).toEqual({ n: 7 });
+    // every call that made a request still made it: six refills and callbacks, one new patient to check, and two
+    // unfinished bookings (a time a caller was not sure about, and a hedge; the same caller's second hedge joins it)
+    expect((await t.db.execute(sql`select count(*)::int as n from tasks where clinic_id = ${DEMO_CLINIC.id}`)).rows[0]).toEqual({ n: 9 });
   });
 
   it('refuses to run on a database that already has real calls', async () => {

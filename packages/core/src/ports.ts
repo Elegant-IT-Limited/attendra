@@ -125,6 +125,11 @@ export interface SchedulerAdapter {
 export type TaskType = 'callback' | 'refill' | 'voicemail' | 'review' | 'follow_up';
 
 export interface TaskQueue {
+  /**
+   * Whether the number this call came from already has an open follow-up or callback request from another call of the
+   * last 14 days: the worker's rule for an unfinished call, one open request per caller (the new call joins it).
+   */
+  openRequestFromSameNumber?(clinicId: string, callId: string, now?: Date): Promise<boolean>;
   create(clinicId: string, input: {
     type: TaskType; callId: string; patientId: string | null; idempotencyKey: string;
     details: Record<string, string>; // stored encrypted; shown to staff, never logged

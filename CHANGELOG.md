@@ -6,7 +6,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Fixed (phone tests, 2026-11-09: calls on our own engine)
 
-- **An unfinished change becomes a request for the team.** A booking or cancellation still waiting for a yes when the call ends is filed as a callback request with its read-back, on our engines and on Vapi; the call counts as a request taken.
+- **An unfinished change becomes a request for the team.** A booking or cancellation still waiting for a yes when the call ends is filed as a follow-up request with its read-back, on our engines and on Vapi; the call counts as a request taken.
 - **A goodbye is a hang-up, not a dropped line.** A line that closes after the caller's goodbye, or while the assistant's hang-up is on its way, is recorded as a normal hang-up; a hang-up the line beat to it is no longer logged as an error.
 - **The time asked for is said to be taken** ("9:30 AM isn't free.") before a read-back of another time.
 - **A visit already booked is said first.** Before times for another visit, the caller hears the visit their pet already has, once per call, with how to move it instead.

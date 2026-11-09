@@ -13,6 +13,7 @@ turns:
     delegate:
       - commit_pending: {}
 expect:
-  outcome: abandoned
+  # nothing booked on "maybe"; the read-back still waiting for a yes when the call ends becomes a request for the team
+  outcome: task_created
   refusals: [no_clear_yes]
   bookings_created: 0

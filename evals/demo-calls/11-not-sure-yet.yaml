@@ -13,6 +13,7 @@ turns:
     delegate:
       - commit_pending: {}
 expect:
-  outcome: abandoned
+  # nothing booked; the time read back and not yet agreed becomes a request for the team when the call ends
+  outcome: task_created
   refusals: [no_clear_yes]
   verified: true

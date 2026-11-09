@@ -33,7 +33,7 @@ describe('a change read back and never confirmed', () => {
     expect(await tasksOf(c.callId)).toEqual([]);
 
     await c.agent.onCallEnd();
-    expect(await tasksOf(c.callId)).toEqual([{ type: 'callback', status: 'open', has_details: true }]);
+    expect(await tasksOf(c.callId)).toEqual([{ type: 'follow_up', status: 'open', has_details: true }]);
     expect(c.state.outcome).toBe('task_created');
     // once: the close may be reached twice (the socket, then the engine's own close)
     await c.agent.onCallEnd();
@@ -64,4 +64,21 @@ describe('a change read back and never confirmed', () => {
     expect(await tasksOf(c.callId)).toEqual([]);
     expect(c.state.outcome).toBe('booked');
   });
+
+  it('joins the request the team already has from this number, one open request per caller', async () => {
+    const c = await w.call('+17205550172', { clinic });
+    c.caller('Can I book Biscuit for a wellness exam on Friday at 3?');
+    const found = await c.delegate([
+      { tool: 'verify_caller', args: { owner_name: null, pet_name: 'Biscuit', phone: null } },
+      { tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: null, part_of_day: 'any', from_time: null } },
+    ]);
+    await c.delegate([{ tool: 'propose_booking', args: { slot_id: (found.results[1]!.data.slots as { slot_id: string }[])[0]!.slot_id, replaces_appointment_id: null } }]);
+    c.readBack('Shall I book it?');
+    c.caller('Let me think about it, bye.');
+    await c.agent.onCallEnd();
+    // the first call's follow-up is still open: this one joins it
+    expect(await tasksOf(c.callId)).toEqual([]);
+    expect(c.state.outcome).toBe('task_created');
+  });
 });
+

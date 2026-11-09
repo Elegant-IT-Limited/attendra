@@ -456,8 +456,17 @@ export class CallAgent {
     const { clinic } = this.ctx;
     const callback = this.ctx.callerNumber;
     try {
+      // one open request per caller, as the worker files them: a caller the team already has an open request from (a
+      // second call about the same thing) joins it. Either way the unfinished change is in the team's queue.
+      if (await this.backend.tasks.openRequestFromSameNumber?.(clinic.id, this.ctx.callId, this.ctx.now())) {
+        if (s.outcome === 'abandoned' || s.outcome === 'info') s.outcome = 'task_created';
+        this.log.info({ call_id: this.ctx.callId, kind: p.kind }, 'an unfinished change joins the request the team already has from this number');
+        return;
+      }
       const task = await this.backend.tasks.create(clinic.id, {
-        type: 'callback', callId: this.ctx.callId, patientId: s.verifiedPatient?.id ?? null, idempotencyKey: `${this.ctx.callId}:unfinished:${p.seq}`,
+        // the worker's own kind and key for a call that ended with the caller's request unfinished: one per call, never a
+        // second callback on top of one the team already has for the patient
+        type: 'follow_up', callId: this.ctx.callId, patientId: s.verifiedPatient?.id ?? null, idempotencyKey: `follow_up:${this.ctx.callId}`,
         details: {
           reason: p.readbackAtMs === null
             ? `The call ended before this was read back and confirmed: ${p.readback}. Call them back to finish it.`
