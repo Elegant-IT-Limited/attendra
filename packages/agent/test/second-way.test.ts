@@ -25,7 +25,7 @@ describe('a spoken country prefix', () => {
     c.caller('Yes.');
     const named = await c.delegate([verify('52 720 555 0174', 'Luna')]);
     expect(named.errors).toEqual(['owner_check']);
-    c.assistant('And your name?');
+    c.assistant('And the owner\'s name on that profile?');
     c.caller('Carmen.');
     const found = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Carmen', pet_name: 'Luna', phone: '52 720 555 0174', phone_last4: null } }]);
     expect(found.errors).toEqual([null]);

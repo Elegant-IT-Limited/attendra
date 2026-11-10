@@ -17,7 +17,7 @@ turns:
       - verify_caller: { owner_name: null, pet_name: null, phone: "303 555 0142" }
   - assistant: "¿Es el 303-555-0142?"
   - caller: Sí.
-    reply: "¿Y su nombre?"
+    reply: "¿Y el nombre del dueño en ese perfil?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: null, phone: "303 555 0142" }
   - caller: Jordan.

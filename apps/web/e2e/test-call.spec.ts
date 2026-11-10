@@ -129,8 +129,11 @@ test('before a call, the page says the limit the API gives: one call\'s, or the 
  * silent stream from WebAudio (no device and no permission, on any machine). The recording is a few known bytes, so a request that carried it would show.
  */
 const RECORDING = 'FAKE-RECORDING-BYTES-5550142';
-async function fakeBrowserCall(page: Page, maxSeconds: number) {
-  await page.addInitScript((bytes) => {
+async function fakeBrowserCall(page: Page, maxSeconds: number, engine: 'gpt-live' | 'realtime' = 'gpt-live') {
+  await page.addInitScript(([bytes, kind]) => {
+    const seen = window as unknown as { __sent: string[]; __peerClosed: boolean };
+    seen.__sent = [];
+    seen.__peerClosed = false;
     class FakeRecorder {
       static isTypeSupported(t: string) { return t === 'audio/webm;codecs=opus'; }
       state: RecordingState = 'inactive';
@@ -148,11 +151,12 @@ async function fakeBrowserCall(page: Page, maxSeconds: number) {
       ontrack: ((e: { streams: MediaStream[] }) => void) | null = null;
       onconnectionstatechange: (() => void) | null = null;
       private stream: MediaStream | null = null;
-      private channel: { readyState: string; onopen: (() => void) | null; onclose: (() => void) | null; onmessage: unknown; send: () => void; close: () => void } | null = null;
+      private channel: { readyState: string; onopen: (() => void) | null; onclose: (() => void) | null; onmessage: ((m: { data: string }) => void) | null; send: (data: string) => void; close: () => void } | null = null;
       addEventListener() {}
       addTrack(_t: MediaStreamTrack, s: MediaStream) { this.stream = s; }
       createDataChannel() {
-        const ch = { readyState: 'connecting', onopen: null as (() => void) | null, onclose: null as (() => void) | null, onmessage: null, send() {},
+        const ch = { readyState: 'connecting', onopen: null as (() => void) | null, onclose: null as (() => void) | null, onmessage: null as ((m: { data: string }) => void) | null,
+          send(data: string) { seen.__sent.push(String(data)); },
           close() { if (ch.readyState === 'closed') return; ch.readyState = 'closed'; setTimeout(() => ch.onclose?.(), 0); } };
         this.channel = ch;
         return ch;
@@ -160,15 +164,44 @@ async function fakeBrowserCall(page: Page, maxSeconds: number) {
       async createOffer() { return { type: 'offer', sdp: 'v=0 offer' }; }
       async setLocalDescription(d: RTCSessionDescriptionInit) { this.localDescription = d; }
       // the assistant's audio is the stand-in microphone played back: enough for the recorder's mix
-      async setRemoteDescription() { setTimeout(() => { this.ontrack?.({ streams: [this.stream!] }); this.channel!.readyState = 'open'; this.channel!.onopen?.(); }, 50); }
-      close() { this.channel?.close(); }
+      async setRemoteDescription() {
+        setTimeout(() => {
+          this.ontrack?.({ streams: [this.stream!] }); this.channel!.readyState = 'open'; this.channel!.onopen?.();
+          // OpenAI's first event on the data channel: GPT-Live says session.started, Realtime session.created
+          this.channel!.onmessage?.({ data: JSON.stringify({ type: kind === 'realtime' ? 'session.created' : 'session.started' }) });
+        }, 50);
+      }
+      close() { seen.__peerClosed = true; this.channel?.close(); }
     }
     Object.assign(window, { MediaRecorder: FakeRecorder, RTCPeerConnection: FakePeer });
     navigator.mediaDevices.getUserMedia = async () => new AudioContext().createMediaStreamDestination().stream;
-  }, RECORDING);
+  }, [RECORDING, engine] as const);
   await page.route('**/api/v1/clinics/*/test-calls', (r) => r.fulfill({ status: 201, json: { callId: 'call_fake_recording', sdp: 'v=0 answer', maxSeconds } }));
   await page.route('**/api/v1/clinics/*/test-calls/*/end', (r) => r.fulfill({ status: 202, json: { ending: true } }));
 }
+
+test('End on a Realtime call asks our API to end it while the line is open, then closes the line, and never sends session.close', async ({ browser }) => {
+  test.slow();
+  const page = await openAs(browser, 'frontdesk', async (p) => { await testCallsOn(p); await fakeBrowserCall(p, 600, 'realtime'); });
+  const clinic = new URL(page.url()).pathname.split('/')[2]!;
+  // the end request is answered a moment later; the line must still be open when it is asked (2026-11-11: the page closed
+  // the line first, and our hang-up found no session)
+  const ends: boolean[] = [];
+  await page.unroute('**/api/v1/clinics/*/test-calls/*/end');
+  await page.route('**/api/v1/clinics/*/test-calls/*/end', async (r) => {
+    ends.push(await page.evaluate(() => (window as unknown as { __peerClosed: boolean }).__peerClosed));
+    await new Promise((done) => setTimeout(done, 300));
+    await r.fulfill({ status: 202, json: { ending: true } });
+  });
+  await openTestCall(page, clinic);
+  await page.getByRole('button', { name: 'Start test call' }).click();
+  await page.getByRole('button', { name: 'End call' }).click();
+  await expect(page.getByRole('button', { name: 'Start test call' })).toBeVisible();
+  // one end request, made while the line was open; the line closed after it; no session.close on a Realtime call
+  expect(ends).toEqual([false]);
+  expect(await page.evaluate(() => (window as unknown as { __peerClosed: boolean }).__peerClosed)).toBe(true);
+  expect(await page.evaluate(() => (window as unknown as { __sent: string[] }).__sent.filter((m) => m.includes('session.close')))).toEqual([]);
+});
 
 test('the recording saves itself to Downloads when the call ends, asks before a reload while recording, and is never uploaded', async ({ browser }) => {
   test.slow();

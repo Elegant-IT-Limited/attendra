@@ -30,8 +30,8 @@ describe('a spoken number is read back before the search', () => {
     // a number said is checked by the caller's name, asked once, before anything from its records is used
     const named = await c.delegate([verify('720 555 0172', 'Biscuit')]);
     expect(named.errors).toEqual(['owner_check']);
-    expect(said(named)).toContain('And your name?');
-    c.assistant('And your name?');
+    expect(said(named)).toContain('And the owner\'s name on that profile?');
+    c.assistant('And the owner\'s name on that profile?');
     c.caller('Linh.');
     const found = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: 'Biscuit', phone: '720 555 0172' } }]);
     expect(found.errors).toEqual([null]);

@@ -50,13 +50,13 @@ describe('a number the caller says', () => {
     return c;
   }
 
-  it('asks "And your name?" once, and a name that sounds like the owner\'s greets them by the name on file', async () => {
+  it('asks "And the owner\'s name on that profile?" once, and a name that sounds like the owner\'s greets them by the name on file', async () => {
     const c = await onWeb();
     const asked = await c.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: null, phone: '720 555 0172' } }]);
     expect(asked.errors).toEqual(['owner_check']);
-    expect(handed(asked)).toContain(PACKS.en.yourNameQuestion);
+    expect(handed(asked)).toContain(PACKS.en.ownerNameQuestion);
     expect(handed(asked)).not.toMatch(/linh|biscuit|mochi/i);
-    c.assistant('And your name?');
+    c.assistant('And the owner\'s name on that profile?');
     c.caller('Lính.');
     const out = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Lính', pet_name: null, phone: '720 555 0172' } }]);
     expect(handed(out)).toContain('Thanks, Linh. Is this for Biscuit or Mochi, or a new pet?');
@@ -66,7 +66,7 @@ describe('a number the caller says', () => {
   it('a name that does not match says nothing from the record and books nothing: the same answer as no profile, then a request for the team (2026-11-09)', async () => {
     const c = await onWeb();
     await c.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: null, phone: '720 555 0172' } }]);
-    c.assistant('And your name?');
+    c.assistant('And the owner\'s name on that profile?');
     c.caller('Alex.');
     const pick = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Alex', pet_name: null, phone: '720 555 0172' } }]);
     expect(pick.errors).toEqual(['number_not_opened']);

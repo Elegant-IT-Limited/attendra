@@ -4,6 +4,14 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (browser test calls, 2026-11-11)
+
+- **Each number a caller says is checked with the owner's name given for that number.** After a number is read back, a veterinary clinic asks "And the owner's name on that profile?" for it when none was given. A pet's name ("Luna Ortiz" for the pet Luna) is never taken for the owner's, and the name checked on an earlier number is not reused for a second household's number unless the caller says it again. Nothing from a record is opened or named before the owner's name matches, and a wrong name still gets the same words as a number with no profile.
+- **A test call the caller ends is a hang-up, not a dropped line.** The dashboard's End (or a closed page) tells the call it was the caller's end, and a browser call waits 2 s for that before calling a close a drop. A Realtime call's socket closes with 1006 however it ends, so every test call ended this way used to be recorded, and alerted, as "dropped".
+- **End works on Realtime test calls.** The page recognises a Realtime session (`session.created`), asks our API to end the call while the line is still open, then closes it. It no longer sends `session.close`, which Realtime refuses, and our hang-up no longer finds the session gone (a 404 that is now logged as information).
+- **A wait for an answer is timed from when the caller stopped speaking**, not from when their words were transcribed. A transcript that arrives after the answer is no stall, and no nudge talks over a reply already given.
+- **A caller's line in a script none of the clinic's languages uses is recorded as "(not understood)"** and never read by the rules that check a yes or an emergency. The transcriber could still write Korean or Japanese with the language set to English.
+
 ### Changed (operations, 2026-11-10: Slack is the pager for alpha)
 
 - **Every call alert can be acted on from a phone.** An alert about a clinic or a call names the clinic (by name, with its id), links the call in the dashboard (`PUBLIC_URL`), and ends with what to do. The steps for every kind live in one place (`packages/observability/src/steps.ts`), and a test checks every alert raised in the code has one.

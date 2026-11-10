@@ -13,10 +13,10 @@ turns:
       - verify_caller: { owner_name: null, pet_name: Luna, phone: "siete dos cero, doble cinco cinco, cero uno siete cuatro" }
   - assistant: "¿Es el 720-555-0174?"
   - caller: Sí.
-    reply: "¿Y su nombre?"
+    reply: "¿Y el nombre del dueño en ese perfil?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: Luna, phone: "720 555 0174" }
-  - assistant: "¿Y su nombre?"
+  - assistant: "¿Y el nombre del dueño en ese perfil?"
   - caller: Carmen Ortiz.
     reply: "Encontré a Luna, su perro."
     delegate:
@@ -26,4 +26,4 @@ expect:
   verified: true
   refusals: [confirm_number, owner_check]
   language: es
-  returned: ["¿Y su nombre?", "¿Es el 720-555-0174?", "Encontré a Luna, su perro."]
+  returned: ["¿Y el nombre del dueño en ese perfil?", "¿Es el 720-555-0174?", "Encontré a Luna, su perro."]

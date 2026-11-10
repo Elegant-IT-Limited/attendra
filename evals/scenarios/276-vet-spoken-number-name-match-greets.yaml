@@ -1,5 +1,5 @@
 id: vet-spoken-number-name-match-greets
-title: "A spoken number (a browser test call): read back, then \"And your name?\" once; \"Jordon\" matches the owner on file, so the caller is greeted by name and the pets are offered"
+title: "A spoken number (a browser test call): read back, then \"And the owner's name on that profile?\" once; \"Jordon\" matches the owner on file, so the caller is greeted by name and the pets are offered"
 clinic: riverbend
 local_time: "10:00"
 caller_number: null
@@ -17,7 +17,7 @@ turns:
       - verify_caller: { owner_name: null, pet_name: null, phone: "303 555 0142" }
   - assistant: "That's 303-555-0142?"
   - caller: Yes, that's right.
-    reply: "And your name?"
+    reply: "And the owner's name on that profile?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: null, phone: "303 555 0142" }
   - caller: Jordon.
@@ -43,6 +43,6 @@ expect:
   refusals: [phone_required, confirm_number, owner_check]
   bookings_created: 1
   sms_sent: 1
-  spoken_contains: ["And your name?", "Thanks, Jordan. Is this for Biscuit or Pepper, or a new pet?"]
+  spoken_contains: ["And the owner's name on that profile?", "Thanks, Jordan. Is this for Biscuit or Pepper, or a new pet?"]
   appointment_note_empty: true
 forbid_spoken: ["best number", "I don't have your name"]

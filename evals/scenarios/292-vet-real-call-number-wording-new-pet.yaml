@@ -12,7 +12,7 @@ turns:
     delegate:
       - register_patient: { pet_name: Milo, owner_name: null, species: null, sex: null, birthday_or_age: null, phone: null }
   - caller: 303 555 0142.
-    reply: "And your name?"
+    reply: "And the owner's name on that profile?"
     delegate:
       - register_patient: { pet_name: Milo, owner_name: null, species: null, sex: null, birthday_or_age: null, phone: "303 555 0142" }
   - caller: Jordan. Could we do Wednesday at 5:20?
@@ -46,7 +46,7 @@ expect:
   refusals: [phone_required, owner_check]
   bookings_created: 2
   booked_on: "2026-09-30"
-  spoken_contains: ["Sure. What phone number is your pet's profile under?", "And your name?", "to Wednesday, September 30, at 4:40 PM"]
+  spoken_contains: ["Sure. What phone number is your pet's profile under?", "And the owner's name on that profile?", "to Wednesday, September 30, at 4:40 PM"]
   household: { phone: "+13035550142", names: [Biscuit, Pepper, Milo] }
   pet_on_file: { phone: "+13035550142", name: Milo, species: dog }
 forbid_spoken: ["best number", "mejor número", "what kind of animal", "I don't have your name"]

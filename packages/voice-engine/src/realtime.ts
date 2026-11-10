@@ -1,6 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { voiceToolDefinitions } from '@attendra/agent';
 import { type ClinicConfig, DEFAULT_VOICE, industryPack, PACKS, REALTIME_VOICES, type VoiceFlow } from '@attendra/core';
+
+/**
+ * What a caller's line becomes when the transcriber wrote it in a script none of the clinic's languages is written in
+ * (2026-11-10: Korean and Japanese lines on an English-only browser test call, the language set to English): kept on
+ * the record as not understood, and never read by the rules that check a yes or an emergency.
+ */
+export const NOT_UNDERSTOOD = '(not understood)';
+
+/** True when most of a line's letters are not Latin, the script every language Attendra speaks (English, Spanish) is written in. */
+export function inAnotherScript(text: string): boolean {
+  const letters = [...text].filter((ch) => /\p{L}/u.test(ch));
+  if (!letters.length) return false;
+  return letters.filter((ch) => /\p{Script=Latin}/u.test(ch)).length / letters.length < 0.5;
+}
 import OpenAI from 'openai';
 import { OpenAIRealtimeWS } from 'openai/realtime/ws';
 import type { CallOptions, Sideband, SidebandCommand, SidebandEvent, VoiceEngine } from './engine';
@@ -223,6 +237,8 @@ export class RealtimeEngine implements VoiceEngine {
   private readonly flows = new Map<string, VoiceFlow>();
   /** Each call's own facts (the clinic's date by the call's clock, the caller ID), said once at the start on the tools path. */
   private readonly facts = new Map<string, string>();
+  /** Each call's clinic languages: a caller's line in another script is not passed on as words. */
+  private readonly languages = new Map<string, readonly string[]>();
 
   /**
    * The planner path: the conversation prompt and one tool, ask_backend. The tools path (batch 1a): the tools prompt
@@ -260,6 +276,7 @@ export class RealtimeEngine implements VoiceEngine {
     this.openings.set(callId, opening ?? openingInstruction(clinic));
     this.voices.set(callId, voiceFor(clinic.voice));
     this.flows.set(callId, opts.flow ?? 'planner');
+    this.languages.set(callId, clinic.languages);
     if (opts.flow === 'tools') this.facts.set(callId, callFacts(clinic, now, opts.callerNumber));
   }
 
@@ -280,6 +297,7 @@ export class RealtimeEngine implements VoiceEngine {
     this.openings.set(callId, openingInstruction(clinic));
     this.voices.set(callId, voiceFor(clinic.voice));
     this.flows.set(callId, opts.flow ?? 'planner');
+    this.languages.set(callId, clinic.languages);
     if (opts.flow === 'tools') this.facts.set(callId, callFacts(clinic, now, opts.callerNumber));
     return { sessionId: callId, sdpAnswer: await res.text() };
   }
@@ -301,6 +319,7 @@ export class RealtimeEngine implements VoiceEngine {
     this.browser.delete(callId);
     this.voices.delete(callId);
     this.flows.delete(callId);
+    this.languages.delete(callId);
     this.facts.delete(callId);
     this.models.delete(callId);
     this.openings.delete(callId);
@@ -415,6 +434,9 @@ export class RealtimeEngine implements VoiceEngine {
           return;
         case 'input_audio_buffer.speech_stopped':
           if (typeof e.item_id === 'string') { const at = spokenAt.get(e.item_id); spokenAt.set(e.item_id, { start: at?.start ?? ms(), end: ms() }); }
+          // the runner times a wait for an answer from here (2026-11-11: timed from the transcript, which can come after
+          // the answer, the nudge talked over a reply already given)
+          emit({ type: 'session.input_speech.stopped', event_id: `${id(e)}_stopped` });
           return;
         case 'input_audio_buffer.committed':
           if (typeof e.item_id === 'string') awaiting.add(e.item_id);
@@ -434,7 +456,10 @@ export class RealtimeEngine implements VoiceEngine {
           if (typeof e.transcript === 'string' && e.transcript.trim()) {
             const at = typeof e.item_id === 'string' ? spokenAt.get(e.item_id) : undefined;
             if (typeof e.item_id === 'string') spokenAt.delete(e.item_id);
-            emit({ type: 'session.input_transcript.delta', event_id: id(e), delta: e.transcript, start_ms: at?.start ?? ms(), end_ms: at?.end ?? ms() });
+            // the clinic's languages are all written in Latin letters: a line in another script is the transcriber's, not
+            // words the rules may read (the language lock asks for English; the transcriber can still write another script)
+            const foreign = this.languages.has(callId) && inAnotherScript(e.transcript);
+            emit({ type: 'session.input_transcript.delta', event_id: id(e), delta: foreign ? NOT_UNDERSTOOD : e.transcript, start_ms: at?.start ?? ms(), end_ms: at?.end ?? ms() });
           }
           return heard(e.item_id);
         case 'conversation.item.input_audio_transcription.failed':

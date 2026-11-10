@@ -51,7 +51,7 @@ describe('a booking on the tools path', () => {
     c.state.addTranscript('caller', ' Hello, are you there?', 99_000, 99_500);
     const named = await tool('verify_caller', { owner_name: null, pet_name: 'Biscuit', phone: '720 555 0172' });
     expect(named.outcome).toBe('owner_check');
-    c.assistant('And your name?');
+    c.assistant('And the owner\'s name on that profile?');
     c.caller('Linh.');
     const found = await tool('verify_caller', { owner_name: 'Linh', pet_name: 'Biscuit', phone: '720 555 0172' });
     expect(found).toMatchObject({ ok: true, outcome: 'found', stage: 'pet_chosen' });

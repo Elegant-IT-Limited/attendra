@@ -37,14 +37,16 @@ export class CallMemory {
   owner: string | null = null;
   /**
    * The one name check on a number the caller said (its digits): matched, not matched (they may still book; nothing from
-   * the record is said, and the booking carries a note for the team), no owner on file, or not given after "And your name?".
+   * the record is said, and the booking carries a note for the team), no owner on file, or not given after "And the owner's name on that profile?" (vet).
    */
-  nameCheck: { digits: string; result: 'match' | 'no_match' | 'no_owner' | 'not_given' } | null = null;
+  nameCheck: { digits: string; result: 'match' | 'no_match' | 'no_owner' | 'not_given'; name?: string | null } | null = null;
+  /** The names checked on the call's earlier numbers: a name checked on one number is never taken for another. */
+  namesChecked: { digits: string; name: string }[] = [];
   /** "This Wednesday, November 4, or Wednesday, November 11?" was asked: once per call. */
   whichWeekAsked = false;
   /** The caller's day was a bare weekday ("Thursday", "el viernes"): no month, date, holiday or week count with it. */
   dayBare = false;
-  /** The number "And your name?" was asked for: asked once per number. */
+  /** The number the name question was asked for: asked once per number. */
   nameAskedFor: string | null = null;
   /** The caller was thanked by the owner's name on file: once a call (the pick question or the pet found). */
   greeted = false;

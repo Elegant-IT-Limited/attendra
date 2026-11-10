@@ -41,8 +41,13 @@ function gathered(pc: RTCPeerConnection, timeoutMs = ICE_WAIT_MS) {
 /** One attempt: everything it opened, so ending it (from any state) closes all of it. */
 interface Attempt {
   cancelled: boolean;
-  /** OpenAI said session.started on the data channel, so it will act on session.close there. */
+  /** OpenAI said the session is up on the data channel: session.started (GPT-Live) or session.created (Realtime). */
   started?: boolean;
+  /**
+   * A Realtime session (session.created): it has no session.close (OpenAI refuses it, "only supported for translation
+   * sessions"), so End asks our API to hang up and closes the line once that is done (2026-11-11).
+   */
+  realtime?: boolean;
   ending?: boolean;
   mic?: MediaStream;
   /** The assistant's audio, as the browser plays it. */
@@ -138,10 +143,9 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
   const [remoteUp, setRemoteUp] = useState(false);
   const recorder = useRef<ReturnType<typeof startCallRecording> | null>(null);
 
-  /** Ends a started session through the API; keepalive lets the request outlive a closed tab. */
-  const endRemote = useCallback((id: string) => {
-    void fetch(`/api/v1/clinics/${clinicId}/test-calls/${id}/end`, { method: 'POST', credentials: 'same-origin', keepalive: true, headers: { 'idempotency-key': newKey() } }).catch(() => {});
-  }, [clinicId]);
+  /** Ends a started session through the API; keepalive lets the request outlive a closed tab. Resolves when it is answered. */
+  const endRemote = useCallback((id: string) => fetch(`/api/v1/clinics/${clinicId}/test-calls/${id}/end`, { method: 'POST', credentials: 'same-origin', keepalive: true, headers: { 'idempotency-key': newKey() } })
+    .then(() => {}, () => {}), [clinicId]);
 
   /**
    * Stops the microphone and the connection, and ends the session on OpenAI's side
@@ -150,8 +154,9 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
    */
   const release = useCallback((a: Attempt, sessionOpen = true) => {
     if (!a.cancelled && sessionOpen) {
-      if (a.events?.readyState === 'open') a.events.send(JSON.stringify({ type: 'session.close' }));
-      if (a.callId) endRemote(a.callId);
+      // GPT-Live closes on session.close; a Realtime session refuses it, and is ended through the API alone
+      if (!a.realtime && a.events?.readyState === 'open') a.events.send(JSON.stringify({ type: 'session.close' }));
+      if (a.callId) void endRemote(a.callId);
     }
     a.cancelled = true;
     a.events?.close();
@@ -190,9 +195,15 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
     if (a.ending) return;
     a.ending = true;
     setPhase('ending');
+    if (a.realtime && a.callId) {
+      // our API hangs up while the line is still open, so the call is recorded as the caller's hang-up and our own
+      // hang-up finds the session; then the line closes. Never longer than 8 s
+      void Promise.race([endRemote(a.callId), new Promise((r) => setTimeout(r, 8_000))]).then(() => finish(a, 'ended', false));
+      return;
+    }
     a.events.send(JSON.stringify({ type: 'session.close' }));
     setTimeout(() => finish(a), 15_000); // no session.closed in time: end it through the API as well
-  }, [finish]);
+  }, [finish, endRemote]);
 
   async function start(callAs?: CallAs) {
     if (attempt.current) return;
@@ -247,7 +258,9 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
     events.onmessage = (m) => {
       let e: { type?: string; delta?: string; item_id?: string };
       try { e = JSON.parse(String(m.data)); } catch { return; }
-      if (e.type === 'session.started') a.started = true;
+      if (e.type === 'session.started') { a.started = true; a.realtime = false; }
+      // a Realtime session says session.created, never session.started (2026-11-11: End took the "not started" path)
+      else if (e.type === 'session.created') { a.started = true; a.realtime = true; }
       // GPT-Live's caption events
       else if (e.type === 'session.input_transcript.delta' && e.delta) caption('caller', e.delta);
       else if (e.type === 'session.output_transcript.delta' && e.delta) caption('agent', e.delta);
