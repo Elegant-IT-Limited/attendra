@@ -39,7 +39,7 @@ describe('Vapi per location (provisioning)', () => {
     api = await startApi({
       demoMode: false, twoFactor: 'optional', provisioningToken: TOKEN,
       vapi: { client: vapi.client, credentialId: 'cred_twilio_vapi', sipHost: 'sip.vapi.ai', serverBase: 'https://app.example.com', maxConcurrency: 4, syncDelayMs: 0 },
-      alerts: { alert: (_k, t) => { alerts.push(t); }, note: () => {}, flush: async () => {} },
+      alerts: { alert: (_k, t) => { alerts.push(t); }, resolved: () => {}, note: () => {}, flush: async () => {} },
     });
     expect((await api.request('PUT', `${P}/clinics/${C}/numbers/${encodeURIComponent(NUMBER)}`, { authorization: auth })).statusCode).toBe(204);
   });

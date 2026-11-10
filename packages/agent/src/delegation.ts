@@ -1161,6 +1161,7 @@ export class CallAgent {
       out.push(...controls);
     } catch (err) {
       this.log.error({ call_id: this.ctx.callId, err }, 'delegation failed');
+      try { this.ctx.onError?.(err); } catch { /* an alert never breaks the call */ }
       // never claim success on failure; hand the caller to a person instead
       out.push({ type: 'commentary', delegationId, content: PACKS[this.state.language].couldNotFinish });
     } finally {

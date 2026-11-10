@@ -73,10 +73,10 @@ const secs = (ms: number | null) => (ms === null ? 'n/a' : `${(ms / 1000).toFixe
 
 /**
  * The daily digest for the people who run Attendra: one Slack message with the last day's
- * calls and their trouble, counts and clinic ids only. Empty lines, stalls, answers past the
+ * calls and their trouble, counts and clinic names only. Empty lines, stalls, answers past the
  * limit and dropped calls each get a count and the clinics they happened at; a quiet day says so.
  */
-export function dailyDigest(calls: DigestCall[], hours = 24): string {
+export function dailyDigest(calls: DigestCall[], hours = 24, names: ReadonlyMap<string, string> = new Map()): string {
   const phone = calls.filter((c) => c.channel === 'phone').length;
   const web = calls.length - phone;
   const ended = calls.filter((c) => c.ended);
@@ -90,7 +90,8 @@ export function dailyDigest(calls: DigestCall[], hours = 24): string {
   const where = (list: DigestCall[]) => {
     const by = new Map<string, number>();
     for (const c of list) by.set(c.clinicId, (by.get(c.clinicId) ?? 0) + 1);
-    return [...by.entries()].sort((a, b) => b[1] - a[1]).map(([id, n]) => `${id} ${n}`).join(', ');
+    // by name, as the team knows the clinic; its id when it has none
+    return [...by.entries()].sort((a, b) => b[1] - a[1]).map(([id, n]) => `${names.get(id) ?? id}: ${n}`).join(', ');
   };
   const lines = [
     `Daily digest, last ${hours} h: ${calls.length} call${calls.length === 1 ? '' : 's'} (${phone} phone, ${web} browser test), ${calls.length - ended.length} still open.`,

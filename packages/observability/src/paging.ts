@@ -14,6 +14,11 @@ export interface PageRule {
   after: number;
   /** The runbook's name: `<ATTENDRA_RUNBOOK_URL>/<runbook>.md` says what to do. */
   runbook: string;
+  /**
+   * 'checker': a state, not an event (a balance under its line). Quiet for a window is not "back to normal": the check
+   * that found it says so (Alerter.resolved) when the state is over.
+   */
+  recovery?: 'checker';
 }
 
 export const P0_KINDS: Readonly<Record<string, PageRule>> = {
@@ -23,6 +28,12 @@ export const P0_KINDS: Readonly<Record<string, PageRule>> = {
   call_failed: { after: 3, runbook: 'calls-failing' },
   call_dropped: { after: 3, runbook: 'calls-failing' },
   empty_call: { after: 3, runbook: 'calls-failing' },
+  // money that runs out stops every call: OpenAI's credit or quota, Twilio's balance, Vapi's credit
+  openai_quota: { after: 1, runbook: 'openai-quota' },
+  twilio_balance_low: { after: 1, runbook: 'twilio-balance-low', recovery: 'checker' },
+  vapi_credit_low: { after: 1, runbook: 'vapi-credit-low' },
+  // the alert path's own test (deploy-prompts/tools/slack-p0-test.ts): a P0 from end to end, on purpose
+  paging_test: { after: 1, runbook: 'paging-test' },
 };
 
 /** The rule for a kind, or undefined when it does not page. */
@@ -77,11 +88,31 @@ export function ntfyPager(o: { url: string; token?: string; post?: Post }): Page
   };
 }
 
+/**
+ * Slack as the pager (alpha, 2026-11-10): the channel the alerts already go to, with `<!channel>`, which the on-call
+ * phone's Slack notifies through Focus / Do Not Disturb. Used when no ntfy topic is set. Only a page carries the
+ * mention: an alert below its P0 rule, a repeat count, a "back to normal" or a note never does.
+ */
+export function slackPager(o: { url: string; post?: (url: string, body: unknown) => Promise<void> }): Pager {
+  const post = o.post ?? (async (url: string, body: unknown) => {
+    const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) });
+    if (!res.ok) throw new Error(`slack answered ${res.status}`);
+  });
+  return {
+    channel: 'slack',
+    page: (p) => post(o.url, { text: `${SLACK_MENTION} [${p.service}] :rotating_light: P0 ${p.kind}: ${p.text}${p.link ? ` Runbook: ${p.link}` : ''}` }),
+  };
+}
+
+/** What makes everyone in the channel get a notification. */
+export const SLACK_MENTION = '<!channel>';
+
 type Env = Record<string, string | undefined>;
 type Warn = { warn(obj: object, msg: string): void };
 
 /**
- * The pager the environment asks for, or null: paging is off until a channel is set.
+ * The ntfy pager the environment asks for, or null. With none, createAlerter pages through Slack itself (<!channel>)
+ * when it has a webhook: the alpha's paging (2026-11-10).
  *   ATTENDRA_PAGER_NTFY_URL    https://ntfy.sh/<long random topic>, or a topic on your own server
  *   ATTENDRA_PAGER_NTFY_TOKEN  an access token, for a topic that needs one (optional)
  * A setting that is wrong turns paging off with a warning; it never stops the service.

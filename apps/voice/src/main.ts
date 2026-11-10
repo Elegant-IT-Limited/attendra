@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { connect, createPhiCipher, KnowledgeRepository } from '@attendra/db';
+import { clinicNameById, connect, createPhiCipher, KnowledgeRepository } from '@attendra/db';
 import { HybridKnowledgeBase } from '@attendra/knowledge';
 import { createAlerter, createLogger } from '@attendra/observability';
 import { bossQueue, createBoss } from '@attendra/worker/queue';
@@ -9,13 +9,14 @@ import { createVoiceApp } from './runtime';
 
 const env = loadEnv();
 const log = createLogger({ name: 'voice', level: env.LOG_LEVEL });
-const alerts = createAlerter({ webhookUrl: env.ATTENDRA_SLACK_WEBHOOK_URL, service: 'voice', log });
+const db = connect(env.DATABASE_URL, { onError: (code) => log.error({ code }, 'database connection error') });
+// an alert about a clinic or a call names the clinic and links the call
+const alerts = createAlerter({ webhookUrl: env.ATTENDRA_SLACK_WEBHOOK_URL, service: 'voice', log, appUrl: env.PUBLIC_URL, clinicName: async (id) => clinicNameById(db, id) });
 process.on('unhandledRejection', (err) => { log.error({ err: { message: (err as Error)?.message } }, 'unhandled rejection'); alerts.alert('voice_error', `Unhandled error: ${(err as Error)?.message?.slice(0, 120) ?? 'unknown'}.`); });
 // sends jobs only; the worker service runs them
 const boss = createBoss({ connectionString: env.DATABASE_URL }, { producer: true });
 boss.on('error', (err) => log.error({ err: { message: err.message } }, 'job queue error'));
 await boss.start();
-const db = connect(env.DATABASE_URL, { onError: (code) => log.error({ code }, 'database connection error') });
 const app = createVoiceApp({
   db,
   cipher: createPhiCipher(env.ATTENDRA_DATA_KEY),

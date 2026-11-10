@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { callUsNumber, ClinicConfig, dailyDigest, localName, localParts, speakSlot, textingOf, toMinutes } from '@attendra/core';
 import type { EventSink } from '@attendra/core';
-import { activeNumbers, allClinics, CallSummaryRepository, callFacts, callsForDigest, type Database, ensureWorkerJobsView, KnowledgeRepository, lapseInvitations, type PhiCipher, phiContext, PostgresTaskQueue, purgeCallRecords, purgeWebhookRecords, schema, WebhookRepository, withClinic } from '@attendra/db';
+import { activeNumbers, allClinics, CallSummaryRepository, callFacts, callsForDigest, configName, type Database, ensureWorkerJobsView, KnowledgeRepository, lapseInvitations, type PhiCipher, phiContext, PostgresTaskQueue, purgeCallRecords, purgeWebhookRecords, schema, WebhookRepository, withClinic } from '@attendra/db';
 import { type Embedder, indexDocument, LocalEmbedder, OpenAIEmbedder } from '@attendra/knowledge';
 import type { Alerter, Logger } from '@attendra/observability';
 import { deliver, type GuardOptions, payloadOf, type Resolver } from '@attendra/webhooks';
 import { and, eq, gt, isNotNull, isNull, lte } from 'drizzle-orm';
 import OpenAI from 'openai';
 import type { Job, PgBoss } from 'pg-boss';
-import { type FallbackEntry, fallbackEntry, type SmsSender, smsStatusUrl, type SpendTrigger, type TwilioFallback, TwilioMessenger, type TwilioSpendAlerts } from '@attendra/telephony';
+import { type FallbackEntry, fallbackEntry, formatBalance, type SmsSender, smsStatusUrl, type SpendTrigger, type TwilioBalance, type TwilioBalanceReading, type TwilioFallback, TwilioMessenger, type TwilioSpendAlerts } from '@attendra/telephony';
 import { CallJob, DeliveryJob, DocumentJob, ensureQueues, HandoverJob, jobId, QUEUES, RequestJob, SmsStatusJob, WEBHOOK_RETRY, WebhookEventJob } from './queue';
 import { JobError, LocalSummariser, ModelSummariser, type Summariser } from './summarise';
 
@@ -39,7 +39,12 @@ export interface WorkerDeps {
   fallback?: { client: Pick<TwilioFallback, 'ensure' | 'sync'>; trunkSid: string; slackWebhookUrl?: string };
   /** Twilio's daily spend alerts, kept in place at each start. */
   spend?: { client: Pick<TwilioSpendAlerts, 'ensure'>; callbackUrl: string; triggers: SpendTrigger[] };
+  /** The Twilio balance, read every hour: under `alertUnder` (dollars) it pages, as calls and texts stop at $0. */
+  balance?: { client: Pick<TwilioBalance, 'read'>; alertUnder: number };
 }
+
+/** A low balance that stays low is said again once a day, not every hour. */
+export const BALANCE_REMIND_MS = 24 * 3_600_000;
 
 /**
  * The summariser for this environment: the model when there is an OpenAI key, the
@@ -80,6 +85,8 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
   const now = d.now ?? (() => new Date());
   /** Reminder texts the carrier refused for now (an outage, a rate limit), by visit: tried again, 3 times at most. */
   const reminderTries = new Map<string, number>();
+  /** The balance check's memory: since when it is low, when that was last said, when an unread balance was last said. */
+  const money: { lowSince: number | null; lowSaidAt: number; unreadAt: number | null } = { lowSince: null, lowSaidAt: 0, unreadAt: null };
   return {
     /** A closed call: queue what every closed call needs, once each. */
     async callCompleted(job: CallJob) {
@@ -176,10 +183,44 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
      * the empty lines, stalls, answers past the limit and drops, with the clinics they happened at. Counts and ids only.
      */
     async dailyDigest() {
-      const text = dailyDigest(await callsForDigest(d.db, new Date(now().getTime() - 86_400_000)));
+      // the clinics by name, as the team knows them; the id when a clinic has none
+      const names = new Map((await allClinics(d.db)).flatMap((c) => { const n = configName(c.config); return n ? [[c.id, n] as const] : []; }));
+      const text = dailyDigest(await callsForDigest(d.db, new Date(now().getTime() - 86_400_000)), 24, names);
       d.alerts?.note(text);
       d.log.info({}, 'daily digest sent');
       return text;
+    },
+
+    /**
+     * The Twilio balance against its line, every hour. Under it pages at once (twilio_balance_low), then once a day
+     * while it stays low; back above, it says so. A balance that cannot be read is said once a day, never paged.
+     */
+    async moneyCheck() {
+      const b = d.balance;
+      if (!b) return null;
+      let reading: TwilioBalanceReading;
+      try {
+        reading = await b.client.read();
+      } catch (err) {
+        d.log.warn({ err: { message: (err as Error).message } }, 'twilio balance not read');
+        if (money.unreadAt === null || now().getTime() - money.unreadAt >= BALANCE_REMIND_MS) {
+          money.unreadAt = now().getTime();
+          d.alerts?.alert('twilio_balance_unread', `The Twilio balance could not be read (${(err as Error).message.slice(0, 80)}): a low balance would not be said.`);
+        }
+        return null;
+      }
+      money.unreadAt = null;
+      const low = reading.balance < b.alertUnder;
+      d.log.info({ balance: reading.balance, currency: reading.currency, alert_under: b.alertUnder, low }, 'twilio balance read');
+      if (low && (money.lowSince === null || now().getTime() - money.lowSaidAt >= BALANCE_REMIND_MS)) {
+        money.lowSince ??= now().getTime();
+        money.lowSaidAt = now().getTime();
+        d.alerts?.alert('twilio_balance_low', `Twilio balance ${formatBalance(reading)}, under $${b.alertUnder}. Calls and texts stop at $0.`);
+      } else if (!low && money.lowSince !== null) {
+        money.lowSince = null;
+        d.alerts?.resolved('twilio_balance_low', `Twilio balance ${formatBalance(reading)}.`);
+      }
+      return reading;
     },
 
     /** Team invitations nobody answered in 7 days: closed, with an audit row in the inviting team's clinics. Reading them never writes. */
@@ -408,7 +449,7 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
           }).where(where);
           await tx.insert(schema.auditLogs).values({ clinicId, actor: 'worker', action: `sms.status.${next}`, entity: 'sms', entityId: messageSid });
           // a text the carrier would not deliver: often a texting registration (A2P) problem, never one person's fault
-          if ((next === 'failed' || next === 'undelivered') && errorCode !== '21610') d.alerts?.alert('text_failed', `A text was not delivered (Twilio error ${errorCode ?? 'none given'}). Clinic ${clinicId}.`);
+          if ((next === 'failed' || next === 'undelivered') && errorCode !== '21610') d.alerts?.alert('text_failed', `A text was not delivered (Twilio error ${errorCode ?? 'none given'}).`, { clinicId });
         }
         if (errorCode === '21610') {
           await tx.insert(schema.smsOptOuts).values({ clinicId, toHash: row.toHash, status: 'opted_out', source: 'carrier' })
@@ -444,6 +485,7 @@ export async function startWorker(d: WorkerDeps) {
   await d.boss.work(QUEUES.appointmentReminders, each(() => h.appointmentReminders()));
   await d.boss.work(QUEUES.lapseInvitations, each(async () => { await h.lapseInvitations(); }));
   await d.boss.work(QUEUES.dailyDigest, each(async () => { await h.dailyDigest(); }));
+  await d.boss.work(QUEUES.moneyCheck, each(async () => { await h.moneyCheck(); }));
   await d.boss.work(QUEUES.fallbackSync, each(async () => { await h.fallbackSync(); }));
   // the backup route in place before anything else needs it; a failure is said, and tried again at the next start
   if (d.fallback) {
@@ -468,7 +510,8 @@ export async function startWorker(d: WorkerDeps) {
   // nothing retries a dead letter: it is logged, with ids only, for someone to look at
   await d.boss.work<Record<string, unknown>>(QUEUES.deadLetter, each(async (data) => {
     d.log.error({ clinic_id: data.clinicId, call_id: data.callId }, 'a job failed every retry and was dead-lettered');
-    d.alerts?.alert('job_failed', `A background job gave up after its retries${data.clinicId ? ` (clinic ${String(data.clinicId)})` : ''}: a summary, a text or a webhook was not done.`);
+    d.alerts?.alert('job_failed', 'A background job gave up after its retries: a summary, a text or a webhook was not done.',
+      data.clinicId ? { clinicId: String(data.clinicId), callId: typeof data.callId === 'string' ? data.callId : undefined } : undefined);
   }));
   // 03:00 UTC every day
   if (d.schedulePurge !== false) {
@@ -477,6 +520,8 @@ export async function startWorker(d: WorkerDeps) {
     await d.boss.schedule(QUEUES.lapseInvitations, '7 * * * *');
     // 03:10 UTC: the morning in the team's time zone, after the night's calls in the clinics' (and before the 03:30 backup)
     await d.boss.schedule(QUEUES.dailyDigest, '10 3 * * *');
+    // every hour, at :17, away from the other hourly jobs
+    if (d.balance) await d.boss.schedule(QUEUES.moneyCheck, '17 * * * *');
     if (d.fallback) await d.boss.schedule(QUEUES.fallbackSync, '*/10 * * * *');
   }
   d.log.info({ summariser: d.summariser.model, texts: !!d.texts }, 'worker started');

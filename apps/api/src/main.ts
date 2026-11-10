@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { connect, createPhiCipher, KnowledgeRepository, LISTEN_DOWN_ALERT_MS, logConnectionRole, pgChangeFeed, serviceDatabaseUrl } from '@attendra/db';
+import { clinicNameById, connect, createPhiCipher, KnowledgeRepository, LISTEN_DOWN_ALERT_MS, logConnectionRole, pgChangeFeed, serviceDatabaseUrl } from '@attendra/db';
 import { HybridKnowledgeBase, LocalAnswerer, ModelAnswerer } from '@attendra/knowledge';
 import { createAlerter, createLogger } from '@attendra/observability';
 import { bossQueue, createBoss } from '@attendra/worker/queue';
@@ -15,7 +15,8 @@ import { vapiClient } from '@attendra/voice-engine';
 
 const env = loadEnv();
 const log = createLogger({ name: 'api', level: env.LOG_LEVEL });
-const alerts = createAlerter({ webhookUrl: env.ATTENDRA_SLACK_WEBHOOK_URL, service: 'api', log });
+// an alert about a clinic names it; `db` is read only once an alert needs a name
+const alerts = createAlerter({ webhookUrl: env.ATTENDRA_SLACK_WEBHOOK_URL, service: 'api', log, appUrl: env.PUBLIC_URL, clinicName: async (id) => clinicNameById(db, id) });
 if (env.ATTENDRA_DEMO_MODE) log.warn({}, 'demo mode: two-factor is not required. Do not use with real patient data.');
 
 // queries (and sign-in) on the services' role when given (migration 0051); pg-boss on the owner's URL

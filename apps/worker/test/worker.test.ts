@@ -7,7 +7,7 @@ import { Writable } from 'node:stream';
 import type { PgBoss } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { bossQueue, createBoss, jobId, QUEUES } from '../src/queue';
-import { handlers, quiet, startWorker } from '../src/runtime';
+import { BALANCE_REMIND_MS, handlers, quiet, startWorker } from '../src/runtime';
 import { JobError, LocalSummariser, type Summariser } from '../src/summarise';
 
 const cipher = createPhiCipher(TEST_DATA_KEY);
@@ -504,19 +504,19 @@ describe('team invitations nobody answered', () => {
 });
 
 describe('the daily digest', () => {
-  it('sends one Slack line with the last day\'s calls and their trouble, by clinic id, from the call rows', async () => {
+  it('sends one Slack line with the last day\'s calls and their trouble, by clinic name, from the call rows', async () => {
     const empty = await calls.open(OTHER.id, `live_worker_${++n}`, '+13035550147');
     await calls.close(OTHER.id, empty, { reason: 'remote_hangup', voiceSeconds: 9, outcome: 'no_audio', emergency: false, quality: { firstAudioMs: null, stalls: 0, answerTimeouts: 0 } });
     const stalled = await calls.open(OTHER.id, `live_worker_${++n}`, '+13035550147');
     await calls.close(OTHER.id, stalled, { reason: 'remote_hangup', voiceSeconds: 40, outcome: 'booked', emergency: false, quality: { firstAudioMs: 700, stalls: 2, answerTimeouts: 1 } });
     const notes: string[] = [];
-    const alerts = { alert: () => {}, note: (text: string) => { notes.push(text); }, flush: async () => {} };
+    const alerts = { alert: () => {}, resolved: () => {}, note: (text: string) => { notes.push(text); }, flush: async () => {} };
     const text = await handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log, alerts }).dailyDigest();
     expect(notes).toEqual([text]);
     expect(text).toMatch(/^Daily digest, last 24 h: \d+ calls/);
-    expect(text).toMatch(/No audio \(the caller heard nothing\): \d+ \([^)]*clinic_other 1/);
-    expect(text).toMatch(/Stalls \(5 s of silence after the caller spoke\): \d+ in \d+ calls? \([^)]*clinic_other 1/);
-    expect(text).toMatch(/Answers past the 60 s limit: \d+ in \d+ calls? \([^)]*clinic_other 1/);
+    expect(text).toMatch(/No audio \(the caller heard nothing\): \d+ \([^)]*Other Clinic: 1/);
+    expect(text).toMatch(/Stalls \(5 s of silence after the caller spoke\): \d+ in \d+ calls? \([^)]*Other Clinic: 1/);
+    expect(text).toMatch(/Answers past the 60 s limit: \d+ in \d+ calls? \([^)]*Other Clinic: 1/);
     // the row keeps the numbers, so the digest never depends on logs
     const [row] = (await t.owner.execute(sql`select first_audio_ms, stalls, answer_timeouts from calls where id = ${stalled}`)).rows;
     expect(row).toEqual({ first_audio_ms: 700, stalls: 2, answer_timeouts: 1 });
@@ -524,3 +524,41 @@ describe('the daily digest', () => {
   });
 });
 
+
+describe('the Twilio balance check', () => {
+  it('pages under the line at once, again once a day while it stays low, says when it is back, and never pages an unread balance', async () => {
+    let at = new Date('2026-11-10T10:17:00Z');
+    let answer: number | Error = 25;
+    const said: [string, string, string][] = [];
+    const alerts = {
+      alert: (kind: string, text: string) => { said.push(['alert', kind, text]); },
+      resolved: (kind: string, text: string) => { said.push(['resolved', kind, text]); },
+      note: () => {}, flush: async () => {},
+    };
+    const client = { read: async () => { if (answer instanceof Error) throw answer; return { balance: answer, currency: 'USD' }; } };
+    const h = handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log, alerts, balance: { client, alertUnder: 10 }, now: () => at });
+    const hour = () => { at = new Date(at.getTime() + 3_600_000); };
+    // above the line: nothing said
+    expect(await h.moneyCheck()).toEqual({ balance: 25, currency: 'USD' });
+    expect(said).toEqual([]);
+    // under it: one page, and not again the next hours
+    answer = 8.2; hour(); await h.moneyCheck();
+    expect(said).toEqual([['alert', 'twilio_balance_low', 'Twilio balance $8.20, under $10. Calls and texts stop at $0.']]);
+    for (let i = 0; i < 5; i++) { hour(); await h.moneyCheck(); }
+    expect(said).toHaveLength(1);
+    // still low a day later: said once more
+    at = new Date(at.getTime() + BALANCE_REMIND_MS); await h.moneyCheck();
+    expect(said).toHaveLength(2);
+    // topped up: back to normal, once
+    answer = 50; hour(); await h.moneyCheck(); hour(); await h.moneyCheck();
+    expect(said.slice(2)).toEqual([['resolved', 'twilio_balance_low', 'Twilio balance $50.00.']]);
+    // a balance that cannot be read: a plain line once a day, never the P0
+    answer = new Error('twilio balance answered 401'); hour(); await h.moneyCheck(); hour(); await h.moneyCheck();
+    expect(said.slice(3)).toEqual([['alert', 'twilio_balance_unread', 'The Twilio balance could not be read (twilio balance answered 401): a low balance would not be said.']]);
+  });
+
+  it('does nothing without Twilio credentials', async () => {
+    const h = handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log });
+    expect(await h.moneyCheck()).toBeNull();
+  });
+});

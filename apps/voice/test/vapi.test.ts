@@ -59,7 +59,8 @@ describe('Vapi calling our tools', () => {
         audit: new PostgresAuditLog(t.db), messenger: { sendTemplate: async () => ({ status: 'sent' as const, messageId: 'sms-1' }) },
       },
       planner: { plan: async () => { throw new Error('the Vapi path never asks the planner'); } }, log,
-      alerts: { alert: (_k, text) => { alerts.push(text); allAlerts.push(text); }, note: () => {}, flush: async () => {} },
+      // the clinic an alert is about goes beside its text, so a test can check both
+      alerts: { alert: (_k, text, where) => { const line = where?.clinicId ? `${text} [${where.clinicId}]` : text; alerts.push(line); allAlerts.push(line); }, resolved: () => {}, note: () => {}, flush: async () => {} },
       now: () => new Date(),
     });
     await app.ready();
@@ -71,6 +72,14 @@ describe('Vapi calling our tools', () => {
   });
   const resultOf = (res: Awaited<ReturnType<typeof post>>) => JSON.parse((res.json() as { results: { result: string }[] }).results[0]!.result) as { ok: boolean; outcome: string; say?: string };
   const call = { id: 'vapi-call-1', type: 'webCall' };
+
+  it('pages when Vapi would not start a call for credit (it has no balance API), and not for other ends', async () => {
+    const before = allAlerts.length;
+    await post({ type: 'status-update', status: 'ended', call: { id: 'vapi-call-credit', type: 'inboundPhoneCall' }, endedReason: 'customer-ended-call' });
+    expect(allAlerts.length).toBe(before);
+    await post({ type: 'status-update', status: 'ended', call: { id: 'vapi-call-credit-2', type: 'inboundPhoneCall' }, endedReason: 'call.start.error-subscription-insufficient-credits' });
+    expect(allAlerts.slice(before)).toEqual([`Vapi would not start a call (call.start.error-subscription-insufficient-credits): the Vapi credit is used up or billing is frozen. Calls to Vapi locations go to Twilio's fallback. [${clinic.id}]`]);
+  });
 
   it('refuses a request without the secret', async () => {
     expect((await post({ type: 'tool-calls', call, toolCallList: [] }, null)).statusCode).toBe(401);
@@ -150,7 +159,7 @@ describe('Vapi calling our tools', () => {
       expect(resultOf(await post({ type: 'tool-calls', call: going, toolCallList: [{ id: 'g2', function: { name: 'clinic_now', arguments: {} } }] }, LOCATION_SECRET, OAK)).ok).toBe(true);
       const fresh = await post({ type: 'tool-calls', call: { id: 'vapi-oak-new', type: 'inboundPhoneCall' }, toolCallList: [{ id: 'n1', function: { name: 'clinic_now', arguments: {} } }] }, LOCATION_SECRET, OAK);
       expect(fresh.json()).toEqual({ results: [{ toolCallId: 'n1', error: 'This call cannot be helped here.' }] });
-      expect(alerts.some((a) => a.includes(`new call for ${OAK}`))).toBe(true);
+      expect(alerts.some((a) => a.includes('new call for a location that is not on Vapi') && a.endsWith(`[${OAK}]`))).toBe(true);
     } finally { oak = { ...oak, voiceEngine: 'vapi' }; }
     await post({ type: 'end-of-call-report', call: going, endedReason: 'customer-ended-call', durationSeconds: 20 }, LOCATION_SECRET, OAK);
   });

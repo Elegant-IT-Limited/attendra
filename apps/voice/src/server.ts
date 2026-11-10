@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, type Backend, CallAgent, CallCache, cachedBackend, CallState, type Planner, warmPatient } from '@attendra/agent';
 import { ClinicConfig, openAiEngineOf, resolveTransfer, VOICE_ENGINES, type VoiceEngineName, type VoiceFlow, vipRoute } from '@attendra/core';
-import type { Alerter, Logger } from '@attendra/observability';
+import { type Alerter, isOpenAiQuotaError, type Logger } from '@attendra/observability';
 import { callerNumber, dialledCandidates, maskedHeaders, SPEND_ALERT_PATH, spendAlertText, trimEnd, twilioSignatureValid, twiml } from '@attendra/telephony';
 import { callerContext, CallMarks, CallRunner, EngineRouter, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine, pausedOpening, vipOpening } from '@attendra/voice-engine';
 import rateLimit from '@fastify/rate-limit';
@@ -11,6 +11,9 @@ import { z } from 'zod';
 import { type ActionResult, LiveRegistry, type Numbered } from './live';
 import { mintToolToken, readToolToken, TOOL_TOKEN_MAX_MS } from './tool-tokens';
 import { registerVapi, type VapiOptions } from './vapi';
+
+/** Said when OpenAI refuses for credit or quota: every call stops until it is topped up. */
+export const OPENAI_QUOTA_TEXT = 'OpenAI refused a request: the credit or quota is used up. Calls fail until it is topped up.';
 
 /** An incoming phone call: GPT-Live sends a session id, the Realtime API a call id. */
 export interface IncomingCall { id: string; type: string; data: { session_id?: string; call_id?: string; sip_headers?: { name: string; value: string }[] } }
@@ -441,6 +444,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
     let agent: CallAgent | null = null;
     let cacheStats: CallCache | null = null;
     const hangup = () => { hungUp = true; return engine.hangup(sessionId).catch(() => {}); };
+    // what an alert about this call names: the clinic, and the call it links to
+    const where = { clinicId: clinic.id, clinicName: clinic.name, callId };
     try {
       const plain = web ? { ...deps.backend, messenger: testCallTexts(deps.backend.messenger) } : deps.backend;
       // the tools path reads through one cache per call: the schedule read as the call starts, the household's visits
@@ -463,8 +468,10 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         return null;
       }) : Promise.resolve(null);
       agent = new CallAgent(new CallState(), { clinic, reloadClinic, callId, callerNumber: from, history: null, now, log: deps.log, channel,
-        onSlow: (ms) => deps.alerts?.alert('slow_answer', `A caller waited ${Math.round(ms / 1000)} s for an answer. Clinic ${clinic.id}, call ${callId}.`),
-        onTimeout: (ms) => deps.alerts?.alert('answer_timeout', `An answer took ${Math.round(ms / 1000)} s, past the limit: the caller was offered a callback. Clinic ${clinic.id}, call ${callId}.`) }, backend, opts.planner ?? deps.planner, deps.log, deps.actionsFor(clinic.id, callId));
+        onSlow: (ms) => deps.alerts?.alert('slow_answer', `A caller waited ${Math.round(ms / 1000)} s for an answer.`, where),
+        onTimeout: (ms) => deps.alerts?.alert('answer_timeout', `An answer took ${Math.round(ms / 1000)} s, past the limit: the caller was offered a callback.`, where),
+        // OpenAI out of credit stops every call: it pages at once, not as one more failed answer
+        onError: (err) => { if (isOpenAiQuotaError(err)) deps.alerts?.alert('openai_quota', OPENAI_QUOTA_TEXT, where); } }, backend, opts.planner ?? deps.planner, deps.log, deps.actionsFor(clinic.id, callId));
       if (tools) {
         // a yes is read across the caller's pieces ("Yes." "Hello, are you there?"), and the pet's visits are read ahead
         agent.state.answersAcrossPieces = true;
@@ -474,7 +481,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       marks.mark('attached');
       sideband.onEvent((e) => { if (e.type === 'session.closed') closed = true; });
       const runner = new CallRunner(sessionId, engine, sideband, agent, deps.recorderFor(clinic.id, callId), deps.log, marks,
-        deps.alerts ? { alert: (kind, text) => deps.alerts!.alert(kind, text), where: `Clinic ${clinic.id}, call ${callId}` } : undefined);
+        deps.alerts ? { alert: (kind, text) => deps.alerts!.alert(kind, text, where), where } : undefined);
       // gpt-realtime on the tools path waits for our go once a pet is found, so a lookup runs before its reply (round 2)
       runner.manualTurns = tools && (deps.lookupAhead ?? false) && engine.sessionInfo?.(sessionId)?.engine === 'gpt-realtime';
       if (web) {
@@ -559,6 +566,9 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
     const router = deps.engine instanceof EngineRouter ? deps.engine : null;
     const via = router ? router.named(came) : deps.engine;
     let accepted = false;
+    // the clinic and call, once known: a failed set-up names them in its alert
+    let setupClinic: ClinicConfig | null = null;
+    let setupCallId: string | undefined;
     try {
       if (!via) {
         deps.log.error({ session_id: sessionId, engine: came }, 'a call came in for an engine this server does not run; rejecting with 503');
@@ -585,6 +595,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         return;
       }
       const clinic = ClinicConfig.parse(stored);
+      setupClinic = clinic;
       const from = callerNumber(headers, clinic);
       if (router && openAiEngineOf(clinic) && openAiEngineOf(clinic) !== came) {
         deps.log.warn({ session_id: sessionId, clinic_id: clinic.id, chosen: openAiEngineOf(clinic), came }, 'the clinic chose another engine, but OpenAI sent this kind of call: answering with the engine it came on');
@@ -604,13 +615,16 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       accepted = true;
       marks.mark('accepted');
       const callId = await deps.openCall(clinic.id, sessionId, from, 'phone', undefined, undefined, { engine: engineName(via), voiceFlow: flowOf(clinic) });
+      setupCallId = callId;
       marks.mark('call_opened');
       if (paused) deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId, transfer: !!paused.uri }, 'the assistant is paused: the caller goes to the front desk or hears when to call back');
       else if (vip) deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId }, 'VIP caller: transferring to the front desk');
       await runCall(clinic, sessionId, callId, from, 'phone', { vipUri: vip?.uri, paused, marks });
     } catch (err) {
       deps.log.error({ session_id: sessionId, err }, 'call setup failed');
-      deps.alerts?.alert('call_failed', `A call could not be set up${accepted ? ' after it was answered' : ' and was turned away'}: ${(err as Error)?.message?.slice(0, 120) ?? 'unknown error'}.`);
+      const where = setupClinic ? { clinicId: setupClinic.id, clinicName: setupClinic.name, callId: setupCallId } : undefined;
+      if (isOpenAiQuotaError(err)) deps.alerts?.alert('openai_quota', OPENAI_QUOTA_TEXT, where);
+      deps.alerts?.alert('call_failed', `A call could not be set up${accepted ? ' after it was answered' : ' and was turned away'}: ${(err as Error)?.message?.slice(0, 120) ?? 'unknown error'}.`, where);
       // best effort: the call is already failing, and a second error must not escape
       await Promise.resolve().then(() => (accepted ? deps.engine.hangup(sessionId) : (via ?? deps.engine).reject(sessionId, 503))).catch(() => {});
     }

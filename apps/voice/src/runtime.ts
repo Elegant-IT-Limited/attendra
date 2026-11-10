@@ -126,7 +126,7 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeMod
       appendSegment: (s) => calls.appendSegment(clinicId, callId, s),
       close: async (c) => {
         // a call that dropped instead of ending is something to look at
-        if (c.reason === 'connection_lost' || c.reason === 'error' || c.reason.startsWith('socket closed')) rt.alerts?.alert('call_dropped', `A call dropped before it ended (${c.reason}). Clinic ${clinicId}.`);
+        if (c.reason === 'connection_lost' || c.reason === 'error' || c.reason.startsWith('socket closed')) rt.alerts?.alert('call_dropped', `A call dropped before it ended (${c.reason}).`, { clinicId, callId });
         await calls.close(clinicId, callId, c);
         // the call record stands whatever happens to the queue; the summary can be redone
         await (rt.jobs ?? noJobs).callCompleted({ clinicId, callId }).catch((err: unknown) =>

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type CallAgent, callStateNote, type Outbound } from '@attendra/agent';
 import { addTokens, askedToHangUp, type CallQuality, EMPTY_CALL_MIN_MS, maxGapMs, type ModelTokens, recordedOutcome, repeatedQuestions, saidGoodbye } from '@attendra/core';
-import type { Logger } from '@attendra/observability';
+import { isOpenAiQuotaError, type Logger } from '@attendra/observability';
 import { randomUUID } from 'node:crypto';
 import type { Sideband, SidebandConnection, SidebandEvent, VoiceEngine } from './engine';
 import { CallMarks } from './marks';
@@ -17,7 +17,7 @@ export interface CallRecorder {
  * run Attendra (Slack): a caller left in silence, a line they heard nothing on. Codes and ids only.
  */
 export interface CallAlerts {
-  alert(kind: 'stalled_turn' | 'empty_call', text: string): void;
+  alert(kind: 'stalled_turn' | 'empty_call' | 'openai_quota', text: string): void;
 }
 
 /**
@@ -150,8 +150,11 @@ export class CallRunner {
     private readonly recorder: CallRecorder,
     private readonly log: Logger,
     marks?: CallMarks,
-    /** Where trouble on this call is said; `where` names the call in it (clinic and call ids, never the caller). */
-    private readonly alerts?: CallAlerts & { where?: string },
+    /**
+     * Where trouble on this call is said. With `where` (the clinic and call, never the caller) the alert names the clinic
+     * and links the call itself; without it the line names the session.
+     */
+    private readonly alerts?: CallAlerts & { where?: object },
   ) {
     this.marks = marks ?? new CallMarks();
     // start() sets it again; a runner driven without it still times from when it was made
@@ -348,6 +351,8 @@ export class CallRunner {
       case 'error': {
         const e = event as Extract<SidebandEvent, { error?: unknown }>;
         this.log.warn({ session_id: this.sessionId, code: e.error?.code }, 'sideband error event');
+        // OpenAI out of credit stops every call: it pages at once
+        if (isOpenAiQuotaError(e.error)) this.alerts?.alert('openai_quota', 'OpenAI refused a request on a live call: the credit or quota is used up. Calls fail until it is topped up.');
         return;
       }
       default:
@@ -575,7 +580,7 @@ export class CallRunner {
       // the first nudge of a turn is a stall: the caller spoke and heard nothing back for 5 s, and nothing was at work
       if (this.nudged === 1) {
         this.stalls++;
-        this.alerts?.alert('stalled_turn', `A caller waited ${Math.round((now - this.callerSaidAt) / 1000)} s in silence after speaking, with nothing being looked up. ${this.alerts.where ?? `Session ${this.sessionId}`}.`);
+        this.alerts?.alert('stalled_turn', `A caller waited ${Math.round((now - this.callerSaidAt) / 1000)} s in silence after speaking, with nothing being looked up.${this.alerts.where ? '' : ` Session ${this.sessionId}.`}`);
       }
       return this.dispatch(this.agent.onSilence(this.nudged));
     }
@@ -632,7 +637,7 @@ export class CallRunner {
     const outcome = recordedOutcome(state.outcome, quality);
     const lasted = Date.now() - this.startedAt;
     if (quality.firstAudioMs === null && lasted >= EMPTY_CALL_MIN_MS) {
-      this.alerts?.alert('empty_call', `A caller was on the line ${Math.round(lasted / 1000)} s and never heard the assistant (${note ?? reason}). ${this.alerts.where ?? `Session ${this.sessionId}`}.`);
+      this.alerts?.alert('empty_call', `A caller was on the line ${Math.round(lasted / 1000)} s and never heard the assistant (${note ?? reason}).${this.alerts.where ? '' : ` Session ${this.sessionId}.`}`);
     }
     await this.recorder.close({ reason: note ?? reason, voiceSeconds, outcome, emergency: !!state.emergency, emergencyResult: state.emergencyResult, language: state.language, quality, usage: { models: state.modelTokens, fastTier: state.fastTier } });
     this.log.info({ session_id: this.sessionId, reason, outcome, voice_seconds: voiceSeconds, first_audio_ms: quality.firstAudioMs, stalls: quality.stalls, answer_timeouts: quality.answerTimeouts, max_gap_ms: quality.maxGapMs, repeated_questions: quality.repeatedQuestions,

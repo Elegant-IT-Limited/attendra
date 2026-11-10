@@ -45,6 +45,8 @@ export interface CallContext {
   onSlow?: (ms: number) => void;
   /** Told when an answer ran past the 60 s limit and the caller was offered a callback instead (the voice service alerts on it). */
   onTimeout?: (ms: number) => void;
+  /** Told when a request to the model failed (the voice service pages when it is OpenAI out of credit). */
+  onError?: (err: unknown) => void;
 }
 
 /** What a tool hands back: data for the planner, and optionally a call-control action. */

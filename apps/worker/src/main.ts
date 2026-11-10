@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { connect, createPhiCipher, logConnectionRole, serviceDatabaseUrl } from '@attendra/db';
+import { clinicNameById, connect, createPhiCipher, logConnectionRole, serviceDatabaseUrl } from '@attendra/db';
 import { createAlerter, createLogger } from '@attendra/observability';
 import { loadEnv } from './config';
-import { SPEND_ALERT_PATH, spendTriggers, TwilioFallback, TwilioSpendAlerts, twilioSender } from '@attendra/telephony';
+import { SPEND_ALERT_PATH, spendTriggers, TwilioBalance, TwilioFallback, TwilioSpendAlerts, twilioSender } from '@attendra/telephony';
 import twilio from 'twilio';
 import { bossQueue, createBoss, eventSink } from './queue';
 import { embedderFromEnv, startWorker, summariserFromEnv } from './runtime';
 
 const env = loadEnv();
 const log = createLogger({ name: 'worker', level: env.LOG_LEVEL });
-const alerts = createAlerter({ webhookUrl: env.ATTENDRA_SLACK_WEBHOOK_URL, service: 'worker', log });
+// an alert about a clinic or a call names the clinic and links the call; `db` is read only once an alert needs a name
+const alerts = createAlerter({ webhookUrl: env.ATTENDRA_SLACK_WEBHOOK_URL, service: 'worker', log, appUrl: env.PUBLIC_URL, clinicName: async (id) => clinicNameById(db, id) });
 // pg-boss on the owner's URL: it creates and upgrades its own schema; the worker's queries on the services' role when given
 const boss = createBoss({ connectionString: env.DATABASE_URL });
 const db = connect(serviceDatabaseUrl(env), { onError: (code) => log.error({ code }, 'database connection error') });
@@ -29,6 +30,10 @@ await startWorker({
   // Twilio calls the voice service when a day's spend passes a line; it needs the service's public address
   spend: env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.ATTENDRA_VOICE_PUBLIC_URL
     ? { client: new TwilioSpendAlerts(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN), callbackUrl: `${env.ATTENDRA_VOICE_PUBLIC_URL.replace(/\/+$/, '')}${SPEND_ALERT_PATH}`, triggers: spendTriggers(env.ATTENDRA_SPEND_ALERT_SMS_USD, env.ATTENDRA_SPEND_ALERT_TOTAL_USD) }
+    : undefined,
+  // the balance, every hour: a P0 under the line, as calls and texts stop at $0
+  balance: env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN
+    ? { client: new TwilioBalance(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN), alertUnder: env.ATTENDRA_TWILIO_BALANCE_ALERT }
     : undefined,
   fallback: env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_TRUNK_SID
     ? { client: new TwilioFallback(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN), trunkSid: env.TWILIO_TRUNK_SID, slackWebhookUrl: env.ATTENDRA_SLACK_WEBHOOK_URL }

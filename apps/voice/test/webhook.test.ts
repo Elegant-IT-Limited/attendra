@@ -135,7 +135,7 @@ describe('the OpenAI webhook', () => {
 
   it('rejects a call to a number no clinic owns with SIP 404', async () => {
     const alert = vi.fn();
-    const { d, engine } = deps({ alerts: { alert, note: vi.fn(), flush: async () => {} } });
+    const { d, engine } = deps({ alerts: { alert, resolved: vi.fn(), note: vi.fn(), flush: async () => {} } });
     const app = buildServer(d);
     await post(app, incoming('wh_4', '+19995550121'));
     await app.close();
@@ -518,7 +518,7 @@ describe('Twilio text webhooks', () => {
 
   it('says a Twilio spend alert in Slack, signed only', async () => {
     const alert = vi.fn();
-    const app = buildServer({ ...deps({ sms: sms() }).d, alerts: { alert, note: vi.fn(), flush: async () => {} } });
+    const app = buildServer({ ...deps({ sms: sms() }).d, alerts: { alert, resolved: vi.fn(), note: vi.fn(), flush: async () => {} } });
     const f = { UsageTriggerSid: `UT${'a'.repeat(32)}`, UsageCategory: 'sms', CurrentValue: '10.42', TriggerValue: '10' };
     expect((await send(app, '/webhooks/twilio/spend-alert', f, 'forged')).statusCode).toBe(403);
     expect(alert).not.toHaveBeenCalled();
