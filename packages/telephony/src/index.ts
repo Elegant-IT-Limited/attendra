@@ -4,3 +4,4 @@ export * from './sms';
 export * from './webhooks';
 export * from './fallback';
 export * from './spend';
+export * from './balance';

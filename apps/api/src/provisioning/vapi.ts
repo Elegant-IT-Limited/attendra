@@ -99,7 +99,7 @@ export class VapiLocations {
     const detail = err instanceof VapiError ? (secret ? err.detail.split(secret).join('[secret]') : err.detail) : (err as Error).message;
     const status = err instanceof VapiError ? err.status : null;
     this.log.error({ clinic_id: clinicId, vapi_status: status, detail: detail.slice(0, 300) }, 'vapi: a request failed');
-    this.alerts?.alert('vapi_failed', `Vapi refused a request for ${clinicId} (${status ?? 'no answer'}): the location's assistant may be out of date.`);
+    this.alerts?.alert('vapi_failed', `Vapi refused a request (${status ?? 'no answer'}): the location's assistant may be out of date.`, { clinicId });
     throw new VapiRefusal(502, 'vapi_failed', { vapiStatus: status });
   }
 

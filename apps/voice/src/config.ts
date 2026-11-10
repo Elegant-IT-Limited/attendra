@@ -39,6 +39,8 @@ const Env = z.object({
   BROWSER_CALL_MAX_SECONDS: z.preprocess(blank, z.coerce.number().int().min(30).max(1800).default(900)),
   // where alerts go: a Slack incoming webhook for the people who run Attendra; without it they are only logged
   ATTENDRA_SLACK_WEBHOOK_URL: optional(z.string().url().startsWith('https://hooks.slack.com/')),
+  // the dashboard's address: an alert about a call links it (<PUBLIC_URL>/c/<clinic>/calls/<call>); unset, no link
+  PUBLIC_URL: optional(z.string().url()),
   // the test clinics only (the bake-off's): a deployment-wide secret a Vapi assistant may send to /webhooks/vapi/v1/events;
   // every location on Vapi has its own (batch 6), so the route is there without it
   VAPI_SERVER_SECRET: optional(z.string().min(32, 'VAPI_SERVER_SECRET must be at least 32 characters')),

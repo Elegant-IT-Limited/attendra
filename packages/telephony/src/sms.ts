@@ -49,7 +49,8 @@ export interface MessengerOptions {
   /** Texts one clinic may send in a calendar month. */
   monthlyCap?: number;
   /** Where a limit reached or a blocked number is said (Slack); without it, only logged. */
-  alerts?: { alert(kind: string, text: string): void };
+  /** Where trouble is said (Slack); the clinic goes as `where`, so the line names it. */
+  alerts?: { alert(kind: string, text: string, where?: { clinicId?: string }): void };
   /** Where Twilio reports delivery for this clinic's texts; none, and the status stays "sent". */
   statusCallback?: (clinicId: string) => string | undefined;
   log?: { warn(obj: object, msg: string): void };
@@ -128,7 +129,7 @@ export class TwilioMessenger implements Messenger {
     if (!this.sender || !from) return refuse('texting_off');
     // only to the clinic's own country, never a premium, toll-free or Caribbean +1 number
     if (!textableNumber({ phoneNumbers: [from] }, to)) {
-      this.options.alerts?.alert('text_blocked', `A text to a number outside the US and Canada, or a premium one, was not sent. Clinic ${clinicId}.`);
+      this.options.alerts?.alert('text_blocked', `A text to a number outside the US and Canada, or a premium one, was not sent.`, { clinicId });
       return refuse('not_textable');
     }
 
@@ -149,17 +150,17 @@ export class TwilioMessenger implements Messenger {
     const monthCap = this.options.monthlyCap ?? DEFAULT_SMS_MONTHLY_CAP;
     if (standing.month >= monthCap) {
       this.options.log?.warn({ clinic_id: clinicId, cap: monthCap }, 'the clinic reached its monthly text limit');
-      if (standing.month === monthCap) this.options.alerts?.alert('text_limit', `Clinic ${clinicId} reached ${monthCap} texts this month; texts stop until the 1st. Raise ATTENDRA_SMS_MONTHLY_CAP only if this is real use.`);
+      if (standing.month === monthCap) this.options.alerts?.alert('text_limit', `The clinic reached ${monthCap} texts this month; texts stop until the 1st. Raise ATTENDRA_SMS_MONTHLY_CAP only if this is real use.`, { clinicId });
       return refuse('monthly_limit');
     }
     if (standing.clinic >= cap) {
       this.options.log?.warn({ clinic_id: clinicId, cap }, 'the clinic reached its daily text limit');
-      if (standing.clinic === cap) this.options.alerts?.alert('text_limit', `Clinic ${clinicId} reached ${cap} texts in 24 hours; more wait until tomorrow. Check it is real use.`);
+      if (standing.clinic === cap) this.options.alerts?.alert('text_limit', `The clinic reached ${cap} texts in 24 hours; more wait until tomorrow. Check it is real use.`, { clinicId });
       return refuse('rate_limited');
     }
     if (standing.clinic + 1 === Math.ceil(cap * 0.8)) {
       this.options.log?.warn({ clinic_id: clinicId, cap }, 'the clinic has used 80% of its daily text limit');
-      this.options.alerts?.alert('text_limit', `Clinic ${clinicId} has sent ${standing.clinic + 1} texts in 24 hours, 80% of its daily limit of ${cap}.`);
+      this.options.alerts?.alert('text_limit', `The clinic has sent ${standing.clinic + 1} texts in 24 hours, 80% of its daily limit of ${cap}.`, { clinicId });
     }
 
     try {

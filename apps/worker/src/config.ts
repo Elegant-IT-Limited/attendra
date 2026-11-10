@@ -21,6 +21,8 @@ const Env = z.object({
   // a Slack alert when a day's Twilio spend passes these dollars: texts, and the whole bill
   ATTENDRA_SPEND_ALERT_SMS_USD: z.preprocess(blank, z.coerce.number().positive().max(100_000).default(10)),
   ATTENDRA_SPEND_ALERT_TOTAL_USD: z.preprocess(blank, z.coerce.number().positive().max(100_000).default(25)),
+  // a P0 page when the Twilio balance is under these dollars (read every hour): at $0 calls and texts stop
+  ATTENDRA_TWILIO_BALANCE_ALERT: z.preprocess(blank, z.coerce.number().min(0).max(100_000).default(10)),
   // texts the team's decisions (a refill ready to pick up); without both, nothing is texted
   TWILIO_ACCOUNT_SID: optional(z.string().startsWith('AC').min(10)),
   TWILIO_AUTH_TOKEN: optional(z.string().min(1)),
@@ -28,6 +30,8 @@ const Env = z.object({
   TWILIO_TRUNK_SID: optional(z.string().startsWith('TK').min(10)),
   // where alerts go: a Slack incoming webhook for the people who run Attendra; without it they are only logged
   ATTENDRA_SLACK_WEBHOOK_URL: optional(z.string().url().startsWith('https://hooks.slack.com/')),
+  // the dashboard's address: an alert about a call links it (<PUBLIC_URL>/c/<clinic>/calls/<call>); unset, no link
+  PUBLIC_URL: optional(z.string().url()),
   LOG_LEVEL: z.preprocess(blank, z.string().default('info')),
 });
 export type Env = z.infer<typeof Env>;

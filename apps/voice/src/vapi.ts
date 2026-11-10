@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, type Backend, CallAgent, CallCache, cachedBackend, CallState, type Outbound, type Planner } from '@attendra/agent';
 import { ClinicConfig, isVapiTestClinic, maxGapMs, repeatedQuestions, vapiAlertAt } from '@attendra/core';
-import type { Alerter, Logger } from '@attendra/observability';
+import { type Alerter, isVapiCreditEnd, isVapiOpenAiQuotaEnd, type Logger } from '@attendra/observability';
 import { type CallRecorder, callFacts, VAPI_EVENTS_PATH, VAPI_SECRET_HEADER } from '@attendra/voice-engine';
 import type { FastifyInstance } from 'fastify';
 import { createHash, timingSafeEqual } from 'node:crypto';
@@ -196,7 +196,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
       if (!res.ok || res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) throw new Error(`control ${String(body.type)}: ${res.status}`);
     } catch (err) {
       deps.log.error({ call_id: s.callId, type: body.type, err: { message: (err as Error).message } }, 'vapi: a call control command failed');
-      deps.alerts?.alert('vapi_control_failed', `A Vapi call could not be ${body.type === 'transfer' ? 'transferred' : body.type === 'end-call' ? 'ended' : 'told what to say'} (${(err as Error).message.slice(0, 80)}). Clinic ${s.clinicId}.`);
+      deps.alerts?.alert('vapi_control_failed', `A Vapi call could not be ${body.type === 'transfer' ? 'transferred' : body.type === 'end-call' ? 'ended' : 'told what to say'} (${(err as Error).message.slice(0, 80)}).`, { clinicId: s.clinicId, callId: s.callId });
     }
   }
 
@@ -265,7 +265,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
     // a new call only for a location on Vapi: one switched back sends its calls to our own engine again
     if (!test && clinic.voiceEngine !== 'vapi') {
       deps.log.warn({ clinic_id: clinic.id, engine: clinic.voiceEngine ?? 'default' }, 'vapi: a new call for a location not on Vapi; refused');
-      deps.alerts?.alert('vapi_call_refused', `Vapi sent a new call for ${clinic.id}, which is not on Vapi: its number may still point at Vapi's trunk.`);
+      deps.alerts?.alert('vapi_call_refused', `Vapi sent a new call for a location that is not on Vapi: its number may still point at Vapi's trunk.`, { clinicId: clinic.id, clinicName: clinic.name });
       refused.add(vapiId);
       return null;
     }
@@ -324,6 +324,9 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
     // the calls live at once, for Vapi's limit: from the call's status, or its first tool call if the status was missed
     if (vapiId && m.type === 'status-update' && m.status === 'in-progress') await live(vapiId);
     if (vapiId && ((m.type === 'status-update' && m.status === 'ended') || m.type === 'end-of-call-report')) await ended(vapiId);
+    // money: Vapi has no API for its credit, so a call it would not start for credit is how we hear it ran out (P0)
+    if (isVapiCreditEnd(m.endedReason)) deps.alerts?.alert('vapi_credit_low', `Vapi would not start a call (${m.endedReason}): the Vapi credit is used up or billing is frozen. Calls to Vapi locations go to Twilio's fallback.`, { clinicId });
+    else if (isVapiOpenAiQuotaEnd(m.endedReason)) deps.alerts?.alert('openai_quota', `A Vapi call ended because OpenAI refused it (${m.endedReason}): the credit or quota is used up.`, { clinicId });
 
     if (m.type === 'tool-calls') {
       if (vapiId && !sessions.has(vapiId)) await live(vapiId);

@@ -32,6 +32,7 @@ describe('the daily digest', () => {
   });
 
   it('counts each kind of trouble with the clinics it happened at, most first, and names no caller', () => {
+    // clinic_a has a name, clinic_b has none: its id stands in
     const text = dailyDigest([
       call({ outcome: 'no_audio', firstAudioMs: null }),
       call({ clinicId: 'clinic_b', outcome: 'no_audio', firstAudioMs: null }),
@@ -39,11 +40,11 @@ describe('the daily digest', () => {
       call({ stalls: 2 }), call({ clinicId: 'clinic_b', stalls: 1 }),
       call({ answerTimeouts: 1 }),
       call({ closeReason: 'socket closed 1006 before session.closed' }), call({ closeReason: 'connection_lost' }),
-    ]);
-    expect(text).toContain('No audio (the caller heard nothing): 3 (clinic_b 2, clinic_a 1).');
-    expect(text).toContain('Stalls (5 s of silence after the caller spoke): 3 in 2 calls (clinic_a 1, clinic_b 1).');
-    expect(text).toContain('Answers past the 60 s limit: 1 in 1 call (clinic_a 1).');
-    expect(text).toContain('Dropped before the end: 2 (clinic_a 2).');
+    ], 24, new Map([['clinic_a', 'Maple Grove Vet']]));
+    expect(text).toContain('No audio (the caller heard nothing): 3 (clinic_b: 2, Maple Grove Vet: 1).');
+    expect(text).toContain('Stalls (5 s of silence after the caller spoke): 3 in 2 calls (Maple Grove Vet: 1, clinic_b: 1).');
+    expect(text).toContain('Answers past the 60 s limit: 1 in 1 call (Maple Grove Vet: 1).');
+    expect(text).toContain('Dropped before the end: 2 (Maple Grove Vet: 2).');
     expect(text).not.toContain('No empty lines');
     expect(text).not.toMatch(/\+?\d{7,}/);
   });

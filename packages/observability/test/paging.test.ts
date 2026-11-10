@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAlerter, ntfyPager, P0_KINDS, PAGE_COOLDOWN_MS, type Page, type Pager, pagerFromEnv, runbookLink } from '../src';
+import { alertStep, createAlerter, ntfyPager, P0_KINDS, PAGE_COOLDOWN_MS, type Page, type Pager, pagerFromEnv, runbookLink } from '../src';
 
 const RUNBOOKS = 'https://runbooks.example/attendra';
+const DO = (kind: string) => ` Do: ${alertStep(kind)}`;
 const slack = () => {
   const sent: string[] = [];
   return { sent, post: async (_u: string, body: unknown) => { sent.push((body as { text: string }).text); } };
@@ -23,10 +24,10 @@ describe('paging the P0 alert kinds', () => {
     a.alert('call_rejected', 'A call matched no clinic. Dialled: +13035550142.');
     a.alert('job_failed', 'a job gave up.');
     await new Promise((r) => setTimeout(r, 0));
-    expect(pages).toEqual([{ service: 'api', kind: 'change_notices_down', text: 'no change notices for 10 s.', link: `${RUNBOOKS}/change-notices-down.md` }]);
+    expect(pages).toEqual([{ service: 'api', kind: 'change_notices_down', text: `no change notices for 10 s.${DO('change_notices_down')}`, link: `${RUNBOOKS}/change-notices-down.md` }]);
     // the P0 line in Slack says so, with the same runbook; the others are as before
-    expect(sent[0]).toBe(`[api] :rotating_light: change_notices_down: no change notices for 10 s. [P0, runbook: ${RUNBOOKS}/change-notices-down.md]`);
-    expect(sent[1]).toBe('[api] :rotating_light: call_rejected: A call matched no clinic. Dialled: …0142.');
+    expect(sent[0]).toBe(`[api] :rotating_light: change_notices_down: no change notices for 10 s.${DO('change_notices_down')} [P0, runbook: ${RUNBOOKS}/change-notices-down.md]`);
+    expect(sent[1]).toBe(`[api] :rotating_light: call_rejected: A call matched no clinic. Dialled: …0142.${DO('call_rejected')}`);
   });
 
   it('pages a burst kind only once it reaches its count within the window, cut to the last 4 digits, and once an hour at most', async () => {
@@ -40,7 +41,7 @@ describe('paging the P0 alert kinds', () => {
     expect(pages).toEqual([]);
     a.alert('empty_call', 'caller heard nothing. From +13035550142.');
     await vi.advanceTimersByTimeAsync(0);
-    expect(pages).toEqual([{ service: 'voice', kind: 'empty_call', text: `${after} within 1 min. Latest: caller heard nothing. From …0142.`, link: `${RUNBOOKS}/calls-failing.md` }]);
+    expect(pages).toEqual([{ service: 'voice', kind: 'empty_call', text: `${after} within 1 min. Latest: caller heard nothing. From …0142.${DO('empty_call')}`, link: `${RUNBOOKS}/calls-failing.md` }]);
     // still failing in the next window: Slack hears every window, the phone not again within the hour
     await vi.advanceTimersByTimeAsync(60_000);
     for (let i = 0; i < after; i++) a.alert('empty_call', 'again');
@@ -62,7 +63,7 @@ describe('paging the P0 alert kinds', () => {
     const warn = vi.fn();
     const quiet = createAlerter({ service: 'api', log: { warn }, pager: null });
     quiet.alert('change_notices_down', 'x');
-    expect(warn).toHaveBeenCalledWith({ alert: '[api] :rotating_light: change_notices_down: x [P0]' }, 'alert (no Slack webhook set)');
+    expect(warn).toHaveBeenCalledWith({ alert: `[api] :rotating_light: change_notices_down: x${DO('change_notices_down')} [P0]` }, 'alert (no Slack webhook set)');
     const failing: Pager = { channel: 'test', page: async () => { throw new Error('pager answered 502'); } };
     createAlerter({ service: 'api', log: { warn }, pager: failing }).alert('change_notices_down', 'x');
     await new Promise((r) => setTimeout(r, 0));

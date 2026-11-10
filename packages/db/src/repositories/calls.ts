@@ -175,6 +175,17 @@ export async function clinicById(db: Database, clinicId: string): Promise<unknow
   return row?.config ?? null;
 }
 
+/** A clinic's name, for the alerts about it (Slack): ours, not a caller's. Undefined when there is none. */
+export async function clinicNameById(db: Database, clinicId: string): Promise<string | undefined> {
+  return configName(await clinicById(db, clinicId));
+}
+
+/** The `name` in a stored clinic config, when it is a non-empty string. */
+export const configName = (config: unknown): string | undefined => {
+  const name = (config as { name?: unknown } | null)?.name;
+  return typeof name === 'string' && name.trim() ? name.trim() : undefined;
+};
+
 /**
  * How much browser test-call time a clinic has: its limit (null is none) and the
  * seconds its test calls have used so far, a call still running counted up to now.

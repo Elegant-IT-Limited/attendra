@@ -4,6 +4,14 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (operations, 2026-11-10: Slack is the pager for alpha)
+
+- **Every call alert can be acted on from a phone.** An alert about a clinic or a call names the clinic (by name, with its id), links the call in the dashboard (`PUBLIC_URL`), and ends with what to do. The steps for every kind live in one place (`packages/observability/src/steps.ts`), and a test checks every alert raised in the code has one.
+- **Slack is the pager when no ntfy topic is set.** The line that pages a P0 starts with `@channel`; an alert below its P0 count, a repeat count, a "back to normal", a note or the digest never does. A P0 that pages on its first alert is one line, not two.
+- **Money that runs out is a P0.** OpenAI out of credit or quota (from call set-up, live-call errors, the planner, and Vapi's end reasons), a Twilio balance under `ATTENDRA_TWILIO_BALANCE_ALERT` (default $10, read every hour, free), and Vapi out of credit (Vapi has no balance API: its end reasons for a call it would not start for credit). A low balance is said again once a day, and "back to normal" comes from the check, not from quiet.
+- **The daily digest names the clinics** instead of their ids.
+- **`paging_test`**, a P0 kind for testing the alert path from end to end.
+
 ### Fixed (phone tests, 2026-11-09: the Vapi path and dates)
 
 - **Vapi calls know their caller ID and the clinic's date.** A location's Vapi assistant is made once, so its prompt said "There is no caller ID on this call" on every call and carried no date. The prompt now holds nothing per call; each call's facts (today at the clinic, the caller ID's last four digits, the number question) go into the call as it opens, as on our own engine.
