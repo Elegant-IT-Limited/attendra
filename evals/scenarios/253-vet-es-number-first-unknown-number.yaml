@@ -15,7 +15,7 @@ turns:
       - verify_caller: { owner_name: null, pet_name: null, phone: "720 555 0187" }
   - assistant: "¿Es el 720-555-0187?"
   - caller: Sí.
-    reply: "¿Y su nombre?"
+    reply: "¿Y el nombre del dueño en ese perfil?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: null, phone: "720 555 0187" }
   - caller: Rex, es nuevo. Soy Sam Rivera, tiene tres años.
@@ -37,6 +37,6 @@ expect:
   refusals: [confirm_number, owner_check]
   bookings_created: 1
   language: es
-  returned: ["¿Es el 720-555-0187?", "¿Y su nombre?"]
+  returned: ["¿Es el 720-555-0187?", "¿Y el nombre del dueño en ese perfil?"]
   never_returned: ["No veo ninguna ficha con ese número."]
   household: { phone: "+17205550187", names: [Rex] }

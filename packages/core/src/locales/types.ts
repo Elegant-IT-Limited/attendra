@@ -101,6 +101,12 @@ export interface LanguagePack {
   /** Asked once on a number the caller said, before anything from its records is used: "And your name?". */
   yourNameQuestion: string;
   /**
+   * The same question at a veterinary clinic, where the profile is the household's (2026-11-11): asked after each number
+   * read back, for that number, when no owner's name was given for it. Never answered by a pet's name or by the name
+   * checked on another number.
+   */
+  ownerNameQuestion: string;
+  /**
    * The pick question once the caller is known (caller ID, or a spoken number whose name matched the owner on file):
    * thanks by the owner's first name, then the pets by first name ("Thanks, Jordan. Is this for Biscuit or Pepper, or a
    * new pet?"). `more`: they have others; `offerNew`: the caller has not said the pet is new.

@@ -1,5 +1,5 @@
 id: vet-es-spoken-number-name-match-greets
-title: "Spanish: a spoken number (a browser test call), read back, then \"¿Y su nombre?\" once; \"Jordon\" matches the owner on file, so the caller is greeted by name and the pets are offered"
+title: "Spanish: a spoken number (a browser test call), read back, then \"¿Y el nombre del dueño en ese perfil?\" once; \"Jordon\" matches the owner on file, so the caller is greeted by name and the pets are offered"
 clinic: riverbend
 local_time: "10:00"
 caller_number: null
@@ -17,7 +17,7 @@ turns:
       - verify_caller: { owner_name: null, pet_name: null, phone: "303 555 0142" }
   - assistant: "¿Es el 303-555-0142?"
   - caller: Sí, ese.
-    reply: "¿Y su nombre?"
+    reply: "¿Y el nombre del dueño en ese perfil?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: null, phone: "303 555 0142" }
   - caller: Jordon.
@@ -44,6 +44,6 @@ expect:
   refusals: [phone_required, confirm_number, owner_check]
   bookings_created: 1
   sms_sent: 1
-  spoken_contains: ["¿Y su nombre?", "Gracias, Jordan. ¿Es para Biscuit o para Pepper, o para una mascota nueva?"]
+  spoken_contains: ["¿Y el nombre del dueño en ese perfil?", "Gracias, Jordan. ¿Es para Biscuit o para Pepper, o para una mascota nueva?"]
   appointment_note_empty: true
 forbid_spoken: ["mejor número", "no tengo su nombre"]

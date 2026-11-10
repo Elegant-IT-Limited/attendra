@@ -12,6 +12,9 @@ import { type ActionResult, LiveRegistry, type Numbered } from './live';
 import { mintToolToken, readToolToken, TOOL_TOKEN_MAX_MS } from './tool-tokens';
 import { registerVapi, type VapiOptions } from './vapi';
 
+/** How long a browser test call's close waits for the page's own end before it counts as a dropped line. */
+export const WEB_CLOSE_GRACE_MS = 2000;
+
 /** Said when OpenAI refuses for credit or quota: every call stops until it is topped up. */
 export const OPENAI_QUOTA_TEXT = 'OpenAI refused a request: the credit or quota is used up. Calls fail until it is topped up.';
 
@@ -239,6 +242,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
   const perClinic = deps.browserCallsPerClinic ?? 2;
   /** Open browser test calls: by call id for ending them, and a count per clinic for the limit. */
   const webCalls = new Map<string, { clinicId: string; sessionId: string }>();
+  // the runner of each browser test call, so the page's End tells it the caller ended the call (not a dropped line)
+  const webRunners = new Map<string, Pick<CallRunner, 'callerEnded'>>();
   const openPerClinic = new Map<string, number>();
   const hold = (clinicId: string, by: 1 | -1) => {
     const next = (openPerClinic.get(clinicId) ?? 0) + by;
@@ -323,6 +328,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         const limit = Math.min(body.maxSeconds ?? maxSeconds, maxSeconds);
         track(runCall(clinic, sessionId, callId, body.callAs ?? null, 'web', { maxSeconds: limit, marks }).finally(() => {
           webCalls.delete(callId);
+          webRunners.delete(callId);
           hold(clinic.id, -1);
         }));
         return reply.code(201).send({ callId, sdp: started.sdpAnswer, maxSeconds: limit, calledAsLast4: body.callAs ? body.callAs.slice(-4) : null });
@@ -340,9 +346,16 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         if (!authorised(req.headers.authorization)) return reply.code(401).send({ error: 'unauthorized' });
         const parsed = WebCallEnd.safeParse((() => { try { return JSON.parse(req.body as string); } catch { return null; } })());
         if (!parsed.success) return reply.code(400).send({ error: 'invalid body' });
-        const call = webCalls.get((req.params as { callId: string }).callId);
+        const id = (req.params as { callId: string }).callId;
+        const call = webCalls.get(id);
         if (!call || call.clinicId !== parsed.data.clinicId) return reply.code(404).send({ error: 'no such call' });
-        await deps.engine.hangup(call.sessionId).catch((err) => deps.log.warn({ session_id: call.sessionId, err }, 'ending a test call failed'));
+        // the caller ended it: the line closing next is a hang-up, whichever arrives first (2026-11-11)
+        webRunners.get(id)?.callerEnded();
+        await deps.engine.hangup(call.sessionId).catch((err: unknown) => {
+          // the page closed the line itself a moment before: the call is already over, which is what was asked
+          if ((err as { status?: number }).status === 404) deps.log.info({ session_id: call.sessionId }, 'the test call had already ended');
+          else deps.log.warn({ session_id: call.sessionId, err }, 'ending a test call failed');
+        });
         return reply.code(202).send({ ending: true });
       });
 
@@ -485,6 +498,9 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       // gpt-realtime on the tools path waits for our go once a pet is found, so a lookup runs before its reply (round 2)
       runner.manualTurns = tools && (deps.lookupAhead ?? false) && engine.sessionInfo?.(sessionId)?.engine === 'gpt-realtime';
       if (web) {
+        // the page ends a test call by asking our API as it closes the line: either can arrive first
+        webRunners.set(callId, runner);
+        runner.closeGraceMs = WEB_CLOSE_GRACE_MS;
         const limit = opts.maxSeconds ?? maxSeconds;
         // a minute before the end the caller hears so, and at the end the assistant says why it
         // stops: a test call never just goes quiet

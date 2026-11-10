@@ -84,6 +84,10 @@ export class CallRunner {
   private speakingUntil = 0;
   /** When the caller last said something, and how many nudges that turn has had. */
   private callerSaidAt = 0;
+  /** When the caller last stopped speaking, by the engine's turn detection: a wait is timed from here when it is known. */
+  private callerStoppedAt = 0;
+  /** The caller ended the call themselves (the dashboard's End, or the test-call page closed): the line closing next is theirs. */
+  private callerEnding = false;
   private nudged = 0;
   /** Delegations still running: the agent says "still checking" for those itself. */
   private pending = 0;
@@ -134,6 +138,16 @@ export class CallRunner {
    * lookup their words ask for is run and handed to the voice before it replies (round 2). Set by the voice service.
    */
   manualTurns = false;
+  /**
+   * How long a close the runner did not expect waits for the caller's own end to be told (a browser test call: the page
+   * asks our API to end the call as it closes the line, and the two can arrive in either order). 0: decided at once.
+   */
+  closeGraceMs = 0;
+
+  /** The caller ended the call from their side (the dashboard's End, a closed page): a close after this is a hang-up, not a drop. */
+  callerEnded() {
+    this.callerEnding = true;
+  }
   private manual = false;
   /**
    * Where a call whose assistant never spoke goes at SILENT_START_DEADLINE_MS: the clinic's front desk, or null to end it
@@ -184,13 +198,16 @@ export class CallRunner {
         // a socket that drops before session.closed leaves the call without final usage
         // resolve even when the final write fails, or the call never counts as over
         if (!this.closed) {
-          // a call that was already ending normally is not a dropped line: the assistant's hang-up on its way, or the
+          // a call that was already ending normally is not a dropped line: the assistant's hang-up on its way, the
           // caller's goodbye before the line went (a test call said "Okay, bye" and was listed as "Connection dropped";
-          // note 45, A6)
-          const normal = this.ending === 'hangup' ? 'agent_hangup' : this.mayEnd() ? 'caller_hangup' : null;
-          void (normal ? this.finish(normal, null) : this.finish('connection_lost', null, `socket closed ${code} before session.closed`))
+          // note 45, A6), or the caller ending it themselves (the dashboard's End, a closed page; 2026-11-11: a Realtime
+          // call's socket closes with 1006 however it ends, so every test call ended by its caller was a "drop")
+          const normal = () => (this.ending === 'hangup' ? 'agent_hangup' : this.callerEnding || this.mayEnd() ? 'caller_hangup' : null);
+          const record = (reason: string | null) => void (reason ? this.finish(reason, null) : this.finish('connection_lost', null, `socket closed ${code} before session.closed`))
             .catch((err) => this.log.error({ session_id: this.sessionId, err }, 'closing the call record failed'))
             .finally(resolve);
+          if (normal() || !this.closeGraceMs) record(normal());
+          else setTimeout(() => record(normal()), this.closeGraceMs);
         }
         else resolve();
       });
@@ -216,9 +233,16 @@ export class CallRunner {
     this.watch();
 
     switch (event.type) {
+      case 'session.input_speech.stopped': {
+        this.callerStoppedAt = Date.now();
+        return;
+      }
       case 'session.input_transcript.delta': {
         const e = event as Extract<SidebandEvent, { start_ms: number }>;
-        this.callerSaidAt = Date.now();
+        // when the caller stopped speaking, not when their words were written down: the transcript can arrive after the
+        // answer, and a wait timed from it nudged the assistant to talk over a reply already given (2026-11-11)
+        const now = Date.now();
+        this.callerSaidAt = this.callerStoppedAt > this.callerSaidAt && this.callerStoppedAt <= now ? this.callerStoppedAt : now;
         this.marks.callerWords(e.start_ms, this.callerSaidAt);
         this.nudged = 0;
         // a new caller turn: a lookup it needs is timed from the end of these words
@@ -574,7 +598,8 @@ export class CallRunner {
     // (transcription can lag the reply) are not a wait.
     // a caller whose last words were a goodbye is not waiting: a nudge there made the assistant start talking again (a test call, 2026-10-24)
     const leaving = last?.speaker === 'caller' && saidGoodbye(last.text, agentLast?.text ?? '');
-    if (this.callerSaidAt > this.speakingUntil && !this.pending && !leaving && this.nudged < SILENCE_NUDGE_MS.length && now - this.callerSaidAt >= SILENCE_NUDGE_MS[this.nudged]!) {
+    // and no answer began after the caller stopped: a reply already given is never talked over by a nudge
+    if (this.callerSaidAt > this.speakingUntil && this.agentSpokeAt < this.callerSaidAt && !this.pending && !leaving && this.nudged < SILENCE_NUDGE_MS.length && now - this.callerSaidAt >= SILENCE_NUDGE_MS[this.nudged]!) {
       this.nudged++;
       this.log.info({ session_id: this.sessionId, nudge: this.nudged, waited_ms: now - this.callerSaidAt }, 'the caller is waiting in silence: giving the assistant their words to answer');
       // the first nudge of a turn is a stall: the caller spoke and heard nothing back for 5 s, and nothing was at work

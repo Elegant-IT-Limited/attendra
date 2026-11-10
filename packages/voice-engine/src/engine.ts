@@ -92,4 +92,6 @@ export type SidebandEvent =
   // the tools path: a model called one of our tools (`arguments` as JSON text), and what a text model used, for the cost row
   | { type: 'session.tool_call'; event_id: string; call_id: string; name: string; arguments: string }
   | { type: 'session.model_usage'; event_id: string; model: string; input: number; cached: number; output: number }
+  // the caller stopped speaking (Realtime's turn detection): a wait is timed from here, not from when the words are written
+  | { type: 'session.input_speech.stopped'; event_id: string }
   | { type: string; event_id: string };

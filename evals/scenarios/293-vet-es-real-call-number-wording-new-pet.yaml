@@ -12,7 +12,7 @@ turns:
     delegate:
       - register_patient: { pet_name: Milo, owner_name: null, species: null, sex: null, birthday_or_age: null, phone: null }
   - caller: El 303 555 0142.
-    reply: "¿Y su nombre?"
+    reply: "¿Y el nombre del dueño en ese perfil?"
     delegate:
       - register_patient: { pet_name: Milo, owner_name: null, species: null, sex: null, birthday_or_age: null, phone: "303 555 0142" }
   - caller: Jordan. ¿Puede ser el miércoles a las 5:20 de la tarde?
@@ -47,7 +47,7 @@ expect:
   refusals: [phone_required, owner_check]
   bookings_created: 2
   booked_on: "2026-09-30"
-  spoken_contains: ["Claro. ¿Con qué número de teléfono está registrada la ficha de su mascota?", "¿Y su nombre?", "al miércoles 30 de septiembre a las 4:40 de la tarde"]
+  spoken_contains: ["Claro. ¿Con qué número de teléfono está registrada la ficha de su mascota?", "¿Y el nombre del dueño en ese perfil?", "al miércoles 30 de septiembre a las 4:40 de la tarde"]
   household: { phone: "+13035550142", names: [Biscuit, Pepper, Milo] }
   pet_on_file: { phone: "+13035550142", name: Milo, species: dog }
 forbid_spoken: ["best number", "mejor número", "qué tipo de animal", "no tengo su nombre"]

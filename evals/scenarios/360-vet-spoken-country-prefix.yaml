@@ -13,10 +13,10 @@ turns:
       - verify_caller: { owner_name: null, pet_name: Luna, phone: "52 720 555 0174" }
   - assistant: "That's 720-555-0174?"
   - caller: Yes, that's it.
-    reply: "And your name?"
+    reply: "And the owner's name on that profile?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: Luna, phone: "52 720 555 0174" }
-  - assistant: "And your name?"
+  - assistant: "And the owner's name on that profile?"
   - caller: Carmen Ortiz.
     reply: "I found Luna, your dog."
     delegate:

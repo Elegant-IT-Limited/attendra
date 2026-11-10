@@ -54,7 +54,7 @@ describe('an owner caller ID knows picks from their pets', () => {
       expect(await audited('patient.pets_on_number.read', wrong.callId)).toBe(0);
       expect(await audited('patient.household.read.call', wrong.callId)).toBe(0);
 
-      // no name given, even after "And your name?": the same, nothing from the record
+      // no name given, even after "And the owner's name on that profile?": the same, nothing from the record
       const nameless = await w.call(null, { clinic, channel: 'web' });
       await nameless.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: null, phone: '720 555 0172' } }]);
       nameless.assistant("That's 720-555-0172?");
@@ -80,7 +80,7 @@ describe('an owner caller ID knows picks from their pets', () => {
         c.caller(lang === 'es' ? 'Sí.' : 'Yes.');
         const asked = await c.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: null, phone } }]);
         expect(asked.errors).toEqual(['owner_check']);
-        expect(handed(asked)).toContain(PACKS[lang].yourNameQuestion);
+        expect(handed(asked)).toContain(PACKS[lang].ownerNameQuestion);
         const out = await c.delegate([{ tool: 'verify_caller', args: { owner_name: name, pet_name: null, phone } }]);
         // a pet named straight away gets the same answer too, with nothing looked up
         const named = await c.delegate([{ tool: 'verify_caller', args: { owner_name: name, pet_name: 'Biscuit', phone } }]);

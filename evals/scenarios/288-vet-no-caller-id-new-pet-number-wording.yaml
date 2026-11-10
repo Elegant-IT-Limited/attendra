@@ -12,7 +12,7 @@ turns:
     delegate:
       - register_patient: { pet_name: Nova, owner_name: null, species: null, sex: null, birthday_or_age: null, phone: null }
   - caller: It's 303 555 0187.
-    reply: "And your name?"
+    reply: "And the owner's name on that profile?"
     delegate:
       - register_patient: { pet_name: Nova, owner_name: null, species: null, sex: null, birthday_or_age: null, phone: "303 555 0187" }
   - caller: Sam.

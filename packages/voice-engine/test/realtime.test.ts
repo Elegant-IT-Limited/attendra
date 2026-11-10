@@ -1,6 +1,6 @@
 import { DEMO_CLINIC, zonedInstant } from '@attendra/core';
 import { describe, expect, it, vi } from 'vitest';
-import { ASK_BACKEND, RealtimeEngine, type RealtimeSocket, type SidebandEvent } from '../src';
+import { ASK_BACKEND, inAnotherScript, NOT_UNDERSTOOD, RealtimeEngine, type RealtimeSocket, type SidebandEvent } from '../src';
 
 const NOW = zonedInstant('2026-09-28', '10:00', DEMO_CLINIC.timezone);
 
@@ -59,6 +59,24 @@ describe('the Realtime engine', () => {
     const both = transcriptionOf(2);
     expect(both.language).toBeUndefined();
     expect(both.prompt).toBe('A phone call to a clinic. The caller speaks English or Spanish, nothing else.');
+  });
+
+  it('passes on a caller\'s line in another script as not understood, on phone and browser calls alike, and says when the caller stopped', async () => {
+    const { e, s } = engine();
+    // a browser test call at an English-only clinic (2026-11-10: Korean and Japanese lines with the language set to English)
+    await e.startBrowserCall({ ...DEMO_CLINIC, languages: ['en'], primaryLanguage: 'en' }, 'v=0 offer', NOW, { flow: 'tools' });
+    const sideband = e.attach('rtc_web_1');
+    const seen: SidebandEvent[] = [];
+    sideband.onEvent((ev) => seen.push(ev));
+    s.play({ type: 'input_audio_buffer.speech_stopped', event_id: 'a', item_id: 'item_1' });
+    s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 'b', item_id: 'item_1', transcript: '네, 감사합니다. ありがとう' });
+    s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 'c', item_id: 'item_2', transcript: 'Yes, Biscuit. Gracias.' });
+    expect(seen.map((x) => x.type)).toEqual(['session.input_speech.stopped', 'session.input_transcript.delta', 'session.input_transcript.delta']);
+    expect(seen.filter((x) => x.type === 'session.input_transcript.delta').map((x) => (x as { delta: string }).delta)).toEqual([NOT_UNDERSTOOD, 'Yes, Biscuit. Gracias.']);
+    expect(inAnotherScript('Jürgen, sí, ñandú')).toBe(false);
+    expect(inAnotherScript('Γεια σας, καλημέρα')).toBe(true);
+    expect(inAnotherScript('Здравствуйте')).toBe(true);
+    expect(inAnotherScript('123 456')).toBe(false);
   });
 
   it('turns transcripts and the hand-off into the events the call runner reads, and a clean close into the end of the call', () => {

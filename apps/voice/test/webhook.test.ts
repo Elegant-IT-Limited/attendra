@@ -5,7 +5,7 @@ import { Writable } from 'node:stream';
 import twilio from 'twilio';
 import { describe, expect, it, vi } from 'vitest';
 import { EngineRouter, type Sideband, type SidebandEvent } from '@attendra/voice-engine';
-import { buildServer, type IncomingCall, type VoiceDeps } from '../src/server';
+import { buildServer, type IncomingCall, type VoiceDeps, WEB_CLOSE_GRACE_MS } from '../src/server';
 
 const log = createLogger({ name: 'test', destination: new Writable({ write: (_c, _e, done) => done() }) });
 
@@ -369,6 +369,40 @@ describe('browser test calls', () => {
     expect((await internal(app, '/internal/web-calls/call_1/end', { clinicId: DEMO_CLINIC.id })).statusCode).toBe(202);
     expect(engine.hangup).toHaveBeenCalledWith('live_web');
     expect((await internal(app, '/internal/web-calls/call_1/end', { clinicId: DEMO_CLINIC.id }, 'wrong')).statusCode).toBe(401);
+  });
+
+  it('records a test call the page ended as the caller hanging up, whether the line or the end request comes first, and a session already gone is no failure', async () => {
+    const closes: { reason: string }[] = [];
+    const recorderFor = () => ({ appendSegment: async () => {}, close: async (c: { reason: string }) => { closes.push(c); } });
+    // the end request first, then the line closes with 1006 (a Realtime call's socket closes so however it ends)
+    {
+      const { d, engine } = deps({ internalToken: TOKEN, recorderFor });
+      const call = openSideband();
+      engine.attach.mockReturnValue(call.sideband);
+      const app = buildServer(d);
+      await webCall(app, OFFER);
+      expect((await internal(app, '/internal/web-calls/call_1/end', { clinicId: DEMO_CLINIC.id })).statusCode).toBe(202);
+      call.drop(1006);
+      await vi.waitFor(() => expect(closes).toEqual([expect.objectContaining({ reason: 'caller_hangup' })]));
+      await app.close();
+    }
+    // the page closed the line first: OpenAI no longer has the session (404), which is what was asked
+    {
+      closes.length = 0;
+      const warn = vi.fn();
+      const { d, engine } = deps({ internalToken: TOKEN, recorderFor });
+      d.log = { ...d.log, warn, info: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => d.log } as never;
+      engine.hangup.mockRejectedValueOnce(Object.assign(new Error('404 No session found for the provided call_id'), { status: 404 }));
+      const call = openSideband();
+      engine.attach.mockReturnValue(call.sideband);
+      const app = buildServer(d);
+      await webCall(app, OFFER);
+      call.drop(1006);
+      expect((await internal(app, '/internal/web-calls/call_1/end', { clinicId: DEMO_CLINIC.id })).statusCode).toBe(202);
+      await vi.waitFor(() => expect(closes).toEqual([expect.objectContaining({ reason: 'caller_hangup' })]), { timeout: WEB_CLOSE_GRACE_MS + 1000 });
+      expect(warn.mock.calls.filter(([, msg]) => msg === 'ending a test call failed')).toEqual([]);
+      await app.close();
+    }
   });
 
   it('says its usual time limit for one call to the API only, from its own config', async () => {

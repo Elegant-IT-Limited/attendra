@@ -15,7 +15,7 @@ turns:
       - verify_caller: { owner_name: null, pet_name: null, phone: "720 555 0186" }
   - assistant: "That's 720-555-0186?"
   - caller: Yes.
-    reply: "And your name?"
+    reply: "And the owner's name on that profile?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: null, phone: "720 555 0186" }
   - caller: Rex, he's new. I'm Sam Rivera, he's three.
@@ -36,6 +36,6 @@ expect:
   verified: true
   refusals: [confirm_number, owner_check]
   bookings_created: 1
-  returned: ["That's 720-555-0186?", "And your name?"]
+  returned: ["That's 720-555-0186?", "And the owner's name on that profile?"]
   never_returned: ["I don't see a profile under that number."]
   household: { phone: "+17205550186", names: [Rex] }

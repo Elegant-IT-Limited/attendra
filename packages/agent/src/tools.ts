@@ -1308,7 +1308,7 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   if (state.identitiesTried.has(tried)) return triedAgain(state, 'the pet');
   const readBack = readBackFirst(args.phone, phone, state, ctx, lang);
   if (readBack) return readBack;
-  const check = await checkOwner(phone, args.phone, state, ctx, backend, lang);
+  const check = await checkOwner(phone, args.phone, state, ctx, backend, lang, args.pet_name);
   if (check) return check;
   // a spoken number the owner's name has not confirmed: no lookup, so "found", "not found" and "no profile" never differ
   if (unconfirmedSpokenNumber(phone, args.phone, state, ctx)) return numberNotOpened(lang);
@@ -1429,12 +1429,12 @@ const numberNotOpened = (lang: CallState['language']) => refuse('number_not_open
 
 /**
  * Who the caller is to the number, checked once per number before its records are used (2026-11-14). Caller ID is
- * enough. A number they said is checked against the owner on file by the name they give: "And your name?" is asked once
+ * enough. A number they said is checked against the owner on file by the name they give, asked once per number ("And the owner's name on that profile?" at a vet clinic)
  * when they have not given one. A match opens the record (the owner's name, the pets' visits). No match still books, as
  * before (the confirmation text goes to the number on file), but nothing from the record is said and the booking carries
  * a note for the team. Null when the call may go on; otherwise the question to ask.
  */
-async function checkOwner(phone: string, said: unknown, state: CallState, ctx: CallContext, backend: Backend, lang: CallState['language']): Promise<ToolResult | null> {
+async function checkOwner(phone: string, said: unknown, state: CallState, ctx: CallContext, backend: Backend, lang: CallState['language'], petNamed?: unknown): Promise<ToolResult | null> {
   const m = state.memory;
   const digits = phone.replace(/\D/g, '');
   const spoken = typeof said === 'string' && said.trim() !== '';
@@ -1442,22 +1442,54 @@ async function checkOwner(phone: string, said: unknown, state: CallState, ctx: C
     if (m.verified !== 'caller_id') { m.verified = 'caller_id'; m.owner = null; }
     return null;
   }
-  // a number said after another one: the earlier check was about that one
-  if (m.nameCheck && m.nameCheck.digits !== digits) { m.nameCheck = null; m.verified = null; m.owner = null; }
+  // a number said after another one: the earlier check was about that one, and its name stays with it
+  if (m.nameCheck && m.nameCheck.digits !== digits) {
+    if (m.nameCheck.name) m.namesChecked.push({ digits: m.nameCheck.digits, name: m.nameCheck.name });
+    m.nameCheck = null; m.verified = null; m.owner = null;
+  }
   if (m.nameCheck || !backend.patients.ownerMatches) return null;
-  const name = m.get('saidName') ?? null;
+  const name = ownerNameFor(digits, state, petNamed);
   const result = await backend.patients.ownerMatches(ctx.clinic.id, phone, name, ctx.callId);
   // the name is asked on every spoken number, whether or not anyone is on file: a caller can't tell a client's number
-  // from the question (2026-11-09)
+  // from the question (2026-11-09). A pet's name, or the name checked on another number, is not an answer (2026-11-11)
   if (result === 'name_needed' || (result === 'no_owner' && !name)) {
-    if (m.nameAskedFor === digits) { m.nameCheck = { digits, result: 'not_given' }; return null; }
+    if (m.nameAskedFor === digits) { m.nameCheck = { digits, result: 'not_given', name: null }; return null; }
     m.nameAskedFor = digits;
-    return refuse('owner_check', `Ask, in these words: "${PACKS[lang].yourNameQuestion}" When they answer, call verify_caller again with the same number and owner_name as they said it. Never say a name from the records first, and never say you don't have their name.`);
+    const question = ctx.clinic.industry === 'vet' ? PACKS[lang].ownerNameQuestion : PACKS[lang].yourNameQuestion;
+    return refuse('owner_check', `Ask, in these words: "${question}" When they answer, call verify_caller again with the same number and owner_name as they said it now, for this number: never a pet's name, and never a name given for another number. Never say a name from the records first, and never say you don't have their name.`);
   }
-  m.nameCheck = { digits, result };
+  m.nameCheck = { digits, result, name };
   m.verified = result === 'match' ? 'name_match' : null;
   ctx.log?.info({ call_id: ctx.callId, owner_check: result }, 'owner checked on a spoken number');
   return null;
+}
+
+/** A name's first word, folded, as the owner check compares it. */
+const firstWordOf = (name: string) => fold(name).toLowerCase().replace(/[^\p{L}\s'-]/gu, '').trim().split(/\s+/)[0] ?? '';
+
+/**
+ * The owner's name the caller gave for THIS number, or null (2026-11-11). Not a pet's name: "Bella Kim" for the pet Bella
+ * is the pet, not its owner. Not the name checked on another number of this call, unless the caller said it again once
+ * this number came up: the model kept passing the first owner's name for a second household's number, and the check
+ * compared the wrong person. Null means the owner's name is asked for this number.
+ */
+function ownerNameFor(digits: string, state: CallState, petNamed?: unknown): string | null {
+  const m = state.memory;
+  const said = m.get('saidName')?.trim();
+  if (!said) return null;
+  const word = firstWordOf(said);
+  if (!word) return null;
+  const pets = [typeof petNamed === 'string' ? petNamed : null, m.get('petName') ?? null, state.verifiedPatient?.firstName ?? null, ...m.pets];
+  if (pets.some((p) => p && firstWordOf(p) === word)) return null;
+  const elsewhere = m.namesChecked.some((c) => c.digits !== digits && firstWordOf(c.name) === word);
+  if (elsewhere && !saidSinceNumber(state, word)) return null;
+  return said;
+}
+
+/** Whether the caller said this word since the number now being checked first came up on the call. */
+function saidSinceNumber(state: CallState, word: string): boolean {
+  const since = Math.max(0, (state.memory.fact('number')?.atTurn ?? 0) - 1);
+  return state.turns.slice(since).some((t) => t.speaker === 'caller' && fold(t.text).toLowerCase().split(/[^\p{L}'-]+/u).includes(word));
 }
 
 /** For a caller the number knows: the owner's first name on file and the pets, kept in the call memory. Null otherwise. */
@@ -1517,7 +1549,7 @@ async function registerPet(
   const phone = heardPhone(clinic, args.phone) ?? ctx.callerNumber;
   if (!phone) return refuse('phone_required', askPhone(lang));
   // a number the caller said is checked by their name before a pet is added under its owner; caller ID needs nothing
-  const check = await checkOwner(phone, args.phone, state, ctx, backend, lang);
+  const check = await checkOwner(phone, args.phone, state, ctx, backend, lang, args.pet_name);
   if (check) return check;
   // a known number's owner is the pet's owner: never asked for, and never a second owner on the number
   if (state.memory.verified && !state.memory.owner) await knownHousehold(phone, state, ctx, backend);

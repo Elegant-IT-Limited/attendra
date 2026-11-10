@@ -116,6 +116,7 @@ export const en: LanguagePack = {
   sameNumberQuestion: "Is the number you're calling from the best one for you?",
   callbackNumberQuestion: "What's the best number to reach you?",
   yourNameQuestion: 'And your name?',
+  ownerNameQuestion: "And the owner's name on that profile?",
   thanksOwner: ({ owner }) => `Thanks, ${owner}.`,
   whichPetVerified: ({ owner, names, more, offerNew }) => `Thanks, ${owner}. Is this for ${orList(names)}${more ? ', or another one' : offerNew ? ', or a new pet' : ''}?`,
   whichWeek: ({ first, second }) => `This ${fullDay(first)}, or ${fullDay(second)}?`,

@@ -392,6 +392,43 @@ describe('how the call sounded to the caller (batch 0: the safety net)', () => {
     vi.useRealTimers();
   });
 
+  it('times a wait from when the caller stopped speaking: a transcript that arrives after the answer is no stall, and no nudge talks over it', async () => {
+    vi.useFakeTimers();
+    const alerts: [string, string][] = [];
+    const h = harness(new ScriptedPlanner([]), log, undefined, { alert: (kind, text) => alerts.push([kind, text]), where: { clinicId: 'clinic_demo', callId: 'call_1' } });
+    void h.runner.start();
+    await h.runner.handle(delta('out', 'o1', 'Thanks for calling.', 0));
+    await vi.advanceTimersByTimeAsync(3000);
+    // the caller stops; the assistant answers at once; the caller's words are written down only after the answer
+    await h.runner.handle({ type: 'session.input_speech.stopped', event_id: 's1' });
+    await vi.advanceTimersByTimeAsync(600);
+    await h.runner.handle(delta('out', 'o2', 'Sure.', 3600));
+    await vi.advanceTimersByTimeAsync(2500);
+    await h.runner.handle(delta('in', 'i1', 'I want to book.', 3000));
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(alerts).toEqual([]);
+    expect(h.sent.filter((e) => JSON.stringify(e).includes('waiting'))).toEqual([]);
+    expect(h.runner.quality().stalls).toBe(0);
+    vi.useRealTimers();
+  });
+
+  it('a real wait is still a stall, timed from the stop, not from the transcript', async () => {
+    vi.useFakeTimers();
+    const alerts: [string, string][] = [];
+    const h = harness(new ScriptedPlanner([]), log, undefined, { alert: (kind, text) => alerts.push([kind, text]), where: { clinicId: 'clinic_demo', callId: 'call_1' } });
+    void h.runner.start();
+    await h.runner.handle(delta('out', 'o1', 'Thanks for calling.', 0));
+    await vi.advanceTimersByTimeAsync(3000);
+    await h.runner.handle({ type: 'session.input_speech.stopped', event_id: 's1' });
+    await vi.advanceTimersByTimeAsync(1500);
+    await h.runner.handle(delta('in', 'i1', 'I want to book.', 3000));
+    // 5 s after the caller stopped (3.5 s after the transcript): one stall
+    await vi.advanceTimersByTimeAsync(3600);
+    expect(alerts.map(([k]) => k)).toEqual(['stalled_turn']);
+    expect(alerts[0]![1]).toContain('waited 5 s');
+    vi.useRealTimers();
+  });
+
   it('counts a caller left 5 s in silence as one stall per turn, says it in a stalled_turn alert, and never names the caller', async () => {
     vi.useFakeTimers();
     const alerts: [string, string][] = [];
@@ -466,6 +503,39 @@ describe('a line that goes after a goodbye (note 45, A6: a caller said "Okay, by
     h.drop(1006);
     await done;
     expect(h.closes).toEqual([expect.objectContaining({ reason: 'caller_hangup' })]);
+  });
+
+  it('is the caller hanging up when they ended it themselves (the dashboard\'s End, a closed page), whenever the line goes', async () => {
+    // told first, then the line closes (a Realtime call closes with 1006 however it ends)
+    const first = dropping();
+    const a = first.runner.start();
+    await first.runner.handle(delta('in', 'i1', 'I wanted to book a visit for', 1000));
+    first.runner.callerEnded();
+    first.drop(1006);
+    await a;
+    expect(first.closes).toEqual([expect.objectContaining({ reason: 'caller_hangup' })]);
+    // the line closes first and the page's end arrives a moment later: a browser call waits for it before calling it a drop
+    vi.useFakeTimers();
+    const late = dropping();
+    late.runner.closeGraceMs = 2000;
+    const b = late.runner.start();
+    await late.runner.handle(delta('in', 'i1', 'Can you book', 1000));
+    late.drop(1006);
+    await vi.advanceTimersByTimeAsync(800);
+    late.runner.callerEnded();
+    await vi.advanceTimersByTimeAsync(1200);
+    await b;
+    expect(late.closes).toEqual([expect.objectContaining({ reason: 'caller_hangup' })]);
+    // and with no end told in that time, it is still a dropped line
+    const lost = dropping();
+    lost.runner.closeGraceMs = 2000;
+    const c = lost.runner.start();
+    await lost.runner.handle(delta('in', 'i1', 'Can you book', 1000));
+    lost.drop(1006);
+    await vi.advanceTimersByTimeAsync(2000);
+    await c;
+    expect(lost.closes).toEqual([expect.objectContaining({ reason: 'socket closed 1006 before session.closed' })]);
+    vi.useRealTimers();
   });
 
   it('is still a dropped line when nobody was leaving', async () => {
