@@ -196,7 +196,8 @@ test('End on a Realtime call asks our API to end it while the line is open, then
   await openTestCall(page, clinic);
   await page.getByRole('button', { name: 'Start test call' }).click();
   await page.getByRole('button', { name: 'End call' }).click();
-  await expect(page.getByRole('button', { name: 'Start test call' })).toBeVisible();
+  // the call is over: the page offers another
+  await expect(page.getByRole('button', { name: 'Call again' })).toBeVisible();
   // one end request, made while the line was open; the line closed after it; no session.close on a Realtime call
   expect(ends).toEqual([false]);
   expect(await page.evaluate(() => (window as unknown as { __peerClosed: boolean }).__peerClosed)).toBe(true);
