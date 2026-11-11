@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { BUILT_IN_VOICES, ClinicConfig, hasPreview } from '@attendra/core';
+import { BUILT_IN_VOICES, ClinicConfig, hasPreview, listedVapiVoice } from '@attendra/core';
 import type { FrontDeskRepository } from '@attendra/db';
 import { Controller, Get, HttpException, Inject, NotFoundException, Optional, Param, Query, Res, UnprocessableEntityException } from '@nestjs/common';
 import { ApiCookieAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
@@ -31,6 +31,9 @@ export class VoiceSamplesController {
   @Requires('settings:read')
   @ApiOperation({ summary: 'The clinic\'s greeting, spoken in one of the built-in voices (audio/mpeg). Not audited: no patient data.' })
   async sample(@Param('clinicId') clinicId: string, @Query('voice') voice: string, @Res() reply: FastifyReply) {
+    // a location on Vapi chooses among ElevenLabs voices (note 46): ElevenLabs' own sample of the voice, fetched here
+    // once and kept, so the browser never calls anyone else and nothing is made per clinic
+    if (typeof voice === 'string' && voice.startsWith('11labs:')) return this.vapiSample(voice.slice('11labs:'.length), reply);
     if (!(BUILT_IN_VOICES as readonly string[]).includes(voice)) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'voice', message: 'not a built-in voice' }] });
     // checked before the rate limit and the model: nothing to make
     if (!hasPreview(voice)) throw new UnprocessableEntityException({ error: 'calls_only', message: 'This voice is only on calls, so it has no preview. Hear it in a test call.' });
@@ -58,4 +61,28 @@ export class VoiceSamplesController {
     // never kept by the browser: the address is the same after the greeting changes, and the server keeps its own copy
     return reply.header('content-type', 'audio/mpeg').header('cache-control', 'no-store').send(audio);
   }
+
+  /** ElevenLabs' public sample of one of the listed Vapi voices, from its fixed address in core (VAPI_VOICES). */
+  private async vapiSample(voiceId: string, reply: FastifyReply) {
+    const v = listedVapiVoice(voiceId);
+    if (!v) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'voice', message: 'not a listed Vapi voice' }] });
+    if (!v.preview) throw new UnprocessableEntityException({ error: 'calls_only', message: 'This voice has no sample here. Hear it on a call to the location\'s number.' });
+    let audio = this.cache.get(`11labs\n${v.voiceId}`);
+    if (!audio) {
+      try {
+        const res = await this.fetchSample(v.preview, { signal: AbortSignal.timeout(8000) });
+        const bytes = Buffer.from(await res.arrayBuffer());
+        if (!res.ok || bytes.length < 1000 || bytes.length > 2_000_000) throw new Error(`sample answered ${res.status}, ${bytes.length} bytes`);
+        audio = bytes;
+      } catch (err) {
+        this.log?.warn({ voice: v.voiceId, err: { message: (err as Error).message } }, 'vapi voice sample failed');
+        throw new UnprocessableEntityException({ error: 'no_sample', message: 'This voice could not be played right now. Try again, or hear it on a call to the location\'s number.' });
+      }
+      this.cache.set(`11labs\n${v.voiceId}`, audio);
+    }
+    return reply.header('content-type', 'audio/mpeg').header('cache-control', 'no-store').send(audio);
+  }
+
+  /** How a Vapi voice's sample is fetched; tests replace it. */
+  fetchSample: (url: string, init: RequestInit) => Promise<Response> = (url, init) => fetch(url, init);
 }

@@ -83,3 +83,48 @@ export const VAPI_CALL_STALE_MS = 2 * 3_600_000;
  * secret (VAPI_SERVER_SECRET). Every real location has its own secret.
  */
 export const isVapiTestClinic = (clinicId: string) => clinicId.startsWith('clinic_bakeoff') || clinicId.startsWith('clinic_demo');
+
+/**
+ * The voices a location on Vapi speaks with (note 46, items 1-3): ElevenLabs voices billed through Vapi, on
+ * eleven_flash_v2_5, the fastest ElevenLabs model that speaks Spanish too. Three warm female front-desk voices to pick
+ * from by ear on one Vapi phone call (Sarah is the default until then), and one male voice, so a clinic whose own voice
+ * is a man's keeps a man's voice on Vapi. Never Vapi's own "Elliot": a location that never chose one hears these.
+ * `preview`: ElevenLabs' own sample of the voice (a public clip), played through our API by Settings > Voice; null when
+ * it has none we know of, and the voice is heard on a Vapi call.
+ */
+export const VAPI_VOICE_MODEL = 'eleven_flash_v2_5' as const;
+export const VAPI_VOICES = [
+  { voiceId: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', kind: 'female', sound: 'soft and warm', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/EXAVITQu4vr4xnSDxMaL/01a3e33c-6e99-4ee7-8543-ff2216a32186.mp3' },
+  { voiceId: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda', kind: 'female', sound: 'warm and friendly', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/XrExE9yKIg1WjnnlVkGX/b930e18d-6b4d-466e-bab2-0ae97c6d8535.mp3' },
+  { voiceId: 'cgSgspJ2msm6clMCkdW9', name: 'Jessica', kind: 'female', sound: 'bright and conversational', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/cgSgspJ2msm6clMCkdW9/56a97bf8-b69b-448f-846c-c3a11683d45a.mp3' },
+  { voiceId: 'iP95p4xoKVk53GoZ742B', name: 'Chris', kind: 'male', sound: 'casual and friendly', preview: null },
+] as const satisfies readonly { voiceId: string; name: string; kind: 'female' | 'male'; sound: string; preview: string | null }[];
+export type VapiVoice = (typeof VAPI_VOICES)[number];
+
+/** The OpenAI voices whose kind is known (female or male); any other counts as female, like the default, marin. */
+const OPENAI_VOICE_KIND: Record<string, 'female' | 'male'> = {
+  marin: 'female', coral: 'female', sage: 'female', shimmer: 'female', alloy: 'female',
+  cedar: 'male', ash: 'male', ballad: 'male', echo: 'male', verse: 'male',
+};
+
+/** The ElevenLabs voice of the same kind as the clinic's own voice: a woman's stays a woman's (note 46, item 3). */
+export function vapiVoiceFor(clinicVoice: string | undefined): VapiVoiceChoice {
+  const kind = OPENAI_VOICE_KIND[clinicVoice ?? ''] ?? 'female';
+  const v = VAPI_VOICES.find((x) => x.kind === kind)!;
+  return { provider: '11labs', voiceId: v.voiceId, model: VAPI_VOICE_MODEL };
+}
+
+/** The voice a location speaks with on Vapi: its own choice, else the one of the same kind as its own voice. */
+export function vapiVoiceOf(clinic: { voice?: string; vapi?: { voice?: VapiVoiceChoice } }): VapiVoiceChoice {
+  return clinic.vapi?.voice ?? vapiVoiceFor(clinic.voice);
+}
+
+/** One of the listed voices, by id; null for one set by provisioning that Settings does not list. */
+export const listedVapiVoice = (voiceId: string) => VAPI_VOICES.find((v) => v.voiceId === voiceId) ?? null;
+
+/**
+ * The test-call page, while the location is on Vapi (note 46, item 5): a browser test call always uses Attendra's own
+ * engine, so whoever tests hears what Vapi would say only by calling the location's number.
+ */
+export const vapiTestCallLine = (number: string | null) =>
+  `This test call uses Attendra's engine. ${number ? `To hear Vapi, call ${number}.` : 'To hear Vapi, call the location\'s number.'}`;

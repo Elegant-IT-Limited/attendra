@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { asE164, localDateOf, providerName, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, PREVIEW_VOICES, type TalkStyle, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel, DEFAULT_RECORDING_NOTICE, noticeIsSentence, openingWords, noProviderWarnings, SETTINGS_LIMITS } from '@attendra/core';
+import { asE164, localDateOf, providerName, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, listedVapiVoice, PREVIEW_VOICES, type TalkStyle, VAPI_VOICE_MODEL, VAPI_VOICES, vapiVoiceOf, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel, DEFAULT_RECORDING_NOTICE, noticeIsSentence, openingWords, noProviderWarnings, SETTINGS_LIMITS } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
@@ -249,6 +249,25 @@ export default function Settings() {
           </Field>
           {clinicWarnings(c).filter((w) => w.path !== 'routing').map((w) => <Alert key={w.path} tone="warn">{w.message}</Alert>)}
           <div className="grid gap-4 sm:grid-cols-2">
+            {c.voiceEngine === 'vapi' ? (
+              // the location answers on Vapi (note 46): its voice is one of the ElevenLabs voices; the OpenAI voice is kept for
+              // when it switches back to Attendra
+              <div className="min-w-0 space-y-1.5">
+                <label htmlFor="voice" className="block text-sm font-medium">Voice</label>
+                <div className="flex items-start gap-2">
+                  <Select id="voice" aria-describedby="voice-hint" value={vapiVoiceOf(c).voiceId}
+                    onChange={(e) => set({ vapi: { ...c.vapi, voice: { provider: '11labs', voiceId: e.target.value, model: VAPI_VOICE_MODEL } } })}>
+                    {/* one set by the operator that is not listed stays selected */}
+                    {!listedVapiVoice(vapiVoiceOf(c).voiceId) && <option value={vapiVoiceOf(c).voiceId}>{vapiVoiceOf(c).voiceId} (set by Attendra)</option>}
+                    {VAPI_VOICES.map((v) => <option key={v.voiceId} value={v.voiceId}>{v.name}, {v.kind === 'female' ? 'a woman\'s voice' : 'a man\'s voice'}, {v.sound}</option>)}
+                  </Select>
+                  <VoicePreview clinicId={clinicId} voice={`11labs:${vapiVoiceOf(c).voiceId}`} />
+                </div>
+                <p id="voice-hint" className="text-xs text-text-muted" data-testid="vapi-voice-hint">
+                  This location answers on Vapi, our backup voice service, so its voice is an ElevenLabs voice. Listen plays ElevenLabs&apos; own sample of it. Your Attendra voice, {voiceLabel(c.voice)}, is kept for when it moves back.
+                </p>
+              </div>
+            ) : (
             <div className="min-w-0 space-y-1.5">
               <label htmlFor="voice" className="block text-sm font-medium">Voice</label>
               <div className="flex items-start gap-2">
@@ -262,6 +281,7 @@ export default function Settings() {
               </div>
               <p id="voice-hint" className="text-xs text-text-muted">How the assistant sounds on the phone. Listen plays your saved greeting in the voice chosen here: save a changed greeting first to hear it.</p>
             </div>
+            )}
             <Field label="Time zone" htmlFor="tz" hint="Times on every page, the opening hours and read-backs use it.">
               <TimeZonePicker id="tz" value={c.timezone} onChange={(timezone) => set({ timezone })} disabled={!writable || save.isPending} />
             </Field>

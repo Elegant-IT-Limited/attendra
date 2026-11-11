@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { emergencyCallLine } from '@attendra/core';
+import { emergencyCallLine, vapiTestCallLine } from '@attendra/core';
 import { useQuery } from '@tanstack/react-query';
 import { Bot, Download, Mic, PhoneOff, User } from 'lucide-react';
 import Link from 'next/link';
@@ -17,7 +17,7 @@ import { Alert, Empty } from '@/components/ui/feedback';
 import { useClinic, useClinicConfig } from '@/lib/api';
 import { type CallAs, NO_CALLER_ID } from '@/lib/call-as';
 import { canRecord } from '@/lib/call-recording';
-import { clock } from '@/lib/format';
+import { clock, phone } from '@/lib/format';
 import { limitIsTimeLeft, testCallLimitLabel, testTimeLeftLine } from '@/lib/test-call-limit';
 import { cn } from '@/lib/utils';
 import { pageData } from '@/lib/page-data';
@@ -48,6 +48,10 @@ export default function TestCallPage() {
   const emergencyLine = config.data?.industry === 'vet'
     ? <p className="-mt-2 mb-4 text-sm text-text-muted" data-testid="emergency-line">{emergencyCallLine(config.data, new Date())} A test call is never put through: you hear what happens when nobody answers.</p>
     : null;
+  // a location on Vapi (note 46, item 5): a browser test call is always Attendra's engine, so the line says how to hear Vapi
+  const vapiLine = config.data?.voiceEngine === 'vapi'
+    ? <div className="mb-4" data-testid="vapi-test-call-line"><Alert tone="info">{vapiTestCallLine(config.data.phoneNumbers[0] ? phone(config.data.phoneNumbers[0]) : null)}</Alert></div>
+    : null;
   if (clinic && !can('calls:test')) return <Empty title="Not available">Your role cannot make test calls.</Empty>;
   // the page's own title above it: the menu leads here for a simulated call too
   if (me && !me.testCalls) return <><PageHeader title="Test call" />{emergencyLine}<Empty title="Test calls are off" action={<a href={TEST_CALLS_DOC} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">How to set up test calls</a>}>{FAILURES.voice_not_configured}</Empty>{me.simulatedCalls && <SimulatedCall clinicId={clinicId} />}</>;
@@ -60,6 +64,7 @@ export default function TestCallPage() {
         description="Talk to the receptionist through your microphone, with this clinic's live settings. It is recorded like a phone call and marked as a browser test."
       />
       {emergencyLine}
+      {vapiLine}
       <div className="grid gap-6 lg:grid-cols-[320px_1fr] lg:items-start">
         <Card>
           <CardContent className="flex flex-col items-center gap-4 py-8 text-center">

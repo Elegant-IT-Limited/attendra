@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { hasPreview } from '@attendra/core';
+import { hasPreview, listedVapiVoice } from '@attendra/core';
 import { Loader2, Phone, Play, Square } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
@@ -41,8 +41,13 @@ export function VoicePreview({ clinicId, voice }: { clinicId: string; voice: str
     }
   };
 
+  // a Vapi voice (note 46) with no sample we know of is heard on a call to the location's number: a test call never reaches Vapi
+  const vapi = voice.startsWith('11labs:') ? listedVapiVoice(voice.slice('11labs:'.length)) : null;
+  if (voice.startsWith('11labs:') && !vapi?.preview) {
+    return <p className="max-w-40 text-xs text-text-muted" data-testid="vapi-no-sample">No sample: hear it on a call to the location&apos;s number.</p>;
+  }
   // a voice only the Live model has is heard on a call, not in a preview
-  if (!hasPreview(voice)) {
+  if (!vapi && !hasPreview(voice)) {
     return (
       <Link href={`/c/${clinicId}/test-call`} className={buttonStyles({ variant: 'outline' })} title="This voice is only on calls, so it has no preview. Save it, then hear it in a test call."><Phone /> Test call</Link>
     );
@@ -50,7 +55,7 @@ export function VoicePreview({ clinicId, voice }: { clinicId: string; voice: str
 
   return (
     <div className="space-y-1">
-      <Button type="button" variant="outline" onClick={() => void play()} aria-label={state === 'playing' ? 'Stop the sample' : `Listen to ${voice}`}>
+      <Button type="button" variant="outline" onClick={() => void play()} aria-label={state === 'playing' ? 'Stop the sample' : `Listen to ${vapi?.name ?? voice}`}>
         {state === 'loading' ? <Loader2 className="animate-spin" /> : state === 'playing' ? <Square /> : <Play />}
         {state === 'playing' ? 'Stop' : 'Listen'}
       </Button>

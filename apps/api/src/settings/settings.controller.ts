@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { applyListChange, ClinicConfig, SETTINGS_LIMITS, EmergencyDraft, emergencyFormFor, emergencyFormView, emergencyNumberProblem, phoneTypingIssues, settingsFieldProblems, inClinicCountry, LANGUAGES, LIST_NAMES, type ListName, PACKS, PREVIEW_VOICES, viewerConfig, voiceLabel, withPhonesAsE164 } from '@attendra/core';
+import { applyListChange, ClinicConfig, SETTINGS_LIMITS, EmergencyDraft, emergencyFormFor, emergencyFormView, emergencyNumberProblem, phoneTypingIssues, settingsFieldProblems, inClinicCountry, LANGUAGES, LIST_NAMES, listedVapiVoice, type ListName, PACKS, PREVIEW_VOICES, VAPI_VOICE_MODEL, type VapiVoiceChoice, viewerConfig, voiceLabel, withPhonesAsE164 } from '@attendra/core';
 import { can } from '../access';
 import { type Database, type FrontDeskRepository, PostgresAuditLog, type ScheduleRepository, schema, staffNames } from '@attendra/db';
 import { and, eq } from 'drizzle-orm';
@@ -13,6 +13,17 @@ import { issuesOf, ZodPipe } from '../http/zod.pipe';
 import { AssistantChoices, AssistantChoicesQuery, KeepStrandedQuery, ListChange } from '../contracts';
 import { keeps, strandedBy, strandedConflict } from '../schedule/stranded';
 import type { z } from 'zod';
+
+/**
+ * The location's Vapi ids stay the operator's (provisioning), but its voice on Vapi is the clinic's to choose in
+ * Settings > Voice (note 46), among the listed ElevenLabs voices only: anything else sent keeps the saved one. A save
+ * updates the location's Vapi assistant a moment later (VapiLocations.touched).
+ */
+function vapiWithVoice(current: ClinicConfig['vapi'], sent: VapiVoiceChoice | undefined): ClinicConfig['vapi'] {
+  if (!sent || sent.provider !== '11labs' || !listedVapiVoice(sent.voiceId)) return current;
+  const voice: VapiVoiceChoice = { provider: '11labs', voiceId: sent.voiceId, model: VAPI_VOICE_MODEL };
+  return { ...current, voice };
+}
 
 @ApiTags('settings')
 @ApiCookieAuth()
@@ -185,6 +196,7 @@ export class SettingsController {
     // and the voice engine is the operator's choice (provisioning), never Settings'
     // and so is a pause of the assistant (provisioning, from the plan), and the location's Vapi ids (batch 6)
     const next = { ...merged.data, emergencyReview: current.emergencyReview, voiceEngine: current.voiceEngine, voiceFlow: current.voiceFlow, realtimeModel: current.realtimeModel, answeringPaused: current.answeringPaused, vapi: current.vapi };
+    next.vapi = vapiWithVoice(current.vapi, merged.data.vapi?.voice);
     if (next.id !== clinicId) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'id', message: 'the clinic id cannot change' }] });
     // the assistant's numbers are Attendra's (they route calls); the clinic's own lines are the clinic's to keep right.
     // In order: the assistant's first, as they were, since the first number is the one confirmations are texted from
