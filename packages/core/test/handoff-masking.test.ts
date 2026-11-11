@@ -49,7 +49,7 @@ describe('masking an excerpt before it is stored', () => {
 
   it('stays fast on long and odd lines (no regular expression backtracks on a caller\'s words)', () => {
     const t0 = Date.now();
-    for (const line of ['1'.repeat(20_000), `${'5 '.repeat(10_000)}x`, `${'seven '.repeat(10_000)}x`, `12 ${'a '.repeat(10_000)}street`, `${' '.repeat(20_000)}x`]) maskExcerptLine(line, NAMES);
+    for (const line of ['1'.repeat(20_000), `(${')'.repeat(20_000)}`, `a@${'!'.repeat(20_000)}`, `${'5 '.repeat(10_000)}x`, `${'seven '.repeat(10_000)}x`, `12 ${'a '.repeat(10_000)}street`, `${' '.repeat(20_000)}x`]) maskExcerptLine(line, NAMES);
     expect(Date.now() - t0).toBeLessThan(1500);
     expect(maskExcerptLine('One moment, I have one dog.', NAMES)).toBe('One moment, I have one dog.');
   });

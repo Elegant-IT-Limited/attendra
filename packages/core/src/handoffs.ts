@@ -55,7 +55,7 @@ const EMAIL_WORD = /^[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+$/;
 function maskEmails(pieces: Piece[]): Piece[] {
   return pieces.map((p) => {
     if (!p.word.includes('@')) return p;
-    const trail = p.word.match(/[,;:!?)."']*$/)![0];
+    const trail = trailOf(p.word, (ch) => ',;:!?).\"\''.includes(ch));
     const core = p.word.slice(p.word.startsWith('(') || p.word.startsWith('"') ? 1 : 0, p.word.length - trail.length);
     return EMAIL_WORD.test(core) ? { word: `[email]${trail}`, gap: p.gap } : p;
   });
@@ -80,11 +80,25 @@ function piecesOf(line: string): Piece[] {
   for (const m of line.matchAll(/(\S+)(\s*)/g)) out.push({ word: m[1]!, gap: m[2]! });
   return out;
 }
-const bare = (w: string) => w.toLowerCase().replace(/^[^\p{L}\p{N}+(]+|[^\p{L}\p{N}]+$/gu, '');
+/** Letters and digits, one character at a time: the word's edges are trimmed with loops, never an end-anchored repeat. */
+const isWordChar = (ch: string) => /[\p{L}\p{N}]/u.test(ch);
+/** The run of characters at the end of a word for which `keep` holds ("." and ")" after a number). */
+function trailOf(w: string, keep: (ch: string) => boolean = (ch) => !isWordChar(ch)): string {
+  let i = w.length;
+  while (i > 0 && keep(w[i - 1]!)) i--;
+  return w.slice(i);
+}
+/** The word in lower case without the marks around it (a leading + or ( stays: it may start a number). */
+function bare(w: string): string {
+  let a = 0;
+  while (a < w.length && !isWordChar(w[a]!) && w[a] !== '+' && w[a] !== '(') a++;
+  const rest = w.slice(a);
+  return rest.slice(0, rest.length - trailOf(rest).length).toLowerCase();
+}
 const digitsOf = (w: string) => w.replace(/\D/g, '');
 /** A word that is part of a written number: digits with + ( ) . - between them, or only those marks. */
-const NUMBERISH_SHAPE = /^[+(]?[\d().-]+[,.;:!?)]*$/;
-const isNumberish = (w: string) => NUMBERISH_SHAPE.test(w) && /\d/.test(w);
+const NUMBER_BODY = /^[+(]?[\d().-]+$/;
+const isNumberish = (w: string) => { const body = w.slice(0, w.length - trailOf(w, (ch) => ',.;:!?)'.includes(ch)).length); return /\d/.test(body) && NUMBER_BODY.test(body); };
 
 /** Every run of words that writes or says five digits or more, cut to its last four ("…0172"). */
 function maskNumbers(pieces: Piece[]): Piece[] {
@@ -106,7 +120,7 @@ function maskNumbers(pieces: Piece[]): Piece[] {
       break;
     }
     if (j > i && digits.length >= 5) {
-      const trail = pieces[j - 1]!.word.match(/[^\p{L}\p{N}]*$/u)![0].replace(/[\d()+-]/g, '');
+      const trail = trailOf(pieces[j - 1]!.word).replace(/[\d()+-]/g, '');
       out.push({ word: `${lastFour(digits)}${trail}`, gap: pieces[j - 1]!.gap });
       i = j;
     } else {
@@ -129,7 +143,7 @@ function maskStreets(pieces: Piece[]): Piece[] {
       for (let k = i + 2; k < Math.min(pieces.length, i + 6); k++) if (/^\d{1,5}$/.test(bare(pieces[k]!.word))) { end = k; break; }
     }
     if (end < 0) { out.push(pieces[i]!); i++; continue; }
-    const trail = pieces[end]!.word.match(/[^\p{L}\p{N}]*$/u)![0];
+    const trail = trailOf(pieces[end]!.word);
     out.push({ word: `[address]${trail}`, gap: pieces[end]!.gap });
     i = end + 1;
   }
