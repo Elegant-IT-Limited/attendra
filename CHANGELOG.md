@@ -4,6 +4,11 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (Vapi voice, 2026-11-11)
+
+- **A location on Vapi speaks with an ElevenLabs voice** (eleven_flash_v2_5, which speaks Spanish too) of the same kind as the clinic's own voice, never Vapi's own default. Settings > Voice on such a location offers the ElevenLabs voices, with ElevenLabs' own sample on Listen; the clinic's OpenAI voice is kept for when it moves back.
+- **The test-call page on a Vapi location says how to hear Vapi**: a browser test call always uses Attendra's own engine.
+
 ### Fixed (browser test calls, 2026-11-11)
 
 - **Each number a caller says is checked with the owner's name given for that number.** After a number is read back, a veterinary clinic asks "And the owner's name on that profile?" for it when none was given. A pet's name ("Luna Ortiz" for the pet Luna) is never taken for the owner's, and the name checked on an earlier number is not reused for a second household's number unless the caller says it again. Nothing from a record is opened or named before the owner's name matches, and a wrong name still gets the same words as a number with no profile.
