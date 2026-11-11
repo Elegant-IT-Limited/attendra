@@ -388,6 +388,9 @@ const ClinicConfigShape = z.object({
   // the hosting layer pauses the assistant (a plan's free minutes used up, a payment missing): calls go to the
   // front desk while it takes transfers, or hear a short message. Set by provisioning, never in Settings
   answeringPaused: z.boolean().optional(),
+  // the handoff review's Level 2 (note 47): a short masked excerpt is kept with each handoff only when this is on: an
+  // internal test clinic, or an account whose accepted terms include the review line. Set by provisioning, never in Settings
+  handoffExcerpts: z.boolean().optional(),
   // days whose hours differ from the week's: shorter, or closed with a reason
   specialDays: z.array(SpecialDay).max(60).optional(),
   // callers must know they are talking to software; the greeting has to say so (checked below, in the clinic's languages)

@@ -15,6 +15,7 @@ export * from './call-health';
 export * from './call-costs';
 export * from './demo';
 export * from './emergency';
+export * from './handoffs';
 export * from './emergency-review';
 export * from './emergency-route';
 export * from './emergency-form';
