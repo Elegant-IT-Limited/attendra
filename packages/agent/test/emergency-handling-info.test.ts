@@ -36,3 +36,15 @@ it('a medicine asked in the same breath is still refused', async () => {
     expect(r.errors, said).toEqual(['medical_question']);
   }
 });
+
+it('"what does it mean?" is cut sentence by sentence, and nothing else', async () => {
+  const { withoutMeaningAsk } = await import('../src/flow/guards');
+  expect(withoutMeaningAsk('Atienden emergencias de guardia, ¿qué significa?').trim()).toBe('Atienden emergencias de guardia,');
+  expect(withoutMeaningAsk('What does "on call" mean? Can I give him ibuprofen?')).toContain('Can I give him ibuprofen?');
+  expect(withoutMeaningAsk('What does "on call" mean?').trim()).toBe('');
+  expect(withoutMeaningAsk('What do you charge for a visit?')).toBe('What do you charge for a visit?');
+  // linear on a long run of spaces
+  const t0 = Date.now();
+  withoutMeaningAsk(`what does${' '.repeat(50_000)}x`);
+  expect(Date.now() - t0).toBeLessThan(200);
+});
