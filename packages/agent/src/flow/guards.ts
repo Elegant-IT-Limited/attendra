@@ -96,3 +96,12 @@ export function sideTalkLine(clinic: Pick<ClinicConfig, 'languages'>): string {
 /** "Which vet is good for allergies?": clinic information (who is listed for what), never medical advice. */
 const WHICH_VET = /\b(?:which|what|who(?:'?s| is)?) (?:of your )?(?:vet|vets|veterinarian|veterinarians|doctor|doctors|dr)\b|\b(?:best|good) (?:vet|doctor) for\b|\b(?:que|cual|quien) (?:veterinari[oa]|doctor[a]?|medic[oa])\b/;
 export const asksWhichVet = (question: string) => WHICH_VET.test(normalise(question));
+/**
+ * A question about how the clinic handles emergencies ("what does 'on call' mean?", "¿qué significa que atienden
+ * emergencias a cualquier hora?"): clinic information, never a medical question (note 49 B3: Spanish "¿qué significa?"
+ * read as one). The animal's own condition still is.
+ */
+const EMERGENCY_HANDLING = /\bemergenc\w*\b.*\b(?:handle|handles|handling|on call|on-call|any time|anytime|after hours|setting|policy|de guardia|atiende\w*|maneja\w*|cualquier hora|horario|fuera de horario)\b|\b(?:handle|handles|handling|on call|on-call|de guardia|atiende\w*|maneja\w*)\b.*\bemergenc\w*\b/;
+export const asksEmergencyHandling = (question: string) => EMERGENCY_HANDLING.test(normalise(question));
+/** The words without "what does it mean?" ("¿qué significa?", "¿qué quiere decir?"), for a question about the clinic's emergency handling. */
+export const withoutMeaningAsk = (text: string) => text.replace(/[¿]?\s*\b(?:qu[eé] (?:significa|quiere decir)(?: eso| esto)?|what (?:does|do) (?:that|this|it|they) mean|what (?:does|do) [^?.!]{0,80} mean)\b\s*[?]?/gi, ' ');

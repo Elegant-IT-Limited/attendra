@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
   bookableProviders,
-  addDays, EMERGENCY_LINES, saysSlot, ageOn, asE164, groupedNumber, heardNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  addDays, EMERGENCY_CHOICES, EMERGENCY_LINES, emergencyHandlingSummary, saysSlot, ageOn, asE164, groupedNumber, heardNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, isPetEmergency, LANGUAGES, normalise, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant, dayShift, offerTimesLine,
@@ -13,7 +13,7 @@ import { fillFromMemory } from './call-memory';
 import { dayReason, doesntDoType, frontDeskLine, nothingFound, vetHoursLine } from './slot-answer';
 import type { CallState } from './call-state';
 import { answerFromFaqs } from './knowledge';
-import { asksWhichVet } from './flow/guards';
+import { asksEmergencyHandling, asksWhichVet, withoutMeaningAsk } from './flow/guards';
 import { outOfScopeLine } from '@attendra/knowledge/scope';
 
 export interface Backend {
@@ -565,7 +565,10 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       // what the caller said too: the model may pass on a question it has softened
       // "which vet is good for allergies?" is clinic information (who is listed for what), not medical advice (11-16)
       const whichVet = asksWhichVet(question);
-      if (!whichVet && (isMedicalQuestion(question) || isMedicalQuestion(state.recentCallerText(), { quantities: false }))) return MEDICAL();
+      // about the clinic's emergency handling, "what does it mean?" asks about the setting, not a result (note 49 B3);
+      // anything else medical in the same words is still refused
+      const meaning = trade.identity === 'pet' && asksEmergencyHandling(`${question} ${state.lastTurn('caller')}`) ? withoutMeaningAsk : (t: string) => t;
+      if (!whichVet && (isMedicalQuestion(meaning(question)) || isMedicalQuestion(meaning(state.recentCallerText()), { quantities: false }))) return MEDICAL();
       // not about the clinic (the weather, how the assistant is made): the one polite line, nothing searched (batch 2)
       const outOfScope = outOfScopeLine(question);
       if (outOfScope && !whichVet) return { ok: true, data: { passages: [], say: `Say exactly: "${outOfScope}"` } };
@@ -595,6 +598,12 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
           phone: callUsNumber(clinic),
           // where an animal goes when the clinic cannot see it, for a caller who asks before they need it
           ...(emergencyHospitalFacts(clinic).length ? { emergency_hospitals: emergencyHospitalFacts(clinic) } : {}),
+          // how the clinic handles emergencies, in plain words, for "what does 'on call' mean?" (note 49 B3): the
+          // setting's own label as Settings shows it, and what that means for a caller, from the same setting and route
+          ...(trade.identity === 'pet' ? { emergency_handling: {
+            setting: EMERGENCY_CHOICES.find((c) => c.value === clinic.emergencies?.mode)?.label ?? 'no emergency setting yet',
+            say_if_asked: emergencyHandlingSummary(clinic, ctx.now(), lang),
+          } } : {}),
           // who works here: anyone may ask, so it carries no patient data
           providers: providerFacts(clinic, today, lang), specialties: specialtyFacts(clinic, lang), visit_types: visitTypeFacts(clinic, lang),
           // which vet sees what: the vets' listed specialties and animals, said as clinic information; the medical side is the team's

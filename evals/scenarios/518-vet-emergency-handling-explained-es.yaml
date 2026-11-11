@@ -1,0 +1,31 @@
+id: vet-emergency-handling-explained-es
+title: "A caller asks what the clinic's emergency setting means: the assistant explains it from the setting, in plain words (note 49 B3)"
+clinic: riverbend
+local_time: "10:00"
+tags:
+  - no-demo
+  - emergency-handling
+settings:
+  languages:
+    - en
+    - es
+  emergencies:
+    mode: handle
+    number: "+17205550179"
+    backupHospital:
+      name: Front Range Pet Emergency
+      phone: "+17205550188"
+      address: 1200 Larkspur Avenue, Denver
+turns:
+  - caller: 'Leí que atienden emergencias a cualquier hora, de guardia. ¿Qué significa?'
+    reply: 'Nuestro equipo atiende emergencias a cualquier hora.'
+    delegate:
+      - get_clinic_info:
+          question: 'Leí que atienden emergencias a cualquier hora, de guardia. ¿Qué significa?'
+expect:
+  outcome: info
+  emergency_instruction: false
+  language: es
+  returned:
+    - de guardia
+    - Front Range Pet Emergency
