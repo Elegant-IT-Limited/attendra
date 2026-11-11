@@ -11,7 +11,9 @@ const onVapi = (page: Page) => page.route('**/api/v1/clinics/*/settings', async 
   if (route.request().method() !== 'GET') return route.continue();
   const res = await route.fetch();
   const json = await res.json() as { vapi?: Record<string, unknown> };
-  await route.fulfill({ response: res, json: { ...json, voiceEngine: 'vapi', vapi: { ...json.vapi, assistantId: 'asst_e2e', phoneNumberId: 'pn_e2e' } } });
+  // no voice of its own: the page shows the default, whatever an earlier run saved on the demo server
+  const { voice: _saved, ...link } = json.vapi ?? {};
+  await route.fulfill({ response: res, json: { ...json, voiceEngine: 'vapi', vapi: { ...link, assistantId: 'asst_e2e', phoneNumberId: 'pn_e2e' } } });
 });
 const noSideScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
 
@@ -42,12 +44,14 @@ for (const [label, width, height] of [['phone', 375, 812], ['tablet', 768, 1024]
     await voice.selectOption({ label: "Chris, a man's voice, casual and friendly" });
     await expect(page.getByTestId('vapi-no-sample')).toHaveText("No sample: hear it on a call to the location's number.");
 
-    // the choice is saved, and the server's stored voice is what comes back
+    // the choice is saved, and the server's stored voice is what comes back (once: the widths run side by side)
+    if (label === 'desktop') {
     await voice.selectOption({ label: "Matilda, a woman's voice, warm and friendly" });
     const saved = page.waitForResponse((r) => r.url().endsWith(`/clinics/${clinic}/settings`) && r.request().method() === 'PUT');
     await page.getByRole('button', { name: /^Save/ }).first().click();
     const body = await (await saved).json() as { vapi?: { voice?: { provider: string; voiceId: string; model: string } } };
     expect(body.vapi?.voice).toEqual({ provider: '11labs', voiceId: 'XrExE9yKIg1WjnnlVkGX', model: 'eleven_flash_v2_5' });
+    }
 
     // the test-call page: a browser test call is Attendra's engine, and the line gives the location's number
     await page.goto(`/c/${clinic}/test-call`);
