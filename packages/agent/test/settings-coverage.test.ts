@@ -35,6 +35,7 @@ const AUDIT: Record<string, Way> = {
   voiceFlow: 'code', // set by the operator: planner hand-offs or the tools API
   realtimeModel: 'code', // set by the operator: which gpt-realtime model answers (a one-clinic trial)
   answeringPaused: 'code', // set by the hosting layer
+  handoffExcerpts: 'code', // set by the hosting layer: a masked excerpt kept with each handoff (note 47, Level 2)
   // set by the operator (batch 6): the location's Vapi ids and the engine that answers its overflow (openAiEngineOf); the
   // voice reaches the call as the Vapi assistant's voice (packages/voice-engine vapi.ts)
   'vapi.assistantId': 'code', 'vapi.phoneNumberId': 'code', 'vapi.sipUri': 'code', 'vapi.updatedAt': 'code', 'vapi.syncedHash': 'code', 'vapi.overflowEngine': 'code', 'vapi.voice': 'code',

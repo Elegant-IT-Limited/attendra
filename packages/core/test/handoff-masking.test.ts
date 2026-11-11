@@ -47,6 +47,13 @@ describe('masking an excerpt before it is stored', () => {
     expect(maskExcerptLine('Linh here.', NAMES)).toBe('[name] here.');
   });
 
+  it('stays fast on long and odd lines (no regular expression backtracks on a caller\'s words)', () => {
+    const t0 = Date.now();
+    for (const line of ['1'.repeat(20_000), `${'5 '.repeat(10_000)}x`, `${'seven '.repeat(10_000)}x`, `12 ${'a '.repeat(10_000)}street`, `${' '.repeat(20_000)}x`]) maskExcerptLine(line, NAMES);
+    expect(Date.now() - t0).toBeLessThan(1500);
+    expect(maskExcerptLine('One moment, I have one dog.', NAMES)).toBe('One moment, I have one dog.');
+  });
+
   it('takes the lines from about 30 s before the handoff to it, at most 6, each masked', () => {
     const turns = Array.from({ length: 10 }, (_, i) => ({ speaker: (i % 2 ? 'agent' : 'caller') as 'caller' | 'agent', text: `Line ${i} for Biscuit, 720 555 0172.`, startMs: i * 5000, endMs: i * 5000 + 4000 }));
     const got = handoffExcerpt(turns, 46_000, NAMES);

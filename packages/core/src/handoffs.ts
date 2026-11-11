@@ -49,26 +49,89 @@ function nameWords(names: readonly string[]): string[] {
   return [...new Set(words)].sort((a, b) => b.length - a.length);
 }
 
-const EMAIL = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
-/** A street address: a house number and a street word ("1200 Larkspur Avenue"), or a Spanish street before its number ("calle Mayor 12"). */
-const STREET = /\b\d{1,6}[a-z]?\s+(?:[a-z0-9'.-]+\s+){0,4}(?:street|st|avenue|ave|road|rd|boulevard|blvd|lane|ln|drive|dr|court|ct|way|place|pl|parkway|pkwy|highway|hwy|terrace|circle|cir|square|sq)\b\.?|\b(?:calle|avenida|avda|av|carrera|camino|paseo|plaza)\.?\s+(?:[a-z'.-]+\s+){1,4}\d{1,5}\b/gi;
-/** Digits written as numbers, however spaced or punctuated, with at least 5 digits. */
-const DIGITS = /\+?\(?\d[\d\s().-]{3,}\d/g;
+/** A word that is an email address once the punctuation around it is set aside: "linh@example.com." */
+const EMAIL_WORD = /^[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+$/;
+/** Each email among the words as "[email]", keeping the punctuation after it. */
+function maskEmails(pieces: Piece[]): Piece[] {
+  return pieces.map((p) => {
+    if (!p.word.includes('@')) return p;
+    const trail = p.word.match(/[,;:!?)."']*$/)![0];
+    const core = p.word.slice(p.word.startsWith('(') || p.word.startsWith('"') ? 1 : 0, p.word.length - trail.length);
+    return EMAIL_WORD.test(core) ? { word: `[email]${trail}`, gap: p.gap } : p;
+  });
+}
+/** Street words after a house number ("1200 Larkspur Avenue"), and Spanish street words before a name and a number ("calle Mayor 12"). */
+const STREET_AFTER = new Set(['street', 'st', 'avenue', 'ave', 'road', 'rd', 'boulevard', 'blvd', 'lane', 'ln', 'drive', 'dr', 'court', 'ct', 'way', 'place', 'pl', 'parkway', 'pkwy', 'highway', 'hwy', 'terrace', 'circle', 'cir', 'square', 'sq']);
+const STREET_BEFORE = new Set(['calle', 'avenida', 'avda', 'av', 'carrera', 'camino', 'paseo', 'plaza']);
 const DIGIT_WORDS: Record<string, string> = {
   zero: '0', oh: '0', o: '0', one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9',
   cero: '0', uno: '1', un: '1', dos: '2', tres: '3', cuatro: '4', cinco: '5', seis: '6', siete: '7', ocho: '8', nueve: '9',
 };
-/** Digits said as words ("seven two zero five five five…", "siete dos cero…"), with "double"/"triple" before a digit. */
-const SPOKEN = new RegExp(`\\b(?:(?:double|triple|doble|triple)\\s+)?(?:${Object.keys(DIGIT_WORDS).join('|')})\\b(?:[\\s,.-]+(?:(?:double|triple|doble)\\s+)?(?:${Object.keys(DIGIT_WORDS).join('|')})\\b){4,}`, 'gi');
+const REPEAT: Record<string, number> = { double: 2, doble: 2, triple: 3 };
 const lastFour = (digits: string) => `…${digits.slice(-4)}`;
-function spokenDigits(words: string): string {
-  let out = '';
-  let times = 1;
-  for (const w of words.toLowerCase().split(/[\s,.-]+/).filter(Boolean)) {
-    if (w === 'double' || w === 'doble') { times = 2; continue; }
-    if (w === 'triple') { times = 3; continue; }
-    out += (DIGIT_WORDS[w] ?? '').repeat(times);
-    times = 1;
+
+/**
+ * A line as words and the space between them, so numbers, spoken digits and addresses are found by walking the words
+ * once: no regular expression with nested repeats runs on what a caller said (CodeQL; a long line stays linear).
+ */
+type Piece = { word: string; gap: string };
+function piecesOf(line: string): Piece[] {
+  const out: Piece[] = [];
+  for (const m of line.matchAll(/(\S+)(\s*)/g)) out.push({ word: m[1]!, gap: m[2]! });
+  return out;
+}
+const bare = (w: string) => w.toLowerCase().replace(/^[^\p{L}\p{N}+(]+|[^\p{L}\p{N}]+$/gu, '');
+const digitsOf = (w: string) => w.replace(/\D/g, '');
+/** A word that is part of a written number: digits with + ( ) . - between them, or only those marks. */
+const NUMBERISH_SHAPE = /^[+(]?[\d().-]+[,.;:!?)]*$/;
+const isNumberish = (w: string) => NUMBERISH_SHAPE.test(w) && /\d/.test(w);
+
+/** Every run of words that writes or says five digits or more, cut to its last four ("…0172"). */
+function maskNumbers(pieces: Piece[]): Piece[] {
+  const out: Piece[] = [];
+  let i = 0;
+  while (i < pieces.length) {
+    let j = i;
+    let digits = '';
+    let spoken = false;
+    let times = 1;
+    while (j < pieces.length) {
+      const w = bare(pieces[j]!.word);
+      if (isNumberish(pieces[j]!.word)) { digits += digitsOf(pieces[j]!.word); j++; continue; }
+      if (w in REPEAT && j + 1 < pieces.length && bare(pieces[j + 1]!.word) in DIGIT_WORDS) { times = REPEAT[w]!; j++; continue; }
+      if (w in DIGIT_WORDS && (spoken || j + 1 < pieces.length)) {
+        // a lone "one" or "o" is a word, not a number: spoken digits count only in a run
+        digits += DIGIT_WORDS[w]!.repeat(times); times = 1; spoken = true; j++; continue;
+      }
+      break;
+    }
+    if (j > i && digits.length >= 5) {
+      const trail = pieces[j - 1]!.word.match(/[^\p{L}\p{N}]*$/u)![0].replace(/[\d()+-]/g, '');
+      out.push({ word: `${lastFour(digits)}${trail}`, gap: pieces[j - 1]!.gap });
+      i = j;
+    } else {
+      out.push(pieces[i]!);
+      i++;
+    }
+  }
+  return out;
+}
+
+/** House number, up to four words, a street word; or a Spanish street word, up to four words, a number: "[address]". */
+function maskStreets(pieces: Piece[]): Piece[] {
+  const out: Piece[] = [];
+  let i = 0;
+  while (i < pieces.length) {
+    let end = -1;
+    if (/^\d{1,6}[a-z]?$/i.test(bare(pieces[i]!.word))) {
+      for (let k = i + 1; k < Math.min(pieces.length, i + 6); k++) if (STREET_AFTER.has(bare(pieces[k]!.word))) { end = k; break; }
+    } else if (STREET_BEFORE.has(bare(pieces[i]!.word))) {
+      for (let k = i + 2; k < Math.min(pieces.length, i + 6); k++) if (/^\d{1,5}$/.test(bare(pieces[k]!.word))) { end = k; break; }
+    }
+    if (end < 0) { out.push(pieces[i]!); i++; continue; }
+    const trail = pieces[end]!.word.match(/[^\p{L}\p{N}]*$/u)![0];
+    out.push({ word: `[address]${trail}`, gap: pieces[end]!.gap });
+    i = end + 1;
   }
   return out;
 }
@@ -79,11 +142,9 @@ function spokenDigits(words: string): string {
  * [email]; street addresses as [address]. English and Spanish. A test proves no known name or full number survives.
  */
 export function maskExcerptLine(line: string, names: KnownNames): string {
-  let t = fold(line);
-  t = t.replace(EMAIL, '[email]');
-  t = t.replace(STREET, '[address]');
-  t = t.replace(SPOKEN, (m) => { const d = spokenDigits(m); return d.length >= 5 ? lastFour(d) : m; });
-  t = t.replace(DIGITS, (m) => { const d = m.replace(/\D/g, ''); return d.length >= 5 ? lastFour(d) : m; });
+  const lead = /^\s*/.exec(line)![0];
+  const pieces = maskNumbers(maskStreets(maskEmails(piecesOf(fold(line)))));
+  let t = lead + pieces.map((p) => p.word + p.gap).join('');
   for (const [kind, list] of [['vet', names.vets], ['pet', names.pets], ['name', names.people]] as const) {
     for (const w of nameWords(list)) t = t.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escape(w)}(?![\\p{L}\\p{N}])`, 'giu'), `[${kind}]`);
   }
