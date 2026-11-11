@@ -12,7 +12,8 @@ const onVapi = (page: Page) => page.route('**/api/v1/clinics/*/settings', async 
   const res = await route.fetch();
   const json = await res.json() as { vapi?: Record<string, unknown> };
   // no voice of its own: the page shows the default, whatever an earlier run saved on the demo server
-  const { voice: _saved, ...link } = json.vapi ?? {};
+  const link = { ...json.vapi };
+  delete link.voice;
   await route.fulfill({ response: res, json: { ...json, voiceEngine: 'vapi', vapi: { ...link, assistantId: 'asst_e2e', phoneNumberId: 'pn_e2e' } } });
 });
 const noSideScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
