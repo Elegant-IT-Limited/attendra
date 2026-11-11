@@ -239,11 +239,19 @@ test('the desk marks a visit arrived with a key, the grid says so, and puts it b
   const origin = { origin: new URL(page.url()).origin };
   const found = await (await page.request.post(`/api/v1/clinics/${clinic}/patients/search`, { headers: origin, data: { query: 'whit' } })).json() as { patients: { id: string; name: string }[] };
   const james = found.patients.find((p) => p.name === 'James Whitaker')!;
-  // late today in the clinic's time, squeezed in with Override: a visit of today, still ahead, so no-show is not offered yet
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(testDate());
-  const offset = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', timeZoneName: 'longOffset' }).formatToParts(testDate()).find((p) => p.type === 'timeZoneName')!.value.replace('GMT', '');
+  // a few minutes from now, squeezed in with Override: a visit of today in the clinic's time, still ahead, so no-show is
+  // not offered yet. A fixed 23:30 had passed on a run at 23:39 Denver time; in the last minutes of the clinic's day the
+  // test waits for its midnight, so the visit is always ahead and always on the day the desk marks it
+  const denverDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(d);
+  const startOf = () => new Date(Math.ceil((testNow() + 3 * 60_000) / 60_000) * 60_000);
+  if (denverDay(startOf()) !== denverDay(testDate())) {
+    test.setTimeout(test.info().timeout + 4 * 60_000);
+    await page.waitForTimeout(startOf().getTime() - testNow() + 1000);
+  }
+  const start = startOf();
+  const today = denverDay(start);
   const booked = await page.request.post(`/api/v1/clinics/${clinic}/appointments`, { headers: origin, data: {
-    patientId: james.id, providerId: 'prov_okafor', visitTypeId: 'vt_sick', startsAt: new Date(`${today}T23:30:00${offset}`).toISOString(), idempotencyKey: `e2e-mark-${testNow()}`,
+    patientId: james.id, providerId: 'prov_okafor', visitTypeId: 'vt_sick', startsAt: start.toISOString(), idempotencyKey: `e2e-mark-${testNow()}`,
     override: true, overrideReason: 'late check',
   } });
   expect(booked.status(), await booked.text()).toBe(201);
