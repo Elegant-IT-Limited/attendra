@@ -36,6 +36,7 @@ import { OverviewController } from './overview/overview.controller';
 import { PlanController } from './overview/plan.controller';
 import { PatientsController } from './patients/patients.controller';
 import { ProvisioningController } from './provisioning/provisioning.controller';
+import { HandoffsController } from './provisioning/handoffs.controller';
 import { type VapiSetup, VapiLocations } from './provisioning/vapi';
 import { QualityController } from './quality/quality.controller';
 import { AppointmentsController } from './schedule/appointments.controller';
@@ -108,7 +109,7 @@ class ApiModule {
     if (vapi) onSettingsSaved(desk, (clinicId) => vapi.touched(clinicId));
     return {
       module: ApiModule,
-      controllers: [HealthController, MeController, UsersController, ChangesController, OverviewController, PlanController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, TextsController, AppointmentsController, PatientsController, DoctorsController, TeamController, TeamInvitationsController, MyInvitationsController, SettingsController, VoiceSamplesController, EmergencyReviewController, AuditController, ProvisioningController],
+      controllers: [HealthController, MeController, UsersController, ChangesController, OverviewController, PlanController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, TextsController, AppointmentsController, PatientsController, DoctorsController, TeamController, TeamInvitationsController, MyInvitationsController, SettingsController, VoiceSamplesController, EmergencyReviewController, AuditController, ProvisioningController, HandoffsController],
       providers: [
         { provide: DB, useValue: deps.db },
         { provide: CIPHER, useValue: deps.cipher },

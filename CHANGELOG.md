@@ -4,6 +4,12 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (the handoff review loop, 2026-11-11)
+
+- **Every handoff is recorded, as codes.** Each time the assistant hands a call to the clinic's team (a request, a callback, a transfer, an emergency) or has no answer, a `handoffs` row (migration 0057) keeps the kind, a fixed reason (caller asked for a person, identity not verified, no answer in clinic info, policy refusal, tool error, out of scope, language, emergency), the tool steps before it with their result codes, the fixed line's id, the engine and the channel. No caller words. Same Row Level Security as the call; the row goes with the call.
+- **A masked excerpt where the hosting layer turns it on** (`handoffExcerpts`, set by provisioning only): the caller's and the assistant's lines from about 30 s before the handoff, at most 6, masked before they are stored (the call's known names, every number to its last 4 whether written or said, emails, street addresses; English and Spanish) and encrypted. It is cleared with the call's transcript.
+- **Provisioning routes for the hosting layer's back office:** the handoffs across clinics with filters, one with its excerpt (each view audited with the reviewer's email), the reviewer's verdict and fix category (audited), the numbers by clinic, engine and week, and the weekly list of the ones marked "not needed".
+
 ### Fixed (alpha call fixes, 2026-11-11)
 
 - **A caller who says it is no longer an emergency can book.** After the route, "this is not emergency anymore" (with or without "an", with a question in the same breath) gets one line, word for word: "Just to check: <pet> doesn't need emergency care right now?" A clear yes, or the retraction said again, lifts the hold: the call reads "Emergency cleared" and the urgent request stays for the team. Unclear words keep the hold. Before the route, "It is not an emergency" is never read as a yes.

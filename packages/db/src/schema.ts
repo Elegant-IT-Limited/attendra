@@ -212,6 +212,28 @@ export const callActions = pgTable('call_actions', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * One row each time the assistant handed a call to the team or had no answer (note 47; migration 0057): codes only, and
+ * a masked, encrypted excerpt where the clinic allows it. Goes with the call; the excerpt is cleared with its transcript.
+ */
+export const handoffs = pgTable('handoffs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  clinicId: text('clinic_id').notNull(),
+  callId: uuid('call_id').notNull(),
+  at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+  engine: text('engine').notNull(),
+  channel: text('channel').notNull(),
+  kind: text('kind').notNull(),
+  reason: text('reason').notNull(),
+  steps: jsonb('steps').$type<{ tool: string; result: string }[]>().notNull(),
+  lineId: text('line_id'),
+  excerptEnc: text('excerpt_enc'),
+  verdict: text('verdict'),
+  fixCategory: text('fix_category'),
+  reviewedBy: text('reviewed_by'),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+});
+
 /** The next request number per clinic: advanced in the insert's own transaction, so numbers are consecutive and never reused. */
 export const clinicCounters = pgTable('clinic_counters', {
   clinicId: text('clinic_id').primaryKey(),
