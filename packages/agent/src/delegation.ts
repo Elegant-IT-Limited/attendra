@@ -997,7 +997,7 @@ export class CallAgent {
       await this.actions?.record({
         tool: name,
         argsRedacted: Object.keys((args ?? {}) as object), // argument names only; values can be PHI
-        result: { ok: result.ok, ...pick(result.data, ['error', 'verified', 'booked', 'cancelled', 'transferring', 'texted', 'template', 'consent_at_ms', 'filled_from_memory']) },
+        result: { ok: result.ok, ...pick(result.data, ['error', 'verified', 'booked', 'cancelled', 'transferring', 'texted', 'template', 'consent_at_ms', 'filled_from_memory', 'source']) },
         revision,
         patientId: this.state.verifiedPatient?.id ?? null,
       });
