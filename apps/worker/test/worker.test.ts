@@ -8,7 +8,7 @@ import type { PgBoss } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { bossQueue, createBoss, jobId, QUEUES } from '../src/queue';
 import { BALANCE_REMIND_MS, handlers, quiet, startWorker } from '../src/runtime';
-import { JobError, LocalSummariser, type Summariser } from '../src/summarise';
+import { JobError, LocalSummariser, type Summariser, SummaryCutOff } from '../src/summarise';
 
 const cipher = createPhiCipher(TEST_DATA_KEY);
 const log = createLogger({ name: 'test', destination: new Writable({ write: (_c, _e, done) => done() }) });
@@ -62,6 +62,17 @@ describe('summarising a call', () => {
     expect(await h().summariseCall({ clinicId: DEMO_CLINIC.id, callId })).toBe('exists');
     const actions = (await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.select().from(schema.auditLogs).where(and(eq(schema.auditLogs.callId, callId), eq(schema.auditLogs.actor, 'worker'))))).map((a) => `${a.actor} ${a.action}`);
     expect(actions).toEqual(['worker call.transcript.read', 'worker call.summary.written']);
+  });
+
+  it('saves the summary from the call\'s facts when the model\'s answer is cut off, and never gives up on it', async () => {
+    const callId = await closedCall();
+    // the same long call is cut off on every try: retrying it would end in no summary at all (2026-11-11)
+    const cutOff = { model: 'gpt-test', summarise: async () => { throw new SummaryCutOff(); } };
+    expect(await handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: cutOff, log }).summariseCall({ clinicId: DEMO_CLINIC.id, callId })).toBe('saved');
+    expect(await summaryOf(DEMO_CLINIC.id, callId)).toMatchObject({ model: 'local (model output cut off)', intent: 'other' });
+    // any other failure is still retried by the queue
+    const down = { model: 'gpt-test', summarise: async () => { throw new JobError('summary_model_http_503'); } };
+    await expect(handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: down, log }).summariseCall({ clinicId: DEMO_CLINIC.id, callId: await closedCall() })).rejects.toThrow('summary_model_http_503');
   });
 
   it('waits for a call that has not closed, and ignores one from another clinic', async () => {

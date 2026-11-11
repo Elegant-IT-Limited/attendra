@@ -10,7 +10,7 @@ import OpenAI from 'openai';
 import type { Job, PgBoss } from 'pg-boss';
 import { type FallbackEntry, fallbackEntry, formatBalance, type SmsSender, smsStatusUrl, type SpendTrigger, type TwilioBalance, type TwilioBalanceReading, type TwilioFallback, TwilioMessenger, type TwilioSpendAlerts } from '@attendra/telephony';
 import { CallJob, DeliveryJob, DocumentJob, ensureQueues, HandoverJob, jobId, QUEUES, RequestJob, SmsStatusJob, WEBHOOK_RETRY, WebhookEventJob } from './queue';
-import { JobError, LocalSummariser, ModelSummariser, type Summariser } from './summarise';
+import { JobError, LocalSummariser, ModelSummariser, SummaryCutOff, type Summariser } from './summarise';
 
 export interface WorkerDeps {
   boss: PgBoss;
@@ -102,9 +102,16 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
       if (call === null) return 'gone'; // deleted, or never belonged to this clinic
       if (call === 'done') return 'exists';
       if (call === 'not_closed') throw new JobError('call_not_closed');
-      const summary = await d.summariser.summarise(call);
-      const saved = await summaries.save(clinicId, callId, summary, d.summariser.model);
-      d.log.info({ call_id: callId, model: d.summariser.model, needs_review: summary.needsReview }, 'call summarised');
+      // a cut-off answer is the same on every try: the summary from the call's facts instead, never no summary at all
+      let model = d.summariser.model;
+      const summary = await d.summariser.summarise(call).catch(async (err: unknown) => {
+        if (!(err instanceof SummaryCutOff)) throw err;
+        model = 'local (model output cut off)';
+        d.log.warn({ call_id: callId, model: d.summariser.model }, 'the summary model\'s answer was cut off: the summary from the call\'s facts is saved instead');
+        return new LocalSummariser().summarise(call);
+      });
+      const saved = await summaries.save(clinicId, callId, summary, model);
+      d.log.info({ call_id: callId, model, needs_review: summary.needsReview }, 'call summarised');
       // the codes only; the summary's text stays in Attendra
       if (saved === 'saved') await emit(clinicId, { type: 'call.summary.ready', key: callId, data: { callId, intent: summary.intent, sentiment: summary.sentiment, needsReview: summary.needsReview } });
       // a call that ended with the caller's request unfinished becomes a request, so a person gets back to them
