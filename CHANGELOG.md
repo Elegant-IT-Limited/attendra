@@ -4,6 +4,14 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (alpha call fixes, 2026-11-11)
+
+- **A caller who says it is no longer an emergency can book.** After the route, "this is not emergency anymore" (with or without "an", with a question in the same breath) gets one line, word for word: "Just to check: <pet> doesn't need emergency care right now?" A clear yes, or the retraction said again, lifts the hold: the call reads "Emergency cleared" and the urgent request stays for the team. Unclear words keep the hold. Before the route, "It is not an emergency" is never read as a yes.
+- **The assistant never talks about how it works.** No "running in the background", no "the information I got back": while waiting it says only "One moment.", and a question nothing answers gets the front desk's words. Every eval fails if a line handed to the voice talks about its internals.
+- **The assistant explains the clinic's emergency handling** in plain words (the mode, the hours, where callers go, the emergency line), from the same setting as Settings > Emergencies. "¿Qué significa?" about it is no longer taken for a medical question.
+- **A caller who hangs up the phone is a hang-up, not a dropped line.** A gpt-realtime phone call's socket closes with 1006 however it ends; when it closes with no end known, Twilio's call status is read (read-only). Over: the caller hung up. Still up, or unknown: a drop, as before.
+- **A common question whose answer only says the website has none is never said to a caller** (the setup's website import no longer saves them either).
+
 ### Fixed (browser test calls, 2026-11-11)
 
 - **Each number a caller says is checked with the owner's name given for that number.** After a number is read back, a veterinary clinic asks "And the owner's name on that profile?" for it when none was given. A pet's name ("Luna Ortiz" for the pet Luna) is never taken for the owner's, and the name checked on an earlier number is not reused for a second household's number unless the caller says it again. Nothing from a record is opened or named before the owner's name matches, and a wrong name still gets the same words as a number with no profile.
