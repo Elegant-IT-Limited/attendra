@@ -96,3 +96,25 @@ export function sideTalkLine(clinic: Pick<ClinicConfig, 'languages'>): string {
 /** "Which vet is good for allergies?": clinic information (who is listed for what), never medical advice. */
 const WHICH_VET = /\b(?:which|what|who(?:'?s| is)?) (?:of your )?(?:vet|vets|veterinarian|veterinarians|doctor|doctors|dr)\b|\b(?:best|good) (?:vet|doctor) for\b|\b(?:que|cual|quien) (?:veterinari[oa]|doctor[a]?|medic[oa])\b/;
 export const asksWhichVet = (question: string) => WHICH_VET.test(normalise(question));
+/**
+ * A question about how the clinic handles emergencies ("what does 'on call' mean?", "¿qué significa que atienden
+ * emergencias a cualquier hora?"): clinic information, never a medical question (note 49 B3: Spanish "¿qué significa?"
+ * read as one). The animal's own condition still is.
+ */
+const EMERGENCY_WORD = /\bemergenc/;
+const HANDLING_WORD = /\b(?:handle|handles|handling|on call|on-call|any time|anytime|after hours|setting|policy|de guardia|atiende|atienden|maneja|manejan|cualquier hora|horario|fuera de horario)\b/;
+export const asksEmergencyHandling = (question: string) => { const t = normalise(question); return EMERGENCY_WORD.test(t) && HANDLING_WORD.test(t); };
+/** Where a "what does it mean?" starts in a sentence: "what does", "what do", "¿qué significa", "qué quiere decir". */
+const MEANING_START = /(?:¿ ?)?\bqu[eé] (?:significa|quiere decir)\b|\bwhat (?:does|do)\b/i;
+const MEANING_WORD = /\b(?:mean|means|significa|quiere decir)\b/i;
+/**
+ * The words without "what does it mean?" ("¿qué significa?", "¿qué quiere decir?"), for a question about the clinic's
+ * emergency handling: in each sentence that asks what something means, from where the asking starts to the sentence's
+ * end. Plain string steps, no backtracking (CodeQL: a regular expression on the caller's words must stay linear).
+ */
+export function withoutMeaningAsk(text: string): string {
+  return text.split(/(?<=[.!?])/).map((sentence) => {
+    const m = MEANING_START.exec(sentence);
+    return m && MEANING_WORD.test(sentence.slice(m.index)) ? `${sentence.slice(0, m.index)} ` : sentence;
+  }).join('');
+}

@@ -62,6 +62,9 @@ const LOST_BEFORE_DROP_MS = 3000;
 const OPENING_NUDGE = 'The call is connected and the caller has not heard you yet. Only if you have not started speaking and the caller has said nothing: greet them now, exactly as you were told to at the start of the call, then listen. If any part of the greeting was said, or the caller has spoken, never start it again: answer them.';
 /** After the assistant's goodbye, how long the line may stay quiet before the call is ended for it. */
 export const GOODBYE_HANGUP_MS = 6000;
+/** How a phone call's end is asked of the phone side (note 48): this many reads, this far apart. */
+export const PHONE_LINE_CHECKS = 3;
+export const PHONE_LINE_WAIT_MS = 1000;
 /** After the caller asked for the call to end ("can you cut the call?"), how long it may stay up for the assistant's goodbye. */
 export const ASKED_HANGUP_MS = 2500;
 /**
@@ -144,6 +147,13 @@ export class CallRunner {
    */
   closeGraceMs = 0;
 
+  /**
+   * On a phone call, whether the phone side's call is over (Twilio's call status; note 48): asked when the line closes
+   * with no end the runner knows of. True: the caller hung up, not a drop. False or null (still up, or the phone side
+   * cannot say): a dropped line, as before. Set by the voice service.
+   */
+  phoneLineEnded: (() => Promise<boolean | null>) | null = null;
+
   /** The caller ended the call from their side (the dashboard's End, a closed page): a close after this is a hang-up, not a drop. */
   callerEnded() {
     this.callerEnding = true;
@@ -206,12 +216,33 @@ export class CallRunner {
           const record = (reason: string | null) => void (reason ? this.finish(reason, null) : this.finish('connection_lost', null, `socket closed ${code} before session.closed`))
             .catch((err) => this.log.error({ session_id: this.sessionId, err }, 'closing the call record failed'))
             .finally(resolve);
-          if (normal() || !this.closeGraceMs) record(normal());
+          if (normal()) record(normal());
+          // a phone call: the phone side says whether the line was hung up (OpenAI closes a gpt-realtime socket with
+          // 1006 however a call ends, so every caller who hung up was a "drop"; note 48)
+          else if (this.phoneLineEnded) void this.askPhoneLine().then((over) => {
+            this.log.info({ session_id: this.sessionId, code, phone_line: over === null ? 'unknown' : over ? 'ended' : 'still up' }, 'the phone side, asked how the call ended');
+            record(normal() ?? (over ? 'caller_hangup' : null));
+          });
+          else if (!this.closeGraceMs) record(null);
           else setTimeout(() => record(normal()), this.closeGraceMs);
         }
         else resolve();
       });
     });
+  }
+
+  /**
+   * The phone side, asked up to PHONE_LINE_CHECKS times PHONE_LINE_WAIT_MS apart: the caller's hang-up reaches the phone
+   * side first, but a status read in the same instant may still say the call is up.
+   */
+  private async askPhoneLine(): Promise<boolean | null> {
+    let over: boolean | null = null;
+    for (let i = 0; i < PHONE_LINE_CHECKS; i++) {
+      if (i) await new Promise((r) => setTimeout(r, PHONE_LINE_WAIT_MS));
+      over = await this.phoneLineEnded!().catch(() => null);
+      if (over !== false) return over;
+    }
+    return over;
   }
 
   async handle(event: SidebandEvent): Promise<void> {

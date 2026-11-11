@@ -3,12 +3,13 @@ import { type PlannerSpeed, ResponsesPlanner } from '@attendra/agent';
 import {
   CallRepository, CallSummaryRepository, claimDelivery, clinicById, clinicForNumber, type Database, type PhiCipher,
   PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, throttledNotify, vapiCallEnded, vapiCallLive, vapiSecretHashOf, vapiSecretMatches,
+  recordHandoff,
 } from '@attendra/db';
 import { callUsNumber, type KnowledgeBase, PACKS, readablePhone, speakSlot, VAPI_FREE_CONCURRENCY } from '@attendra/core';
 import type { Alerter, Logger } from '@attendra/observability';
 import { eventSink, type JobQueue, noJobs, SMS_STATUSES } from '@attendra/worker/queue';
 import { BuiltinScheduler } from '@attendra/scheduling';
-import { confirmByReply, recordSmsStanding, smsKeyword, smsStatusUrl, twilioSender, TwilioMessenger } from '@attendra/telephony';
+import { confirmByReply, recordSmsStanding, smsKeyword, smsStatusUrl, twilioSender, TwilioMessenger, TwilioPhoneLine } from '@attendra/telephony';
 import { EngineRouter, GptLiveEngine, RealtimeEngine, SimulatedEngine, type ToolsBackend } from '@attendra/voice-engine';
 import OpenAI from 'openai';
 import twilio from 'twilio';
@@ -120,8 +121,12 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeMod
     },
     actionsFor: (clinicId, callId) => ({
       record: (a) => calls.recordAction(clinicId, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, taskRevision: a.revision, patientId: a.patientId }),
+      // the handoff review loop (note 47): codes, and the excerpt already masked by the agent, encrypted here
+      handoff: async (h) => { await recordHandoff(db, cipher, clinicId, callId, h); },
     }),
     alerts: rt.alerts,
+    // how a phone call ended, from Twilio's call status (note 48): a caller's hang-up is not a drop
+    ...(rt.twilio ? { phoneLine: new TwilioPhoneLine(rt.twilio.accountSid, rt.twilio.authToken) } : {}),
     recorderFor: (clinicId, callId) => ({
       appendSegment: (s) => calls.appendSegment(clinicId, callId, s),
       close: async (c) => {

@@ -195,7 +195,7 @@ export class SettingsController {
     // the emergency review is recorded on its own route, by the person who did it; Settings keeps it as it is
     // and the voice engine is the operator's choice (provisioning), never Settings'
     // and so is a pause of the assistant (provisioning, from the plan), and the location's Vapi ids (batch 6)
-    const next = { ...merged.data, emergencyReview: current.emergencyReview, voiceEngine: current.voiceEngine, voiceFlow: current.voiceFlow, realtimeModel: current.realtimeModel, answeringPaused: current.answeringPaused, vapi: current.vapi };
+    const next = { ...merged.data, emergencyReview: current.emergencyReview, voiceEngine: current.voiceEngine, voiceFlow: current.voiceFlow, realtimeModel: current.realtimeModel, answeringPaused: current.answeringPaused, handoffExcerpts: current.handoffExcerpts, vapi: current.vapi };
     next.vapi = vapiWithVoice(current.vapi, merged.data.vapi?.voice);
     if (next.id !== clinicId) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'id', message: 'the clinic id cannot change' }] });
     // the assistant's numbers are Attendra's (they route calls); the clinic's own lines are the clinic's to keep right.

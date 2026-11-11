@@ -7,7 +7,7 @@ import {
   ApiKeyRepository, authenticateApiKey, avatarFor, CallRepository, callStats, callTimeline, CallSummaryRepository, cleanTitles, createPhiCipher, type Database,
   FrontDeskRepository, householdOf, inviteToTeam, KnowledgeRepository, listMembers, normalisePhones, PatientRecords, PatientRemoval, phoneUsage, PostgresAuditLog,
   PostgresPatientDirectory, PostgresTaskQueue, qualityRows, saveAvatar, ScheduleRepository, seedCedarPark, seedDemo, seedDemoSchedule, staffNames,
-  teamInvitations, clinicCosts, saveVapiSecret, vapiCallEnded, vapiCallLive, vapiConcurrency, vapiSecretHashOf, vapiSecretOf, visitTypeCoverageReport, WebhookRepository, withClinic, withClinicScope,
+  teamInvitations, clinicCosts, handoffWeeks, listHandoffs, recordHandoff, setHandoffVerdict, viewHandoff, saveVapiSecret, vapiCallEnded, vapiCallLive, vapiConcurrency, vapiSecretHashOf, vapiSecretOf, visitTypeCoverageReport, WebhookRepository, withClinic, withClinicScope,
 } from '../src';
 import { openTestDatabase, TEST_DATA_KEY } from '../src/testing';
 
@@ -129,6 +129,26 @@ const CASES: Record<string, Case> = {
       expect((await clinicCosts(db, B, SINCE, UNTIL)).engines).toEqual([]);
     },
   },
+  'handoffs.ts': (() => {
+    let id = '';
+    return {
+      tables: ['handoffs', 'audit_logs'],
+      own: async () => {
+        id = await recordHandoff(db, cipher, A, callA, { kind: 'callback', reason: 'caller_asked_person', lineId: 'callback_taken', steps: [{ tool: 'create_callback', result: 'ok' }], excerpt: [{ speaker: 'caller', text: 'Call me back.' }] });
+        expect((await listHandoffs(db, { clinicId: A })).map((h) => h.id)).toContain(id);
+        expect((await listHandoffs(db)).map((h) => h.id)).toContain(id);
+        expect((await viewHandoff(db, cipher, A, id, 'reviewer@example.com'))?.excerpt).toEqual([{ speaker: 'caller', text: 'Call me back.' }]);
+        expect(await setHandoffVerdict(db, A, id, { verdict: 'needed', fixCategory: null, by: 'reviewer@example.com' })).toBe(true);
+        expect((await handoffWeeks(db, { clinicId: A, from: SINCE, to: UNTIL })).reduce((n, w) => n + w.handoffs, 0)).toBeGreaterThan(0);
+      },
+      other: async () => {
+        expect(await listHandoffs(db, { clinicId: B })).toEqual([]);
+        expect(await viewHandoff(db, cipher, B, id, 'reviewer@example.com')).toBeNull();
+        expect(await setHandoffVerdict(db, B, id, { verdict: 'not_needed', fixCategory: null, by: 'reviewer@example.com' })).toBe(false);
+        expect((await handoffWeeks(db, { clinicId: B, from: SINCE, to: UNTIL })).reduce((n, w) => n + w.handoffs, 0)).toBe(0);
+      },
+    };
+  })(),
   'invitations.ts': {
     tables: ['audit_logs'],
     own: async () => {

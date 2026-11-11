@@ -25,10 +25,14 @@ turns:
   - caller: Sí, sigue pasando, por favor ayúdeme.
   - assistant: Por favor lleve a Biscuit ahora mismo a Front Range Pet Emergency, en 1200 Larkspur Avenue, Denver. Su número es uno siete dos cero cinco cinco cinco cero uno ocho ocho.
   - caller: En realidad ya está bien, se le pasó.
+  - assistant: "Solo para confirmar: ¿Biscuit no necesita atención de emergencia ahora mismo?"
+  - caller: Sí.
 expect:
   outcome: emergency
   emergency_instruction: true
+  emergency_result: cleared
   spoken_contains:
     - Front Range Pet Emergency
+    - Solo para confirmar
     - Si vuelve a pasar
   language: es

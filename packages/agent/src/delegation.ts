@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addTokens, bySubject, claimsAuthority, EMERGENCY_LINES, type EmergencyMatch, emergencyRoute, clinicDays, clinicNow, clinicNowLine, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, detectLanguage, emergencyNumberFor, hospitalNow, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
+import { addTokens, bySubject, claimsAuthority, EMERGENCY_LINES, type EmergencyMatch, emergencyRoute, clinicDays, clinicNow, clinicNowLine, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, detectLanguage, emergencyNumberFor, hospitalNow, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ExcerptLine, type HandoffKind, type HandoffReason, type HandoffStep, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
 import { coachingInstruction, DOING, type LiveEvent, shortName } from './live';
 import type { Planner, PlannerTiming } from './planner';
 import { afterTool, type FlowMemory, flowStage, nextStep } from './flow/booking';
 import { speculativeLookup } from './flow/speculate';
-import { answerTo, BORDERLINE, type EmergencyCase, lastQuestionIsOurs, MILD, pastAndFineNow, SEVERE, saysSevere, staffNote } from './flow/emergency';
+import { excerptFor, handoffFor, type HandoffEvent, lastSteps, noteNames, reasonFromSteps, seenNames, stepResult } from './handoff';
+import { answerTo, BORDERLINE, confirmsCleared, type EmergencyCase, lastQuestionIsOurs, MILD, pastAndFineNow, SEVERE, saysSevere, staffNote } from './flow/emergency';
 import { askedAboutRecording, askedIfHuman, askedWhy, claimsIn, DISPUTE_NOTE, disputes, humanLine, notInTheClinicsLanguages, recordingLine, sideTalkLine, WHY } from './flow/guards';
 import { outOfScopeLine } from '@attendra/knowledge/scope';
 import { isVoiceTool, shapeForVoice, visitTypeChoices, type VoiceToolOutput } from './flow/voice-tools';
@@ -59,7 +60,7 @@ const HOLD_AFTER_MS = 5000;
  */
 const HOLD_AGAIN_MS = [30_000, 45_000] as const;
 /** Said once per wait, at HOLD_AFTER_MS, and not again on the same call within HOLD_COOLDOWN_MS: a caller who heard it on the last request does not hear it twice in a minute (a test call, 2026-10-27). */
-const HOLD_NOTE = 'Still working on it. Tell the caller once, in a few words, that you are still checking.';
+const HOLD_NOTE = 'Still working on it. Tell the caller once, in a few words, that you are still checking ("One moment, I\'m still checking."), never what is being done or why it takes time.';
 const HOLD_COOLDOWN_MS = 60_000;
 /** On the tools path, the clinic's settings are read again at most this often (the planner path reads them before every request). */
 const CLINIC_FRESH_MS = 30_000;
@@ -131,6 +132,8 @@ const EMERGENCY_SCRIPT_GRACE_MS = 20_000;
 export interface ActionRecorder {
   /** `patientId` is set once the caller is verified, so the call record can be linked to them. */
   record(entry: { tool: string; argsRedacted: unknown; result: unknown; revision: number; patientId?: string | null }): Promise<void>;
+  /** A handoff to the clinic's team, or no answer (note 47): codes, and the masked excerpt where the clinic keeps them. */
+  handoff?(h: { kind: HandoffKind; reason: HandoffReason; steps: HandoffStep[]; lineId: string | null; excerpt: ExcerptLine[] | null }): Promise<void>;
 }
 
 /**
@@ -150,6 +153,11 @@ export class CallAgent {
   readonly flow: FlowMemory = { committedAt: null };
   /** When the clinic's settings were last read on the tools path: at most every CLINIC_FRESH_MS, not before every tool. */
   private clinicReadAt = 0;
+  /** The tool steps so far, as codes, and the names the tools saw: what a handoff record keeps (note 47). */
+  private handoffSteps: HandoffStep[] = [];
+  private readonly namesSeen = seenNames();
+  /** An emergency is one handoff, however many steps it takes (the route, the urgent request after it). */
+  private emergencyHandedOff = false;
   /** The emergency script sent last, when it was sent, and whether the caller has heard the number yet. */
   private emergencyScript: { content: string; number: string; sentAt: number; said: boolean; heard: string } | null = null;
 
@@ -238,6 +246,7 @@ export class CallAgent {
     this.state.revision++; // and any request already in flight is dropped, not spoken over the script
     this.log.warn({ call_id: this.ctx.callId, emergency_kind: match.kind }, 'emergency guardrail triggered');
     this.emit({ type: 'emergency', kind: match.kind });
+    this.handOff({ kind: 'emergency', reason: 'emergency', lineId: match.kind === 'self_harm' ? 'self_harm_script' : 'emergency_script' });
     this.emitState();
 
     // The script is said in the language the emergency was said in, when the clinic
@@ -353,10 +362,28 @@ export class CallAgent {
     // "not sure" about "off his food" is the soonest sick visit, not a transfer (a live run put two such callers through)
     if (c.kind === 'borderline') a = saysSevere(normalise(words)) ? 'yes' : MILD.test(normalise(words)) || a === 'unsure' ? 'clear_no' : a;
     if (c.stage !== 'escalated' && (a === 'yes' || a === 'unsure')) return this.escalateEmergencyCase();
-    // a clear no, then or later (the caller retracts after a yes): booked as usual, with a note for the team
+    // after the route, a retraction gets one line to confirm it, and only its clear yes lifts the hold (note 49 B1: a
+    // test call said "this is not emergency anymore" twice and was refused a booking three times)
+    if (c.stage === 'escalated') {
+      if (c.confirming) {
+        c.confirming = false;
+        return confirmsCleared(words, this.ctx.clinic.languages) ? this.clearEmergencyCase() : [];
+      }
+      return a === 'clear_no' || a === 'bare_not' ? this.confirmClear() : [];
+    }
+    // a clear no to the question: booked as usual, with a note for the team
     if (a === 'clear_no' || (a === 'bare_not' && c.signAsked)) return this.clearEmergencyCase();
     if (a === 'bare_not') return this.askAboutTheSign();
     return [];
+  }
+
+  /** After the route, the caller says it is no longer an emergency: one line to confirm it, word for word. */
+  private confirmClear(): Outbound[] {
+    const c = this.state.emergencyCase!;
+    c.confirming = true;
+    const language = this.state.language;
+    this.log.info({ call_id: this.ctx.callId, emergency_kind: c.kind }, 'the caller says it is no longer an emergency: one line to confirm');
+    return this.emergencyLine(c, `The caller says it is no longer an emergency. Ask once, in ${PACKS[language].name}, word for word: "${EMERGENCY_LINES.clearConfirm(language, c.pet?.name ?? null)}" Then wait for their answer. Book nothing until they answer.`);
   }
 
   /** A bare "it's not an emergency": it denies the word, not the sign. One question about the sign itself, then its answer decides. */
@@ -387,6 +414,7 @@ export class CallAgent {
     s.textOffer = null;
     s.revision++;
     this.log.warn({ call_id: this.ctx.callId, emergency_kind: c.kind, action: route.action, mode: route.mode }, 'emergency confirmed: routed by the clinic\'s setting');
+    this.handOff({ kind: 'emergency', reason: 'emergency', lineId: route.action === 'transfer' ? 'emergency_transfer' : route.action === 'refer' ? 'emergency_refer' : 'emergency_nearest' });
     this.emit({ type: 'emergency', kind: c.kind });
     this.emitState();
     const language = this.state.language;
@@ -483,6 +511,9 @@ export class CallAgent {
       });
       if (s.outcome === 'abandoned' || s.outcome === 'info') s.outcome = 'task_created';
       this.log.info({ call_id: this.ctx.callId, kind: p.kind, read_back: p.readbackAtMs !== null, created: task.created }, 'an unfinished change became a request for the team');
+      // a request the call made on its own: the reason is what went wrong before it, or none of the agent's (the
+      // caller left first): out of scope for the assistant to finish
+      this.handOff({ kind: 'request', reason: reasonFromSteps(this.handoffSteps) ?? 'out_of_scope', lineId: 'unfinished_change' });
     } catch (err) {
       this.log.error({ call_id: this.ctx.callId, err }, 'the unfinished change could not be made a request');
     }
@@ -497,7 +528,9 @@ export class CallAgent {
     c.stage = 'cleared';
     s.emergencyNotes.push(staffNote(c.sign));
     if (s.emergency) s.emergencyCleared = true;
-    if (!s.emergencyResult || s.emergencyResult === 'hospital_said') s.emergencyResult = 'cleared';
+    // after the route the call's result reads "Emergency cleared" (note 49 B1); the urgent request already made stays
+    // on the Requests page for the team
+    if (!s.emergencyResult || s.emergencyResult === 'hospital_said' || (wasRouted && s.emergencyResult !== 'transferred')) s.emergencyResult = 'cleared';
     s.revision++;
     this.log.info({ call_id: this.ctx.callId, emergency_kind: c.kind, after_route: wasRouted }, 'the caller says it is not an emergency now; the call goes on with a note for the team');
     this.emit({ type: 'emergency', kind: 'cleared' });
@@ -854,6 +887,7 @@ export class CallAgent {
       if (!once(`side:${i}`)) return [];
       const first = once('side_talk');
       this.log.info({ call_id: this.ctx.callId, first }, 'side talk not in the clinic\'s languages: not translated');
+      if (first) this.handOff({ kind: 'no_answer', reason: 'language', lineId: 'side_talk' });
       return [say(first
         ? `That was not said to you, or not in a language you speak here. Do not translate it or answer it. Say once, word for word: "${sideTalkLine(clinic)}" Then wait for the caller.`
         : 'That was not said to you, or not in a language you speak here. Do not translate it or answer it: say nothing and wait for the caller.')];
@@ -977,7 +1011,7 @@ export class CallAgent {
       await this.actions?.record({
         tool: name,
         argsRedacted: Object.keys((args ?? {}) as object), // argument names only; values can be PHI
-        result: { ok: result.ok, ...pick(result.data, ['error', 'verified', 'booked', 'cancelled', 'transferring', 'texted', 'template', 'consent_at_ms', 'filled_from_memory']) },
+        result: { ok: result.ok, ...pick(result.data, ['error', 'verified', 'booked', 'cancelled', 'transferring', 'texted', 'template', 'consent_at_ms', 'filled_from_memory', 'source']) },
         revision,
         patientId: this.state.verifiedPatient?.id ?? null,
       });
@@ -985,7 +1019,29 @@ export class CallAgent {
       this.log.error({ call_id: this.ctx.callId, tool: name, err: { name: (err as Error).name, code: (err as { code?: string }).code } }, 'call action not recorded');
     }
     if (result.action) controls.push({ ...result.action, afterMs: AFTER_SPEECH_MS });
+    this.noteStep(name, args, result);
     return result;
+  }
+
+  /** A tool step as codes, and the handoff it is, if any (note 47). */
+  private noteStep(name: string, args: unknown, result: ToolResult) {
+    const before = this.handoffSteps.slice();
+    this.handoffSteps.push({ tool: name, result: stepResult(name, result) });
+    noteNames(this.namesSeen, args, result.data);
+    const h = handoffFor(name, args, result, this.state, before);
+    if (h) this.handOff(h, before);
+  }
+
+  /** Records a handoff: codes, the steps before it and, where the clinic keeps them, the masked excerpt. Never fails the call. */
+  private handOff(h: HandoffEvent, before: HandoffStep[] = this.handoffSteps) {
+    if (h.kind === 'emergency') {
+      if (this.emergencyHandedOff) return;
+      this.emergencyHandedOff = true;
+    }
+    if (!this.actions?.handoff) return;
+    const excerpt = excerptFor(this.state, this.ctx.clinic, this.state.lastMs(), this.namesSeen);
+    void this.actions.handoff({ ...h, steps: lastSteps(before), excerpt })
+      .catch((err: unknown) => this.log.error({ call_id: this.ctx.callId, kind: h.kind, err: { name: (err as Error).name } }, 'handoff not recorded'));
   }
 
   /**
@@ -1018,6 +1074,7 @@ export class CallAgent {
       // never a claim of success on a failure: the caller hears that it didn't work, and can be called back
       this.log.error({ call_id: this.ctx.callId, tool: name, err }, 'tool failed');
       result = { ok: false, data: { error: 'tool_failed', spoken: PACKS[s.language].couldNotFinish } };
+      this.handoffSteps.push({ tool: name, result: 'tool_failed' });
     }
     afterTool(this.flow, name, result.ok && !result.data.error, s.turns.length);
     if ((name === 'verify_caller' || name === 'register_patient') && s.verifiedPatient) {

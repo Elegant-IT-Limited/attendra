@@ -2,7 +2,7 @@
 import { and, asc, desc, eq, gt, inArray, isNotNull, lt, ne, sql } from 'drizzle-orm';
 import { type Database, withClinic, setClinicScope } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
-import { auditLogs, callActions, calls, callSearchKeys, callSegments, callSummaries, clinics, tasks } from '../schema';
+import { auditLogs, callActions, calls, callSearchKeys, callSegments, callSummaries, clinics, handoffs, tasks } from '../schema';
 import { callerKey } from './calls';
 
 export const INTENTS = ['book', 'reschedule', 'cancel', 'refill', 'question', 'callback', 'emergency', 'other'] as const;
@@ -194,6 +194,8 @@ export async function purgeCallRecords(db: Database, clinicId: string, before: D
         // the caller's number goes with the transcript, and the keys it is searched by with it; the hash for limits stays
         await tx.delete(callSearchKeys).where(and(eq(callSearchKeys.clinicId, clinicId), inArray(callSearchKeys.callId, old)));
         await tx.update(calls).set({ fromEnc: null }).where(and(eq(calls.clinicId, clinicId), inArray(calls.id, old)));
+        // a handoff's masked excerpt goes with the transcript it came from (note 47); its codes stay, like the call row
+        await tx.update(handoffs).set({ excerptEnc: null }).where(and(eq(handoffs.clinicId, clinicId), inArray(handoffs.callId, old)));
       }
       await tx.insert(auditLogs).values({ clinicId, actor: WORKER, action: 'retention.purged', entity: 'clinic', entityId: clinicId, counts: these });
       counts.transcriptLines += these.transcriptLines;
