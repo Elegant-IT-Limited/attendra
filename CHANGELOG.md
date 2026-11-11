@@ -4,6 +4,11 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (Vapi voice, 2026-11-11)
+
+- **A location on Vapi speaks with an ElevenLabs voice** (eleven_flash_v2_5, which speaks Spanish too) of the same kind as the clinic's own voice, never Vapi's own default. Settings > Voice on such a location offers the ElevenLabs voices, with ElevenLabs' own sample on Listen; the clinic's OpenAI voice is kept for when it moves back.
+- **The test-call page on a Vapi location says how to hear Vapi**: a browser test call always uses Attendra's own engine.
+
 ### Added (the handoff review loop, 2026-11-11)
 
 - **Every handoff is recorded, as codes.** Each time the assistant hands a call to the clinic's team (a request, a callback, a transfer, an emergency) or has no answer, a `handoffs` row (migration 0057) keeps the kind, a fixed reason (caller asked for a person, identity not verified, no answer in clinic info, policy refusal, tool error, out of scope, language, emergency), the tool steps before it with their result codes, the fixed line's id, the engine and the channel. No caller words. Same Row Level Security as the call; the row goes with the call.

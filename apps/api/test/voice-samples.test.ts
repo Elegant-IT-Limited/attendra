@@ -92,3 +92,37 @@ describe('naming the assistant from a setup page', () => {
     expect((await api.request('GET', `/api/v1/clinics/${OTHER.id}/settings/assistant`, { cookie: owner })).statusCode).toBe(404);
   });
 });
+
+// Note 46: a location on Vapi hears ElevenLabs' own sample of each listed voice, fetched by the API once and kept.
+describe('hearing a Vapi voice', () => {
+  it('plays ElevenLabs\' sample of a listed voice, fetched once, and refuses any other address', async () => {
+    const mp3 = Buffer.alloc(4000, 7);
+    const fetched: string[] = [];
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => { fetched.push(String(url)); return new Response(mp3, { status: 200 }); });
+    try {
+      const res = await api.request('GET', `${C}?voice=11labs:XrExE9yKIg1WjnnlVkGX`, { cookie: owner });
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['content-type']).toBe('audio/mpeg');
+      expect(res.rawPayload.length).toBe(4000);
+      await api.request('GET', `${C}?voice=11labs:XrExE9yKIg1WjnnlVkGX`, { cookie: staff });
+      expect(fetched).toEqual(['https://storage.googleapis.com/eleven-public-prod/premade/voices/XrExE9yKIg1WjnnlVkGX/b930e18d-6b4d-466e-bab2-0ae97c6d8535.mp3']);
+      // a voice we do not list, and one with no sample we know of
+      expect((await api.request('GET', `${C}?voice=11labs:someone-else`, { cookie: owner })).statusCode).toBe(422);
+      const none = await api.request('GET', `${C}?voice=11labs:iP95p4xoKVk53GoZ742B`, { cookie: owner });
+      expect([none.statusCode, none.json().error]).toEqual([422, 'calls_only']);
+      expect(sample).not.toHaveBeenCalledWith(expect.stringContaining('11labs'), expect.anything());
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('says so when the sample cannot be fetched', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('nope', { status: 403 }));
+    try {
+      const res = await api.request('GET', `${C}?voice=11labs:cgSgspJ2msm6clMCkdW9`, { cookie: owner });
+      expect([res.statusCode, res.json().error]).toEqual([422, 'no_sample']);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});

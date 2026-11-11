@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { voiceToolDefinitions } from '@attendra/agent';
-import type { ClinicConfig, VapiVoiceChoice } from '@attendra/core';
+import { type ClinicConfig, VAPI_VOICE_MODEL, VAPI_VOICES, type VapiVoiceChoice, vapiVoiceFor } from '@attendra/core';
 import { createHash } from 'node:crypto';
 import { toolsVapiPrompt } from './tools-prompt';
 
@@ -31,7 +31,7 @@ export const VAPI_DEFAULTS = {
   /** Each provider's voice when the location has not chosen one; all billed through Vapi. */
   voice: {
     vapi: { provider: 'vapi', voiceId: 'Elliot' },
-    '11labs': { provider: '11labs', voiceId: 'sarah', model: 'eleven_flash_v2_5' },
+    '11labs': { provider: '11labs', voiceId: VAPI_VOICES[0].voiceId, model: VAPI_VOICE_MODEL },
     // Cartesia has no preset names: a location on Cartesia names its voice id (VapiVoiceChoice)
     cartesia: { provider: 'cartesia', model: 'sonic-3.5' },
   },
@@ -92,10 +92,13 @@ export const forVapi = (v: unknown): unknown => {
   return o;
 };
 
-/** The voice a location speaks with on Vapi: its own choice, else Vapi's default voice. */
-export function vapiVoice(choice: VapiVoiceChoice | undefined): Record<string, unknown> {
-  if (!choice) return { ...VAPI_DEFAULTS.voice.vapi };
-  return { ...VAPI_DEFAULTS.voice[choice.provider], ...choice };
+/**
+ * The voice a location speaks with on Vapi: its own choice, else an ElevenLabs voice of the same kind as the clinic's
+ * own voice (note 46): never Vapi's own default, "Elliot".
+ */
+export function vapiVoice(choice: VapiVoiceChoice | undefined, clinicVoice?: string): Record<string, unknown> {
+  const v = choice ?? vapiVoiceFor(clinicVoice);
+  return { ...VAPI_DEFAULTS.voice[v.provider], ...v };
 }
 
 export interface VapiAssistantInput {
@@ -140,7 +143,7 @@ export function vapiAssistant(clinic: ClinicConfig, input: VapiAssistantInput) {
       messages: [{ role: 'system', content: toolsVapiPrompt(clinic) }],
       tools: voiceToolDefinitions(clinic).map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: forVapi(t.parameters) }, server })),
     },
-    voice: vapiVoice(clinic.vapi?.voice),
+    voice: vapiVoice(clinic.vapi?.voice, clinic.voice),
     transcriber: { ...VAPI_DEFAULTS.transcriber, language: clinic.languages.length > 1 ? 'multi' : clinic.languages[0] },
     startSpeakingPlan: {
       waitSeconds: s.waitSeconds,
