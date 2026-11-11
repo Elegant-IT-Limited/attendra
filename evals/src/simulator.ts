@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, type PlannerTiming, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
-import { addDays, awayOn, isPetEmergency, bookableWindows, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, normalise, maxGapMs, questionsIn, repeatedQuestions, speakSlot, toMinutes, type ToolName, weekdayOf, zonedInstant } from '@attendra/core';
+import { addDays, awayOn, isPetEmergency, bookableWindows, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, normalise, maxGapMs, questionsIn, repeatedQuestions, speakSlot, talksAboutInternals, toMinutes, type ToolName, weekdayOf, zonedInstant } from '@attendra/core';
 import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, PatientRecords, type PhiCipher, phoneKey, PostgresAuditLog, PostgresPatientDirectory, phiContext, PostgresTaskQueue, RIVERBEND_PETS, schema, seedCedarPark, seedDemo, seedRiverbend, withClinic } from '@attendra/db';
 import { and, eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
@@ -481,6 +481,10 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   // a forbidden phrase is one the assistant said: live, the tools' own notes to it ("Do not ask which vet") are not speech
   // the opening greeting is the clinic's own words, not the call's: a forbidden greeting is one said again
   const said = livePlanner ? transcript.slice(1).filter((l) => l.speaker === 'assistant').map((l) => l.text) : spoken;
+  // the caller never hears how the assistant works (note 49 B2): not in a line the backend hands the voice, nor, live, in
+  // what the voice said
+  // (live, the tools' own notes to the voice are not speech: only its transcript)
+  for (const line of new Set(livePlanner ? said : spoken)) check(!talksAboutInternals(line), `talked about its own workings: "${line.slice(0, 120)}"`);
   for (const phrase of scenario.forbid_spoken) {
     check(!said.some((s) => s.toLowerCase().includes(phrase.toLowerCase())), `said the forbidden phrase "${phrase}"`);
   }

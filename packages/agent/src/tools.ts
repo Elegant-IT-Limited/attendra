@@ -607,6 +607,9 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
           // what may be texted on request: offered only after the caller has heard it
           ...(texting.enabled ? { texting: { kinds: (['directions', 'hours', 'emergency_hospital', 'provider', 'answer', 'link'] as const).filter((k) => texting.kinds[k]), links: texting.links.map((l) => ({ id: l.id, label: l.label, when: l.when })) } } : {}),
           ...(passages.length ? { passages: passages.map((p) => ({ title: p.title, text: p.text })) } : {}),
+          // nothing here may answer it: the front desk's words, never what these facts hold or leave out (note 49 B2: a
+          // test call heard "the information returned is only an address")
+          ...(!answer && !passages.length ? { say: `Answer from one of these facts in a sentence or two if it answers the question. If none does, say: "${NO_INFORMATION}" Never tell the caller what these facts include or leave out.` } : {}),
         },
       };
     }

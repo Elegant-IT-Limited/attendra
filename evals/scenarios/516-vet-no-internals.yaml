@@ -1,0 +1,26 @@
+id: vet-no-internals
+title: "A question nothing in Settings answers, and a slow lookup: the caller hears a front desk's words, never how the assistant works (note 49 B2)"
+clinic: riverbend
+local_time: 10:00
+tags:
+  - no-demo
+  - no-internals
+turns:
+  - caller: Do you have a separate waiting room for cats?
+    reply: I don't have that information, I can have someone call you back.
+    delegate:
+      - get_clinic_info:
+          question: separate waiting room for cats
+  - caller: Okay, never mind. What's your address?
+    reply: Sure, here it is.
+    delegate:
+      - get_clinic_info:
+          question: address
+expect:
+  outcome: info
+forbid_spoken:
+  - in the background
+  - still running
+  - the information I got back
+  - the information returned
+  - I got back

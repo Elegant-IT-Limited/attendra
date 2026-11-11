@@ -149,6 +149,8 @@ export function replyUsage(model: string, u: RealtimeUsage | undefined): { model
  * item after it, so the prompt cache missed the rest of the call on each turn (batch 1d). The date is in the call
  * facts, once.
  */
+/** The words while a lookup is slow: a front desk's, never what is being done or why (note 49 B2: "it's still running in the background"). */
+export const HOLD_LINE = 'Say only "One moment." in the caller\'s language, and nothing about what is happening or why. Do not answer the question yet.';
 export const TURN_NOTE = 'Reply now. A tool you need is called first, with no words before it (never "let me...", "one moment"). Then say what it gives you, in the caller\'s language. Ask only what a tool result asks for, or a detail a tool needs.';
 /**
  * A tool's own words that end in a question ("Dr. Rahman and Dr. Khan do dental care. Shall I look with them?", a
@@ -554,7 +556,7 @@ export class RealtimeEngine implements VoiceEngine {
         respond();
       } else if (c.type === 'session.thinking.append') {
         // GPT-Live hears progress notes as context; here only "still working" is said, the rest is silent
-        if (/^Still working/.test(c.content)) respond({ type: 'response.create', response: { instructions: 'Tell the caller in a few words that you are still checking. Do not answer the question yet.', tool_choice: 'none' } });
+        if (/^Still working/.test(c.content)) respond({ type: 'response.create', response: { instructions: HOLD_LINE, tool_choice: 'none' } });
       } else {
         // new instructions (an emergency script, a staff note, a nudge): a system message in
         // the conversation, so it stays in context without becoming a standing rule, acted on

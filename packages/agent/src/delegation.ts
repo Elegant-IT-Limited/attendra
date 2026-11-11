@@ -59,7 +59,7 @@ const HOLD_AFTER_MS = 5000;
  */
 const HOLD_AGAIN_MS = [30_000, 45_000] as const;
 /** Said once per wait, at HOLD_AFTER_MS, and not again on the same call within HOLD_COOLDOWN_MS: a caller who heard it on the last request does not hear it twice in a minute (a test call, 2026-10-27). */
-const HOLD_NOTE = 'Still working on it. Tell the caller once, in a few words, that you are still checking.';
+const HOLD_NOTE = 'Still working on it. Tell the caller once, in a few words, that you are still checking ("One moment, I\'m still checking."), never what is being done or why it takes time.';
 const HOLD_COOLDOWN_MS = 60_000;
 /** On the tools path, the clinic's settings are read again at most this often (the planner path reads them before every request). */
 const CLINIC_FRESH_MS = 30_000;
