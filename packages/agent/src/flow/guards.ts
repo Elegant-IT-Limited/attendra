@@ -101,7 +101,20 @@ export const asksWhichVet = (question: string) => WHICH_VET.test(normalise(quest
  * emergencias a cualquier hora?"): clinic information, never a medical question (note 49 B3: Spanish "¿qué significa?"
  * read as one). The animal's own condition still is.
  */
-const EMERGENCY_HANDLING = /\bemergenc\w*\b.*\b(?:handle|handles|handling|on call|on-call|any time|anytime|after hours|setting|policy|de guardia|atiende\w*|maneja\w*|cualquier hora|horario|fuera de horario)\b|\b(?:handle|handles|handling|on call|on-call|de guardia|atiende\w*|maneja\w*)\b.*\bemergenc\w*\b/;
-export const asksEmergencyHandling = (question: string) => EMERGENCY_HANDLING.test(normalise(question));
-/** The words without "what does it mean?" ("¿qué significa?", "¿qué quiere decir?"), for a question about the clinic's emergency handling. */
-export const withoutMeaningAsk = (text: string) => text.replace(/[¿]?\s*\b(?:qu[eé] (?:significa|quiere decir)(?: eso| esto)?|what (?:does|do) (?:that|this|it|they) mean|what (?:does|do) [^?.!]{0,80} mean)\b\s*[?]?/gi, ' ');
+const EMERGENCY_WORD = /\bemergenc/;
+const HANDLING_WORD = /\b(?:handle|handles|handling|on call|on-call|any time|anytime|after hours|setting|policy|de guardia|atiende|atienden|maneja|manejan|cualquier hora|horario|fuera de horario)\b/;
+export const asksEmergencyHandling = (question: string) => { const t = normalise(question); return EMERGENCY_WORD.test(t) && HANDLING_WORD.test(t); };
+/** Where a "what does it mean?" starts in a sentence: "what does", "what do", "¿qué significa", "qué quiere decir". */
+const MEANING_START = /(?:¿ ?)?\bqu[eé] (?:significa|quiere decir)\b|\bwhat (?:does|do)\b/i;
+const MEANING_WORD = /\b(?:mean|means|significa|quiere decir)\b/i;
+/**
+ * The words without "what does it mean?" ("¿qué significa?", "¿qué quiere decir?"), for a question about the clinic's
+ * emergency handling: in each sentence that asks what something means, from where the asking starts to the sentence's
+ * end. Plain string steps, no backtracking (CodeQL: a regular expression on the caller's words must stay linear).
+ */
+export function withoutMeaningAsk(text: string): string {
+  return text.split(/(?<=[.!?])/).map((sentence) => {
+    const m = MEANING_START.exec(sentence);
+    return m && MEANING_WORD.test(sentence.slice(m.index)) ? `${sentence.slice(0, m.index)} ` : sentence;
+  }).join('');
+}
