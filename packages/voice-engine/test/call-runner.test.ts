@@ -538,6 +538,45 @@ describe('a line that goes after a goodbye (note 45, A6: a caller said "Okay, by
     vi.useRealTimers();
   });
 
+  // note 48: a phone call on gpt-realtime closes with 1006 however it ends; the phone side (Twilio's call status) says
+  // whether the caller hung up. Only an end nobody asked for, with the phone call still up, is a drop.
+  it('on a phone call, is the caller hanging up when the phone side says the call is over, and a drop only while it is still up', async () => {
+    vi.useFakeTimers();
+    const run = async (answers: (boolean | null | Error)[]) => {
+      const h = dropping();
+      let asked = 0;
+      h.runner.phoneLineEnded = async () => { const a = answers[Math.min(asked++, answers.length - 1)]!; if (a instanceof Error) throw a; return a; };
+      const done = h.runner.start();
+      await h.runner.handle(delta('in', 'i1', 'Can you book', 1000));
+      h.drop(1006);
+      await vi.advanceTimersByTimeAsync(5000);
+      await done;
+      return { reason: (h.closes[0] as { reason: string }).reason, asked };
+    };
+    expect(await run([true])).toEqual({ reason: 'caller_hangup', asked: 1 });
+    // the hang-up reaches the phone side a moment later than the close: asked again
+    expect(await run([false, true])).toEqual({ reason: 'caller_hangup', asked: 2 });
+    // still up after every read: our side lost the call
+    expect(await run([false])).toEqual({ reason: 'socket closed 1006 before session.closed', asked: 3 });
+    // the phone side cannot say: as before, a drop, never a guessed hang-up
+    expect((await run([null])).reason).toBe('socket closed 1006 before session.closed');
+    expect((await run([new Error('twilio down')])).reason).toBe('socket closed 1006 before session.closed');
+    vi.useRealTimers();
+  });
+
+  it('never asks the phone side when the end is already known (the assistant\'s goodbye and hang-up, the caller\'s goodbye)', async () => {
+    const h = dropping();
+    let asked = 0;
+    h.runner.phoneLineEnded = async () => { asked++; return false; };
+    const done = h.runner.start();
+    await h.runner.handle(delta('out', 'o1', 'Is there anything else I can help you with?', 1000));
+    await h.runner.handle(delta('in', 'i1', 'No, okay, bye.', 3000));
+    h.drop(1006);
+    await done;
+    expect(h.closes).toEqual([expect.objectContaining({ reason: 'caller_hangup' })]);
+    expect(asked).toBe(0);
+  });
+
   it('is still a dropped line when nobody was leaving', async () => {
     const h = dropping();
     const done = h.runner.start();

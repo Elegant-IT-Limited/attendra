@@ -22,9 +22,13 @@ turns:
   - caller: Yes, it's still happening, please help.
   - assistant: Please take Biscuit to Front Range Pet Emergency at 1200 Larkspur Avenue, Denver right away. Their number is one seven two zero five five five zero one eight eight.
   - caller: Actually he's fine now, it went away.
+  - assistant: "Just to check: Biscuit doesn't need emergency care right now?"
+  - caller: Yes.
 expect:
   outcome: emergency
   emergency_instruction: true
+  emergency_result: cleared
   spoken_contains:
     - Front Range Pet Emergency
+    - Just to check
     - If it comes back

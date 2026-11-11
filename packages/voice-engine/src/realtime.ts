@@ -59,7 +59,7 @@ const READS = new Set(['find_slots', 'get_clinic_info', 'search_knowledge', 'lis
 export const VET_VOICE_DESCRIPTIONS: Record<string, string> = {
   verify_caller: 'Find the pet before booking, changing or reading anything of theirs: the owner\'s first name (full if given), the pet\'s name, the phone number on file (null: the number they are calling from), and species if they said it ("my cat Mango"), else null. Call it again to switch pets. Owner known but not the pet: pet_name null (with caller ID it may return pets_on_number, the names to ask about). phone_last4: null, unless a tool asked for the last four digits on file; then those digits as said, with pet_name, and phone null.',
   register_patient: 'Add a new pet, when the caller says it is new (no lookup first: this checks it is not on file) or verify_caller found nothing and they say it is new. pet_name; owner_name only as they said it, else null (a tool asks for a name only when the number has none); species (dog, cat, rabbit...); sex (female, male or unknown); birthday_or_age as the owner said it, never with a year they did not say (a day and month alone is not a birthday: ask the age); phone (null: the number they are calling from). The pet is then found and can book.',
-  get_clinic_info: 'Hours today and for 7 days, the vets (animals and services they see, weekly hours, time off, new patients, details such as qualifications), visit types, emergency hospitals, the clinic FAQ, and document passages when the FAQ has no answer. No identity needed.',
+  get_clinic_info: 'Hours today and for 7 days, the vets (animals and services they see, weekly hours, time off, new patients, details such as qualifications), visit types, emergency hospitals, how the clinic handles emergencies (plain words, for a caller who asks), the clinic FAQ, and document passages when the FAQ has no answer. No identity needed.',
   find_slots: 'Up to 3 open slots, optionally with one vet (provider_id) or the vets for a kind of animal or service from get_clinic_info (specialty). No identity needed ("who is free Monday" before asking who they are). from_date: the first day asked for ("next week" is the coming Monday); null is today. from_time: the time named ("after 3" is 15:00, "at 10:30" is 10:30), else null; time_mode as said: at ("is 4 free?"), around ("around 5"), before ("earlier than 6"), after ("after 3") or earliest; the answer leads with that exact time, then the nearest on that side. propose_if_exact: true only for one exact day and time ("Thursday at 2:30") for a new booking by a caller already found: if free it is staged and its read-back spoken, so no propose_booking; if not, the nearest times come back. Never for a move; null before the pet is found.',
   send_text: 'Text the caller something they just heard: directions, hours, emergency_hospital, provider (ref: provider id), answer (ref: its source id) or link (ref: link id from get_clinic_info). Only when they asked for it or said yes to your offer: the first call gives the exact question; after a clear yes, call it again the same way. to: null for the number they are calling from.',
   clinic_now: 'The clinic\'s time, date and zone, whether it is open, when it closes or next opens, and whether a visit is booked now or taken as a request. Call it before saying anything about the time, the day, today\'s hours, or good morning/afternoon/evening after the greeting. Never say the clinic is open or closed without it.',
@@ -149,6 +149,8 @@ export function replyUsage(model: string, u: RealtimeUsage | undefined): { model
  * item after it, so the prompt cache missed the rest of the call on each turn (batch 1d). The date is in the call
  * facts, once.
  */
+/** The words while a lookup is slow: a front desk's, never what is being done or why (note 49 B2: "it's still running in the background"). */
+export const HOLD_LINE = 'Say only "One moment." in the caller\'s language, and nothing about what is happening or why. Do not answer the question yet.';
 export const TURN_NOTE = 'Reply now. A tool you need is called first, with no words before it (never "let me...", "one moment"). Then say what it gives you, in the caller\'s language. Ask only what a tool result asks for, or a detail a tool needs.';
 /**
  * A tool's own words that end in a question ("Dr. Rahman and Dr. Khan do dental care. Shall I look with them?", a
@@ -554,7 +556,7 @@ export class RealtimeEngine implements VoiceEngine {
         respond();
       } else if (c.type === 'session.thinking.append') {
         // GPT-Live hears progress notes as context; here only "still working" is said, the rest is silent
-        if (/^Still working/.test(c.content)) respond({ type: 'response.create', response: { instructions: 'Tell the caller in a few words that you are still checking. Do not answer the question yet.', tool_choice: 'none' } });
+        if (/^Still working/.test(c.content)) respond({ type: 'response.create', response: { instructions: HOLD_LINE, tool_choice: 'none' } });
       } else {
         // new instructions (an emergency script, a staff note, a nudge): a system message in
         // the conversation, so it stays in context without becoming a standing rule, acted on

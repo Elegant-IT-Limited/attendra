@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ClinicConfig, type EmergencyHospital, emergencyHospitalsOf, type EmergencyMode, type EmergencySettings } from './clinic';
-import { firstOpenHospital, specialDayOf, windowsOn } from './hours';
-import { type Language, PACKS } from './locales';
+import { firstOpenHospital, hoursSummary, specialDayOf, windowsOn } from './hours';
+import { emergencyNumberFor, type Language, PACKS } from './locales';
 import { localParts, toMinutes, weekdayOf } from './time';
 
 /**
@@ -126,6 +126,10 @@ export const EMERGENCY_LINES = {
   cantWait: (language: Language, h: EmergencyHospital) => (language === 'es'
     ? `Si no puede esperar, vaya a ${h.name}, en ${h.address}. Su número es ${PACKS.es.speakPhone(h.phone)}.`
     : `If you can't wait, go to ${h.name} at ${h.address}. Their number is ${PACKS.en.speakPhone(h.phone)}.`),
+  /** After the route, a caller who says it is no longer an emergency: one line to check, and only a clear yes lifts it. */
+  clearConfirm: (language: Language, pet: string | null) => (language === 'es'
+    ? `Solo para confirmar: ¿${yourPet(language, pet)} no necesita atención de emergencia ahora mismo?`
+    : `Just to check: ${yourPet(language, pet)} doesn't need emergency care right now?`),
   /** A clear no: what to do if the sign comes back, said once. */
   ifReturns: (language: Language, pet: string | null, route: EmergencyRoute) => {
     const who = yourPet(language, pet);
@@ -170,4 +174,30 @@ export function emergencyPreview(clinic: RouteClinic, language: Language, open: 
     transferFailed: route.action === 'transfer' ? EMERGENCY_LINES.transferFailed(language, route.number) : null,
     clearNo: EMERGENCY_LINES.ifReturns(language, pet, route),
   };
+}
+
+/**
+ * The clinic's emergency handling in plain words, for a caller who asks how it works ("what does 'on call' mean?"), in
+ * their language (note 49 B3: a test call heard "I can't explain that"). From the same setting and route as Settings >
+ * Emergencies: the mode, the hours, where callers go and the emergency line. The voice says it; a person in danger is
+ * always told the public emergency number too.
+ */
+export function emergencyHandlingSummary(clinic: RouteClinic & Pick<ClinicConfig, 'phoneNumbers' | 'country' | 'emergencyNumber'>, at: Date, language: Language): string {
+  const e = emergencySettingsOf(clinic);
+  const es = language === 'es';
+  const say = (n: string) => PACKS[language].speakPhone(n);
+  const person = es ? `Si una persona está herida o en peligro, llame al ${emergencyNumberFor(clinic, language)}.` : `If a person is hurt or in danger, call ${emergencyNumberFor(clinic, language)}.`;
+  const at24 = (h: EmergencyHospital) => (es ? `${h.name}, en ${h.address}. Su número es ${say(h.phone)}.` : `${h.name} at ${h.address}. Their number is ${say(h.phone)}.`);
+  if (!e) return `${es ? 'Para una emergencia, lleve a su mascota al hospital veterinario de emergencias de 24 horas más cercano.' : 'For an emergency, please take your pet to the nearest 24-hour emergency vet.'} ${person}`;
+  if (e.mode === 'refer') {
+    const h = routeWhen(clinic, false, at).hospital ?? e.hospital;
+    return `${es ? 'Para una emergencia, a cualquier hora, le enviamos a' : 'For an emergency, at any hour, we send you to'} ${at24(h)} ${person}`;
+  }
+  if (e.mode === 'handle') {
+    const backup = e.backupHospital ? (es ? ` Si nadie contesta, puede ir a ${at24(e.backupHospital)}` : ` If nobody answers, you can go to ${at24(e.backupHospital)}`) : '';
+    return `${es ? `Nuestro equipo atiende emergencias a cualquier hora, de guardia: le comunicamos en vivo con nuestra línea de emergencias, ${say(e.number)}.` : `Our team handles emergencies at any hour, on call: we put you through live to our emergency line, ${say(e.number)}.`}${backup} ${person}`;
+  }
+  const hours = hoursSummary({ ...clinic, hours: e.hours ?? clinic.hours }, at, language);
+  const after = routeWhen(clinic, false, at).hospital ?? e.afterHoursHospital;
+  return `${es ? `En nuestro horario de emergencias (${hours}) nuestro equipo atiende emergencias por teléfono y le comunica con nuestra línea de emergencias, ${say(e.number)}. Fuera de ese horario, y en días festivos, le enviamos a` : `In our emergency hours (${hours}) our team handles emergencies on the phone and puts you through to our emergency line, ${say(e.number)}. Outside those hours, and on holidays, we send you to`} ${at24(after)} ${person}`;
 }

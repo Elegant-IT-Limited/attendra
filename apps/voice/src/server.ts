@@ -2,7 +2,7 @@
 import { type ActionRecorder, type Backend, CallAgent, CallCache, cachedBackend, CallState, type Planner, warmPatient } from '@attendra/agent';
 import { ClinicConfig, openAiEngineOf, resolveTransfer, VOICE_ENGINES, type VoiceEngineName, type VoiceFlow, vipRoute } from '@attendra/core';
 import { type Alerter, isOpenAiQuotaError, type Logger } from '@attendra/observability';
-import { callerNumber, dialledCandidates, maskedHeaders, SPEND_ALERT_PATH, spendAlertText, trimEnd, twilioSignatureValid, twiml } from '@attendra/telephony';
+import { callerNumber, dialledCandidates, maskedHeaders, type PhoneCallRef, type PhoneLine, SPEND_ALERT_PATH, spendAlertText, trimEnd, twilioCallSid, twilioSignatureValid, twiml } from '@attendra/telephony';
 import { callerContext, CallMarks, CallRunner, EngineRouter, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine, pausedOpening, vipOpening } from '@attendra/voice-engine';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -79,6 +79,11 @@ export interface VoiceDeps {
    * the Twilio auth token over this service's public address. Without it both routes
    * answer 503.
    */
+  /**
+   * The phone side of a phone call (Twilio's call status): asked when a call's line closes with no end the runner knows
+   * of, so a caller's hang-up is not counted as a drop (note 48). Without it such a close is a drop, as before.
+   */
+  phoneLine?: PhoneLine;
   sms?: {
     authToken: string;
     publicUrl: string;
@@ -447,7 +452,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
 
   /** Runs an accepted conversation to the end, whichever way it came in. */
   async function runCall(clinic: ClinicConfig, sessionId: string, callId: string, from: string | null, channel: 'phone' | 'web',
-    opts: { engine?: VoiceEngine; planner?: Planner; onReady?: () => void; maxSeconds?: number; vipUri?: string; paused?: { uri: string | null }; marks?: CallMarks } = {}) {
+    opts: { engine?: VoiceEngine; planner?: Planner; onReady?: () => void; maxSeconds?: number; vipUri?: string; paused?: { uri: string | null }; marks?: CallMarks; phone?: PhoneCallRef } = {}) {
     const web = channel === 'web';
     const engine = opts.engine ?? deps.engine;
     const marks = opts.marks ?? new CallMarks();
@@ -497,6 +502,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         deps.alerts ? { alert: (kind, text) => deps.alerts!.alert(kind, text, where), where } : undefined);
       // gpt-realtime on the tools path waits for our go once a pet is found, so a lookup runs before its reply (round 2)
       runner.manualTurns = tools && (deps.lookupAhead ?? false) && engine.sessionInfo?.(sessionId)?.engine === 'gpt-realtime';
+      // a phone call whose line closes with no end known: the phone side says whether it was hung up (note 48)
+      if (!web && deps.phoneLine && opts.phone) { const line = deps.phoneLine; const ref = opts.phone; runner.phoneLineEnded = () => line.ended(ref); }
       if (web) {
         // the page ends a test call by asking our API as it closes the line: either can arrive first
         webRunners.set(callId, runner);
@@ -635,7 +642,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       marks.mark('call_opened');
       if (paused) deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId, transfer: !!paused.uri }, 'the assistant is paused: the caller goes to the front desk or hears when to call back');
       else if (vip) deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId }, 'VIP caller: transferring to the front desk');
-      await runCall(clinic, sessionId, callId, from, 'phone', { vipUri: vip?.uri, paused, marks });
+      await runCall(clinic, sessionId, callId, from, 'phone', { vipUri: vip?.uri, paused, marks, phone: { callSid: twilioCallSid(headers), to: clinic.phoneNumbers.find((n) => dialledCandidates(headers).includes(n)) ?? dialledCandidates(headers)[0] ?? null, from, startedAt: new Date(receivedAt) } });
     } catch (err) {
       deps.log.error({ session_id: sessionId, err }, 'call setup failed');
       const where = setupClinic ? { clinicId: setupClinic.id, clinicName: setupClinic.name, callId: setupCallId } : undefined;

@@ -5,3 +5,4 @@ export * from './webhooks';
 export * from './fallback';
 export * from './spend';
 export * from './balance';
+export * from './phone-line';

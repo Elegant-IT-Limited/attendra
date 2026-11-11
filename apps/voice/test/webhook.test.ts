@@ -133,6 +133,28 @@ describe('the OpenAI webhook', () => {
     expect(closed).not.toContain('connecting you');
   });
 
+  // note 48: a phone call's socket on gpt-realtime closes with 1006 however it ends; the phone side says how
+  it('records a phone call the caller hung up as a hang-up, not a drop, from the phone side\'s status, and a drop only while the phone call is still up', async () => {
+    const SID = 'CA0123456789abcdef0123456789abcdef';
+    for (const [over, reason] of [[true, 'caller_hangup'], [false, 'socket closed 1006 before session.closed']] as const) {
+      const closes: { reason: string }[] = [];
+      const asked: unknown[] = [];
+      const { d, engine } = deps({ recorderFor: () => ({ appendSegment: async () => {}, close: async (c: { reason: string }) => { closes.push(c); } }),
+        pairWaitMs: 1, phoneLine: { ended: async (ref) => { asked.push(ref); return over; } } });
+      const call = openSideband();
+      engine.attach.mockReturnValue(call.sideband);
+      const app = buildServer(d);
+      const body = JSON.stringify({ sig: 'ok', id: `wh_hang_${over}`, type: 'realtime.call.incoming', data: { type: 'sip', call_id: 'rtc_hang', sip_headers: [
+        { name: 'To', value: '<sip:+13035550100@sip.api.openai.com>' }, { name: 'From', value: '<sip:+13035550147@x>' }, { name: 'X-Twilio-CallSid', value: SID }] } });
+      expect((await post(app, body)).statusCode).toBe(200);
+      await vi.waitFor(() => expect(engine.attach).toHaveBeenCalled());
+      call.drop(1006);
+      await vi.waitFor(() => expect(closes).toEqual([expect.objectContaining({ reason })]), { timeout: 5000 });
+      expect(asked[0]).toEqual({ callSid: SID, to: '+13035550100', from: '+13035550147', startedAt: expect.any(Date) });
+      await app.close();
+    }
+  }, 15_000);
+
   it('rejects a call to a number no clinic owns with SIP 404', async () => {
     const alert = vi.fn();
     const { d, engine } = deps({ alerts: { alert, resolved: vi.fn(), note: vi.fn(), flush: async () => {} } });

@@ -900,7 +900,12 @@ describe('what the review found on calls', () => {
       expect(c.state.emergencyLocked, doubt).toBe(true);
       c.assistant('Our team will be with you in a moment.');
     }
-    expect(c.caller("but he's fine now, it was a false alarm")[0]).toMatchObject({ type: 'instructions', content: expect.stringContaining('not an emergency now') });
+    // a retraction after the route gets one line to confirm it (note 49 B1); its yes lifts the hold
+    expect(c.caller("but he's fine now, it was a false alarm")[0]).toMatchObject({ type: 'instructions', content: expect.stringContaining('no longer an emergency') });
+    expect(c.state.emergencyLocked).toBe(true);
+    c.assistant(EMERGENCY_LINES.clearConfirm('es', null));
+    expect(c.caller('Sí.')[0]).toMatchObject({ type: 'instructions', content: expect.stringContaining('not an emergency now') });
+    expect(c.state.emergencyLocked).toBe(false);
   });
 
   it('lets a calm owner carry on after an animal emergency they say is over, and never after a person in danger', async () => {

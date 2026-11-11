@@ -1,0 +1,47 @@
+id: vet-two-pets-two-numbers-two-bookings
+title: "Two pets on two numbers with two owners' names, two bookings in one call (note 49 C1, after #152's owner name per number)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550172"
+channel: web
+tags: [no-demo, number-first, two-bookings]
+turns:
+  - caller: Hi, I'd like a check-up for my dog Biscuit, any time this week.
+    reply: "Is your pet's profile under the number you're calling from, ending 0172?"
+  - caller: Yes, that's my number.
+    reply: "I found Biscuit, your dog. I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: null }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Biscuit is booked for {booked}. Anything else?"
+    delegate:
+      - commit_pending: {}
+  - caller: Yes, my neighbour's rabbit Pepper needs a check-up too. Her profile is under 720 555 0173, the owner is Daniel Brooks.
+    reply: "That's 720-555-0173?"
+    delegate:
+      - verify_caller: { owner_name: Daniel Brooks, pet_name: Pepper, phone: "720 555 0173" }
+  - assistant: "That's 720-555-0173?"
+  - caller: Yes.
+    reply: "I found Pepper. I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Daniel Brooks, pet_name: Pepper, phone: "720 555 0173" }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The second one, please.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[1]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Pepper is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 2
+  sms_sent: 2
+  refusals: [confirm_number]

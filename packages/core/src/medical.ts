@@ -57,3 +57,14 @@ export function isMedicalQuestion(text: string, opts: { quantities?: boolean } =
   const t = normalise(text);
   return PATTERNS.some((p) => p.test(t)) || (opts.quantities !== false && QUANTITY.test(t));
 }
+
+/**
+ * Talk about how the assistant works, which a caller must never hear (note 49 B2: a test call heard "It's still running
+ * in the background" and "the information returned is only an address"). One list for the voice's prompt, the eval
+ * check on every line handed to the voice, and the check on what it said in a live run. English and Spanish.
+ */
+export const INTERNAL_TALK = /\b(?:in the background|(?:still |it'?s )running|still loading|processing (?:it|that|your)|the (?:information|info|result|results|data|details) (?:i |that )?(?:got back|returned|came back|i (?:got|received|have here)|(?:it |that )?(?:returned|shows|says))|i got back|what came back|(?:the|my|our) (?:system|tool|tools|database|lookup|search results?)\b|(?:a|the) tool\b|en segundo plano|(?:la|los) (?:informacion|resultados?|datos) (?:que )?(?:recibi|obtuve|devolvio|volvio|me (?:dio|llego))|(?:el|mi|nuestro) sistema\b|la herramienta)/i;
+/** Whether a line talks about how the assistant works (after accents are folded: "información" is "informacion"). */
+export function talksAboutInternals(line: string): boolean {
+  return INTERNAL_TALK.test(line.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+}
