@@ -1,7 +1,7 @@
 import type { CallForSummary } from '@attendra/db';
 import { describe, expect, it, vi } from 'vitest';
 import { declinedCallback, needsFollowUp } from '../src/runtime';
-import { JobError, LocalSummariser, ModelSummariser, SUMMARY_INSTRUCTIONS } from '../src/summarise';
+import { JobError, LocalSummariser, ModelSummariser, SUMMARY_INSTRUCTIONS, SummaryCutOff } from '../src/summarise';
 
 const CALL: CallForSummary = {
   callId: '00000000-0000-4000-8000-000000000001', clinicId: 'clinic_demo_maple', channel: 'phone', outcome: 'booked', emergency: false, closeReason: 'caller_hangup',
@@ -29,7 +29,7 @@ describe('the model summariser', () => {
     const s = new ModelSummariser(client, 'gpt-test-model');
     expect(await s.summarise(CALL)).toEqual(GOOD);
     const [body, options] = create.mock.calls[0]! as [Record<string, unknown>, Record<string, unknown>];
-    expect(body).toMatchObject({ model: 'gpt-test-model', store: false, max_output_tokens: 500, instructions: SUMMARY_INSTRUCTIONS });
+    expect(body).toMatchObject({ model: 'gpt-test-model', store: false, max_output_tokens: 2000, instructions: SUMMARY_INSTRUCTIONS });
     expect(body.text).toMatchObject({ format: { type: 'json_schema', strict: true, name: 'call_summary' } });
     expect(options).toEqual({ timeout: 30_000, maxRetries: 0 });
     expect(String(body.input)).toContain('Caller: Yes, please book it.');
@@ -64,8 +64,10 @@ describe('the model summariser', () => {
       expect(err).toBeInstanceOf(JobError);
       expect((err as JobError).message).toBe(code);
     }
-    const cut = await new ModelSummariser(fixed(GOOD, { status: 'incomplete' }).client, 'm').summarise(CALL).catch((e: Error) => e.message);
-    expect(cut).toBe('summary_model_incomplete');
+    const cut = await new ModelSummariser(fixed(GOOD, { status: 'incomplete' }).client, 'm').summarise(CALL).catch((e: unknown) => e);
+    // a cut-off answer is its own kind: the job saves the facts summary instead of retrying the same length
+    expect(cut).toBeInstanceOf(SummaryCutOff);
+    expect((cut as Error).message).toBe('summary_model_incomplete');
   });
 
   it('reports a failed request by its status only, never the request', async () => {

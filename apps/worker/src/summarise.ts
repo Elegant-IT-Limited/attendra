@@ -9,6 +9,15 @@ export class JobError extends Error {
   constructor(readonly code: string) { super(code); this.name = 'JobError'; }
 }
 
+/**
+ * The model's answer was cut off (its output ceiling, reasoning included). The same call gives the same length every
+ * time, so it is never retried: the job saves the summary from the call's facts instead (a long browser test call,
+ * 2026-11-11, failed six times and was left with no summary).
+ */
+export class SummaryCutOff extends JobError {
+  constructor() { super('summary_model_incomplete'); this.name = 'SummaryCutOff'; }
+}
+
 /** What the model must return. The shape is checked again here, whatever the model says it did. */
 export const SummaryOutput = z.object({
   summary: z.string().min(1).max(600),
@@ -113,7 +122,8 @@ export class ModelSummariser implements Summariser {
   constructor(
     private readonly openai: Pick<OpenAI, 'responses'>,
     readonly model: string,
-    private readonly limits = { timeoutMs: 30_000, maxOutputTokens: 500, maxTranscriptChars: 24_000 },
+    // the ceiling counts a reasoning model's reasoning too: 500 cut off a long call's summary every time
+    private readonly limits = { timeoutMs: 30_000, maxOutputTokens: 2000, maxTranscriptChars: 24_000 },
   ) {}
 
   async summarise(call: CallForSummary): Promise<CallSummary> {
@@ -129,7 +139,7 @@ export class ModelSummariser implements Summariser {
       const status = (err as { status?: number }).status;
       throw new JobError(status ? `summary_model_http_${status}` : 'summary_model_unreachable');
     }
-    if (res.status === 'incomplete') throw new JobError('summary_model_incomplete');
+    if (res.status === 'incomplete') throw new SummaryCutOff();
     let json: unknown;
     try { json = JSON.parse(res.output_text ?? ''); } catch { throw new JobError('summary_not_json'); }
     const parsed = SummaryOutput.safeParse(json);
