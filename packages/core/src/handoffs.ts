@@ -55,7 +55,7 @@ const EMAIL_WORD = /^[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+$/;
 function maskEmails(pieces: Piece[]): Piece[] {
   return pieces.map((p) => {
     if (!p.word.includes('@')) return p;
-    const trail = trailOf(p.word, (ch) => ',;:!?).\"\''.includes(ch));
+    const trail = trailOf(p.word, (ch) => ',;:!?)."\''.includes(ch));
     const core = p.word.slice(p.word.startsWith('(') || p.word.startsWith('"') ? 1 : 0, p.word.length - trail.length);
     return EMAIL_WORD.test(core) ? { word: `[email]${trail}`, gap: p.gap } : p;
   });
