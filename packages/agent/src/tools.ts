@@ -369,7 +369,12 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
     // After the pet warning has been said once, never a loop (a tester clinic, 2026-11-03): finding who they are and another pet's
     // needs go on as usual; a routine visit for the pet in danger stays refused, with the next step, the team now or an
     // urgent request for them. The hospital again only when the caller asks for it.
-    if (aboutPetInDanger(name, parsed.data as Record<string, unknown>, state)) return petEmergencyNextStep(state, ctx);
+    if (aboutPetInDanger(name, parsed.data as Record<string, unknown>, state)) {
+      // the caller said it is no longer an emergency: the one line to confirm it, not the next step (note 49 B1)
+      const c = state.emergencyCase;
+      if (c?.confirming) return refuse('emergency_confirm', `Not yet: the caller was asked to confirm it is no longer an emergency. If you have not asked yet, ask word for word: "${EMERGENCY_LINES.clearConfirm(state.language, c.pet?.name ?? null)}" Then wait for their answer; booking works once they confirm.`);
+      return petEmergencyNextStep(state, ctx);
+    }
   }
   // in an animal's emergency the on-call line is the clinic's own setting (emergencyTransferEnabled rings it once, by
   // itself): the planner never sends the caller there. A live run put a caller through to it unasked (2026-11-15)

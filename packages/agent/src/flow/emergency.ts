@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type EmergencyRoute, normalise } from '@attendra/core';
+import { type EmergencyRoute, isClearYes, normalise } from '@attendra/core';
 
 /**
  * An animal's emergency on a call, as a small state machine in code (batch 1b; FRIDAY notes, Vetra call 29b3d0a6):
@@ -34,7 +34,23 @@ export interface EmergencyCase {
   route: EmergencyRoute | null;
   /** A transfer is on its way, or failed. */
   transfer: 'none' | 'sent' | 'failed';
+  /** After the route, the caller said it is no longer an emergency and was asked once to confirm: their answer decides (note 49 B1). */
+  confirming?: boolean;
 }
+
+/**
+ * The caller's answer to "Just to check: <pet> doesn't need emergency care right now?". A clear yes, or the retraction
+ * said again, lifts it; anything else (a doubt, a new sign, "she does", "no, she needs help") keeps the call held.
+ */
+export function confirmsCleared(words: string, languages: Parameters<typeof isClearYes>[1]): boolean {
+  const t = normalise(statementsOf(words));
+  if (!t) return false;
+  if (STILL_DANGER.test(t)) return false;
+  const again = answerTo(words, true);
+  return again === 'clear_no' || again === 'bare_not' || isClearYes(words, languages) || /^(?:(?:no|nope),? )?(?:she|he|it|they) (?:doesn'?t|does not|don'?t|do not)\b|^(?:no|nope),? (?:she|he|it|they)?\s*(?:doesn'?t|does not)\b|^(?:no,? )?no (?:la |lo )?necesita\b|^correct\b|^that'?s right\b|^exacto\b|^correcto\b/.test(t);
+}
+/** Still in danger, in an answer to the confirm line: a need, a sign still there, worse. */
+const STILL_DANGER = /\b(?:(?:she|he|it|they) (?:does|do) need|needs? (?:help|care|emergency|a vet|to be seen)|still (?:is|can'?t|cannot|not|having|swelling|bleeding|bad)|getting worse|worse|si (?:la |lo )?necesita|necesita (?:ayuda|atencion)|sigue (?:igual|mal|sin)|peor)\b/;
 
 /** The caller's answer to the question, or to the question about the sign. Null: no answer in these words. */
 export type EmergencyAnswer = 'yes' | 'unsure' | 'clear_no' | 'bare_not' | null;
@@ -42,9 +58,10 @@ export type EmergencyAnswer = 'yes' | 'unsure' | 'clear_no' | 'bare_not' | null;
 // accents folded and lower case (normalise): "sí" is "si", and "no sé" (I don't know) reads like "no se" in "no se le
 // hincha" (it isn't swelling): only the first, by what follows it
 const UNSURE = /\b(?:not sure|i'?m not sure|i don'?t know|i dunno|dunno|maybe|possibly|i guess|hard to say|no (?:lo )?se(?=$|,| si\b| que\b| bien\b| nada\b| muy\b| la verdad\b)|no estoy segur[oa]|quizas|tal vez|a lo mejor)\b/;
-const YES = /^(?:yes|yeah|yep|yup|ya|i think so|it is|(?:she|he|it|they) (?:is|are|still)|please help|help|right now|si|claro|creo que si|ahora mismo|necesito ayuda|ayuda)\b|\b(?:still (?:is|can'?t|cannot|not|having|swelling|bleeding)|getting worse|worse now|sigue (?:igual|mal|sin)|peor)\b/;
+const YES = /^(?:yes|yeah|yep|yup|ya|i think so|it is|(?:she|he|it|they) (?:is|are|still)|please help|help|right now|si|claro|creo que si|ahora mismo|necesito ayuda|ayuda)\b(?! (?:not|no longer) (?:an? )?(?:emergency|urgent))|\b(?:still (?:is|can'?t|cannot|not|having|swelling|bleeding)|getting worse|worse now|sigue (?:igual|mal|sin)|peor)\b/;
 /** "It's not an emergency", alone: it denies the word, not the sign. */
-const NOT_AN_EMERGENCY = /\b(?:(?:it'?s|its|it is|this is|that'?s) not an? emergency|not an? emergency|isn'?t an emergency|no emergency|not urgent|no es (?:una )?emergencia|no es urgente)\b/;
+// "an" is optional: "this is not emergency anymore" (a test call, 2026-11-10, said it twice and stayed held)
+const NOT_AN_EMERGENCY = /\b(?:not (?:an? )?emergency|isn'?t (?:an? )?emergency|no longer (?:an? )?emergency|no emergency|not urgent|no longer urgent|no es (?:una )?emergencia|no es urgente|ya no es (?:una )?emergencia|ya no es urgente)\b/;
 /** The sign is gone, said as a negative: "not now", "not swelling now", "no longer", "he's not hurt", "ya no". Never a doubt by its own words. */
 const GONE = /\b(?:not (?:now|right now|anymore|any more|at the moment)|not \w+(?:ing)? (?:now|anymore|any more)|no longer|no symptoms|(?:she|he|it|they)(?:'?s| is| are|'?re) not (?:hurt|injured|in danger|bleeding|sick)|(?:she|he|it|they) (?:isn'?t|aren'?t) (?:hurt|injured|in danger)|false alarm|ya no|no tiene sintomas|falsa alarma)\b/;
 /** The pet is fine now, said as a positive: these count only when not doubted, hoped or asked ("I hope she's fine", "no está bien"). */
@@ -69,6 +86,13 @@ function stated(raw: string, t: string, re: RegExp): boolean {
   return false;
 }
 
+/** The caller's words without the sentences that are questions ("Is she okay?", "¿Puedo pedir una cita?"). */
+function statementsOf(words: string): string {
+  const parts = words.trim().split(/(?<=[.!?])\s+|(?=¿)/);
+  const kept = parts.filter((p) => !/[?¿]/.test(p));
+  return kept.length ? kept.join(' ').trim() : words.trim();
+}
+
 /**
  * Sorts the caller's words after the question. "Not sure" first (it routes, like a yes); then a yes, unless they also
  * say plainly the sign is gone; a bare "it's not an emergency" only when nothing in it says the sign is gone or the call
@@ -77,7 +101,9 @@ function stated(raw: string, t: string, re: RegExp): boolean {
  * text you the address?".
  */
 export function answerTo(words: string, afterRoute = false): EmergencyAnswer {
-  const raw = words.trim();
+  // a question asked in the same breath leaves the statement around it standing: "It's not an emergency anymore. Can
+  // I book a visit?" retracts (a test call, 2026-11-10, was held on it); a turn that is only a question answers nothing
+  const raw = statementsOf(words);
   const t = normalise(raw).replace(/[¿?¡!.,;:]+/g, (p) => (p.includes(',') || p.includes('.') ? ', ' : ' ')).replace(/\s+/g, ' ').trim();
   if (!t) return null;
   const question = /[?¿]/.test(raw);

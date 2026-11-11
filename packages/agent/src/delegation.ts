@@ -6,7 +6,7 @@ import { coachingInstruction, DOING, type LiveEvent, shortName } from './live';
 import type { Planner, PlannerTiming } from './planner';
 import { afterTool, type FlowMemory, flowStage, nextStep } from './flow/booking';
 import { speculativeLookup } from './flow/speculate';
-import { answerTo, BORDERLINE, type EmergencyCase, lastQuestionIsOurs, MILD, pastAndFineNow, SEVERE, saysSevere, staffNote } from './flow/emergency';
+import { answerTo, BORDERLINE, confirmsCleared, type EmergencyCase, lastQuestionIsOurs, MILD, pastAndFineNow, SEVERE, saysSevere, staffNote } from './flow/emergency';
 import { askedAboutRecording, askedIfHuman, askedWhy, claimsIn, DISPUTE_NOTE, disputes, humanLine, notInTheClinicsLanguages, recordingLine, sideTalkLine, WHY } from './flow/guards';
 import { outOfScopeLine } from '@attendra/knowledge/scope';
 import { isVoiceTool, shapeForVoice, visitTypeChoices, type VoiceToolOutput } from './flow/voice-tools';
@@ -353,10 +353,28 @@ export class CallAgent {
     // "not sure" about "off his food" is the soonest sick visit, not a transfer (a live run put two such callers through)
     if (c.kind === 'borderline') a = saysSevere(normalise(words)) ? 'yes' : MILD.test(normalise(words)) || a === 'unsure' ? 'clear_no' : a;
     if (c.stage !== 'escalated' && (a === 'yes' || a === 'unsure')) return this.escalateEmergencyCase();
-    // a clear no, then or later (the caller retracts after a yes): booked as usual, with a note for the team
+    // after the route, a retraction gets one line to confirm it, and only its clear yes lifts the hold (note 49 B1: a
+    // test call said "this is not emergency anymore" twice and was refused a booking three times)
+    if (c.stage === 'escalated') {
+      if (c.confirming) {
+        c.confirming = false;
+        return confirmsCleared(words, this.ctx.clinic.languages) ? this.clearEmergencyCase() : [];
+      }
+      return a === 'clear_no' || a === 'bare_not' ? this.confirmClear() : [];
+    }
+    // a clear no to the question: booked as usual, with a note for the team
     if (a === 'clear_no' || (a === 'bare_not' && c.signAsked)) return this.clearEmergencyCase();
     if (a === 'bare_not') return this.askAboutTheSign();
     return [];
+  }
+
+  /** After the route, the caller says it is no longer an emergency: one line to confirm it, word for word. */
+  private confirmClear(): Outbound[] {
+    const c = this.state.emergencyCase!;
+    c.confirming = true;
+    const language = this.state.language;
+    this.log.info({ call_id: this.ctx.callId, emergency_kind: c.kind }, 'the caller says it is no longer an emergency: one line to confirm');
+    return this.emergencyLine(c, `The caller says it is no longer an emergency. Ask once, in ${PACKS[language].name}, word for word: "${EMERGENCY_LINES.clearConfirm(language, c.pet?.name ?? null)}" Then wait for their answer. Book nothing until they answer.`);
   }
 
   /** A bare "it's not an emergency": it denies the word, not the sign. One question about the sign itself, then its answer decides. */
@@ -497,7 +515,9 @@ export class CallAgent {
     c.stage = 'cleared';
     s.emergencyNotes.push(staffNote(c.sign));
     if (s.emergency) s.emergencyCleared = true;
-    if (!s.emergencyResult || s.emergencyResult === 'hospital_said') s.emergencyResult = 'cleared';
+    // after the route the call's result reads "Emergency cleared" (note 49 B1); the urgent request already made stays
+    // on the Requests page for the team
+    if (!s.emergencyResult || s.emergencyResult === 'hospital_said' || (wasRouted && s.emergencyResult !== 'transferred')) s.emergencyResult = 'cleared';
     s.revision++;
     this.log.info({ call_id: this.ctx.callId, emergency_kind: c.kind, after_route: wasRouted }, 'the caller says it is not an emergency now; the call goes on with a note for the team');
     this.emit({ type: 'emergency', kind: 'cleared' });

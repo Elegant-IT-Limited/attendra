@@ -33,11 +33,14 @@ const ANSWER: Record<'yes' | 'unsure' | 'clear_no' | 'bare_not', Record<Lang, st
 const TRANSFER_LINE = { en: EMERGENCY_LINES.transfer('en'), es: EMERGENCY_LINES.transfer('es') };
 const RETURNS = { en: 'If it comes back', es: 'Si vuelve a pasar' };
 const SIGN = { en: 'Just to be safe', es: 'Para estar seguros' };
+const CONFIRM = { en: 'Just to check', es: 'Solo para confirmar' };
 const base = (lang: Lang, extra: Record<string, unknown> = {}) => ({ emergencyTransferEnabled: false, ...(lang === 'es' ? { languages: ['en', 'es'] } : {}), ...extra });
 
 const out: Record<string, unknown>[] = [];
 let n = 400;
 const add = (s: Record<string, unknown>) => out.push({ file: `${n++}-${s.id}.yaml`, ...s });
+// added after the matrix and its cases, so the earlier files keep their numbers
+const late: (() => void)[] = [];
 
 // the matrix
 for (const [mode, setting] of Object.entries(MODES)) {
@@ -100,9 +103,41 @@ for (const lang of ['en', 'es'] as const) {
     clinic: 'riverbend', local_time: '10:00', caller_number: '+17205550172', tags: ['no-demo', 'safety', 'emergency-matrix'],
     settings: base(lang, { emergencies: MODES.refer }),
     turns: [{ caller: FLAG.pet[lang] }, q, yes, { assistant: EMERGENCY_LINES.refer(lang, 'Biscuit', HOSPITAL) },
-      { caller: lang === 'es' ? 'En realidad ya está bien, se le pasó.' : "Actually he's fine now, it went away." }],
-    expect: { outcome: 'emergency', emergency_instruction: true, spoken_contains: [HOSPITAL.name, RETURNS[lang]], ...(lang === 'es' ? { language: 'es' } : {}) },
+      { caller: lang === 'es' ? 'En realidad ya está bien, se le pasó.' : "Actually he's fine now, it went away." },
+      // one line to confirm it after the route (note 49 B1), and its yes lifts it
+      { assistant: EMERGENCY_LINES.clearConfirm(lang, 'Biscuit') }, { caller: lang === 'es' ? 'Sí.' : 'Yes.' }],
+    expect: { outcome: 'emergency', emergency_instruction: true, emergency_result: 'cleared', spoken_contains: [HOSPITAL.name, CONFIRM[lang], RETURNS[lang]], ...(lang === 'es' ? { language: 'es' } : {}) },
   });
+  // note 49 B1, a test call's words: held after a yes, the team not reached, then "this is not emergency anymore" with a
+  // question in the same breath, the one confirm line, and "No, this is not emergency, I told you already": the hold
+  // lifts, the call reads "Emergency cleared", the urgent request stays, and the visit is booked
+  const noLonger: string = lang === 'es' ? 'Ya no es emergencia. ¿Puedo reservar una revisión para Biscuit?' : 'This is not emergency anymore. Can I book a check-up for Biscuit?';
+  late.push(() => add({
+    id: `emergency-no-longer-then-books${es}`, title: 'Held after a yes, then "this is not emergency anymore": one confirm line, the hold lifts on the answer, and the visit is booked',
+    clinic: 'riverbend', local_time: '10:00', caller_number: '+17205550172', channel: 'web', tags: ['no-demo', 'safety', 'emergency-matrix'],
+    settings: base(lang, { emergencies: MODES.handle, afterHours: 'book' }),
+    turns: [{ caller: FLAG.pet[lang] }, q, yes, { assistant: EMERGENCY_LINES.transferFailed(lang, TEAM) },
+      { caller: noLonger, reply: EMERGENCY_LINES.clearConfirm(lang, 'Biscuit'), delegate: [{ find_slots: { visit_type_id: 'vt_wellness', provider_id: null, from_date: null, part_of_day: 'any' } }] },
+      { caller: lang === 'es' ? 'No, no es emergencia, ya se lo dije.' : 'No, this is not emergency, I told you already.',
+        reply: lang === 'es' ? 'Me alegra. Busco un horario.' : "I'm glad. Let me find a time.",
+        delegate: [{ verify_caller: { owner_name: null, pet_name: 'Biscuit', phone: null } }, { find_slots: { visit_type_id: 'vt_wellness', provider_id: null, from_date: null, part_of_day: 'any' } }] },
+      { caller: lang === 'es' ? 'Sí, el primero.' : 'Yes, the first one.', reply: '{readback}', delegate: [{ propose_booking: { slot_id: '$offered[0]', replaces_appointment_id: null } }] },
+      { caller: lang === 'es' ? 'Sí.' : 'Yes.', reply: lang === 'es' ? 'Listo.' : 'Done.', delegate: [{ commit_pending: {} }] }],
+    expect: { outcome: 'booked', verified: true, bookings_created: 1, sms_sent: 1, urgent_requests: 1, emergency_instruction: true, emergency_result: 'cleared', refusals: ['emergency_confirm'],
+      spoken_contains: [CONFIRM[lang], RETURNS[lang]], appointment_note_contains: ['Owner reported'], ...(lang === 'es' ? { language: 'es' } : {}) },
+  }));
+  // unclear words after the confirm line keep the hold: no routine visit for that pet
+  late.push(() => add({
+    id: `emergency-no-longer-unclear-keeps${es}`, title: 'Held after a yes, "it\'s not an emergency anymore", then "I don\'t know" to the confirm line: still held, no booking',
+    clinic: 'riverbend', local_time: '10:00', caller_number: '+17205550172', channel: 'web', tags: ['no-demo', 'safety', 'emergency-matrix'],
+    settings: base(lang, { emergencies: MODES.handle, afterHours: 'book' }),
+    turns: [{ caller: FLAG.pet[lang] }, q, yes, { assistant: EMERGENCY_LINES.transferFailed(lang, TEAM) },
+      { caller: lang === 'es' ? 'Ya no es una emergencia.' : "It's not an emergency anymore." }, { assistant: EMERGENCY_LINES.clearConfirm(lang, 'Biscuit') },
+      { caller: lang === 'es' ? 'No sé, la verdad.' : "I don't know, maybe.", reply: '-',
+        delegate: [{ find_slots: { visit_type_id: 'vt_wellness', provider_id: null, from_date: null, part_of_day: 'any' } }] }],
+    expect: { outcome: 'emergency', emergency_instruction: true, emergency_result: 'urgent_request', urgent_requests: 1, refusals: ['emergency_in_progress'], spoken_contains: [CONFIRM[lang]], ...(lang === 'es' ? { language: 'es' } : {}) },
+    forbid_spoken: [RETURNS[lang]],
+  }));
   // a second pet on the same call is answered as usual
   add({
     id: `emergency-second-pet${es}`, title: 'Biscuit is sent to the hospital; a visit for Mochi on the same call is looked up as usual',
@@ -168,6 +203,7 @@ for (const lang of ['en', 'es'] as const) {
   });
 }
 
+for (const f of late) f();
 for (const f of readdirSync(dir).filter((f) => /^[45]\d\d-emergency-/.test(f))) rmSync(join(dir, f));
 for (const { file, ...s } of out) writeFileSync(join(dir, file as string), `# Generated by scripts/emergency-matrix.ts (batch 1b): edit the script, not this file.\n${stringify(s, { lineWidth: 0 })}`);
 console.log(`${out.length} scenarios written`);

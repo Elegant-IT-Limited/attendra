@@ -126,6 +126,10 @@ export const EMERGENCY_LINES = {
   cantWait: (language: Language, h: EmergencyHospital) => (language === 'es'
     ? `Si no puede esperar, vaya a ${h.name}, en ${h.address}. Su número es ${PACKS.es.speakPhone(h.phone)}.`
     : `If you can't wait, go to ${h.name} at ${h.address}. Their number is ${PACKS.en.speakPhone(h.phone)}.`),
+  /** After the route, a caller who says it is no longer an emergency: one line to check, and only a clear yes lifts it. */
+  clearConfirm: (language: Language, pet: string | null) => (language === 'es'
+    ? `Solo para confirmar: ¿${yourPet(language, pet)} no necesita atención de emergencia ahora mismo?`
+    : `Just to check: ${yourPet(language, pet)} doesn't need emergency care right now?`),
   /** A clear no: what to do if the sign comes back, said once. */
   ifReturns: (language: Language, pet: string | null, route: EmergencyRoute) => {
     const who = yourPet(language, pet);

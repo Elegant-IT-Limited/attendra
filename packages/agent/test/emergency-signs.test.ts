@@ -177,6 +177,11 @@ describe('after the route', () => {
     expect(JSON.stringify(refused!.data)).toContain('I can send our team an urgent message');
     c.assistant('I can\'t book a routine visit for your pet while this is going on. I can send our team an urgent message to call you back as soon as they can. Would you like that?');
     c.caller("No, he's fine now, it's not an emergency. He only had a tiny bit.");
+    // one line to confirm it first (note 49 B1): booking stays refused until the yes
+    expect(c.state.emergencyLocked).toBe(true);
+    expect((await c.delegate([FIND])).results[0]!.data.error).toBe('emergency_confirm');
+    c.assistant(EMERGENCY_LINES.clearConfirm('en', null));
+    c.caller('Yes, that\'s right.');
     expect(c.state.emergencyLocked).toBe(false);
     expect(c.state.emergency?.kind).toBe('pet_toxin'); // still on the record
     expect(c.state.emergencyResult).toBe('cleared');
@@ -193,6 +198,9 @@ describe('after the route', () => {
     expect(c.state.emergencyLocked).toBe(true);
     c.caller('No, forget it,');
     c.caller(" he's not hurt, just give me a schedule.");
+    expect(c.state.emergencyLocked).toBe(true); // the one line to confirm it first (note 49 B1)
+    c.assistant(EMERGENCY_LINES.clearConfirm('en', null));
+    c.caller('Correct.');
     expect(c.state.emergencyLocked).toBe(false);
   });
 

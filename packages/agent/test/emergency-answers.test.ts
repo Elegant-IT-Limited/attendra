@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { answerTo, pastAndFineNow } from '../src/flow/emergency';
+import { answerTo, confirmsCleared, pastAndFineNow } from '../src/flow/emergency';
 
 // Batch 1b: the caller's answer to "Is this still an emergency right now?", in English and Spanish.
 describe('the answer to the emergency question', () => {
@@ -31,4 +31,29 @@ describe('doubts, questions and hopes never lift it', () => {
     ["Okay, but I'd like an appointment for him.", null], ['No.', null], ["No, forget it, he's not hurt", 'clear_no'], ["he's fine now, it's not an emergency", 'clear_no'],
     ['Do you think she is okay?', null], ["I hope he's fine", null], ["it's not an emergency", 'bare_not'],
   ])('after the route, "%s" → %s', (said, want) => expect(answerTo(said, true)).toBe(want));
+});
+
+// Note 49 B1 (a test call, 2026-11-10): "this is not emergency anymore" and "No, this is not emergency, I told you
+// already" never lifted the hold, and before the route "It is not an emergency anymore." read as a yes.
+describe('a retraction, with or without "an", with a question in the same breath', () => {
+  it.each([
+    ['this is not emergency anymore', 'clear_no'], ['No, this is not emergency, I told you already', 'bare_not'],
+    ['This is not emergency anymore. Can I book a visit?', 'clear_no'], ["It's no longer an emergency.", 'clear_no'],
+    ['Ya no es emergencia. ¿Puedo reservar una cita?', 'clear_no'], ['No, no es emergencia, ya se lo dije.', 'bare_not'],
+    ['Can I book a visit?', null], ['Is he going to be okay?', null], ['I need an appointment for him.', null],
+  ])('after the route, "%s" → %s', (said, want) => expect(answerTo(said, true)).toBe(want));
+
+  it.each([
+    ['It is not an emergency anymore.', 'bare_not'], ['It is not emergency.', 'bare_not'], ['it is getting worse', 'yes'], ['she is not breathing', 'yes'],
+  ])('before the route, "%s" → %s', (said, want) => expect(answerTo(said)).toBe(want));
+});
+
+describe('the answer to "Just to check: <pet> doesn\'t need emergency care right now?"', () => {
+  const langs = ['en', 'es'] as const;
+  it.each([
+    'Yes.', 'Yes, that\'s right.', 'Correct.', 'No, she doesn\'t.', 'He doesn\'t.', 'No, this is not emergency, I told you already.', 'Sí.', 'Correcto.', 'No, no la necesita.', 'Ya no es una emergencia.',
+  ])('"%s" lifts it', (said) => expect(confirmsCleared(said, langs)).toBe(true));
+  it.each([
+    'No.', 'I don\'t know.', 'Maybe.', 'Yes, she still can\'t breathe.', 'She does need help.', 'It\'s getting worse.', 'No sé.', 'Sí la necesita.', 'Sigue mal.', 'Is she going to be okay?', 'Hmm.',
+  ])('"%s" keeps it', (said) => expect(confirmsCleared(said, langs)).toBe(false));
 });
