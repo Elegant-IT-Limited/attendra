@@ -107,6 +107,11 @@ test('a manager merges a duplicate into a record and deletes another, after seei
   await manager.goto(`/c/${clinic}/patients/${keep}`);
   await manager.getByTestId('merge-open').click();
   const merge = manager.getByRole('dialog', { name: 'Merge into Odile Fenwick' });
+  // the record kept is never offered as the one to merge away, opened recently or found (note 52 C5)
+  await expect(merge.getByRole('button', { name: /Odile Fenwick/ })).toHaveCount(0);
+  await merge.getByLabel('Find a patient').fill('fenwi');
+  await expect(merge.getByRole('button', { name: /Odile Fenwik/ })).toBeVisible();
+  await expect(merge.getByRole('button', { name: /Odile Fenwick/ })).toHaveCount(0);
   await merge.getByLabel('Find a patient').fill('fenwik');
   await merge.getByRole('button', { name: /Odile Fenwik/ }).click();
   await expect(merge.getByTestId('merge-preview')).toContainText('1 record merged away');

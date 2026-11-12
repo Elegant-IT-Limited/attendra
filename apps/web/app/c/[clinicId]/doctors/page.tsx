@@ -104,7 +104,7 @@ export default function DoctorsPage() {
       <PageHeader title={terms.title('providers')} description={terms.patient === 'pet' ? 'Who can be booked, the animals and services they see, their weekly hours and days off. The assistant uses this list from the next thing a caller asks.' : 'Who can be booked, what they see people for, the ages they see, their weekly hours and days off. The assistant uses this list from the next thing a caller asks.'}
         actions={manager && (
           <>
-            <Link href={`/c/${clinicId}/settings/fields?tab=providers`} className={buttonStyles({ variant: 'ghost' })}><SlidersHorizontal /> Manage fields and lists</Link>
+            <Link href={`/c/${clinicId}/settings/fields?tab=providers`} className={buttonStyles({ variant: 'ghost' })}><SlidersHorizontal /> Fields and lists</Link>
             <Button variant="outline" onClick={() => setImporting(true)}><FileUp /> Import</Button>
             <Button onClick={() => setEditing({ id: null, draft: blank(visitTypes) })}><Plus /> Add {terms.provider}</Button>
           </>

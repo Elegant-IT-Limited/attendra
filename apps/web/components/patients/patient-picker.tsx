@@ -12,11 +12,13 @@ import { api } from '@/lib/api';
 import { usePets } from '@/lib/terms';
 
 /** The first step of a booking: find the patient, pick someone opened recently, or add them there and then. */
-export function PatientPicker({ clinicId, onPick, canAdd }: { clinicId: string; onPick: (p: PatientChoice) => void; canAdd: boolean }) {
+export function PatientPicker({ clinicId, onPick, canAdd, exclude }: { clinicId: string; onPick: (p: PatientChoice) => void; canAdd: boolean; exclude?: string }) {
   const [adding, setAdding] = useState(false);
   const pets = usePets(clinicId);
   const recent = useQuery({ queryKey: ['patient', clinicId, 'recent'], queryFn: () => api<PatientList>(`/clinics/${clinicId}/patients/recent`) });
   const pick = (p: { id: string; name: string }) => onPick({ id: p.id, name: p.name });
+  // the record a merge keeps is never offered as the one to merge away (note 52 C5)
+  const recentOthers = recent.data?.patients.filter((p) => p.id !== exclude) ?? [];
 
   if (adding) {
     return (
@@ -29,12 +31,12 @@ export function PatientPicker({ clinicId, onPick, canAdd }: { clinicId: string; 
   }
   return (
     <div className="space-y-4">
-      <PatientSearch clinicId={clinicId} autoFocus onPick={pick}
-        empty={recent.data?.patients.length ? (
+      <PatientSearch clinicId={clinicId} autoFocus onPick={pick} exclude={exclude}
+        empty={recentOthers.length ? (
           <div className="space-y-2">
             <p className="text-xs font-medium uppercase tracking-wide text-text-muted">Opened recently</p>
             <ul className="divide-y divide-border rounded-md border border-border">
-              {recent.data.patients.map((p) => (
+              {recentOthers.map((p) => (
                 <li key={p.id}>
                   <button type="button" onClick={() => pick(p)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-surface-sunken focus-visible:bg-surface-sunken focus-visible:outline-none">
                     <PatientLine p={p} />

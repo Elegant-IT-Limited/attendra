@@ -39,3 +39,12 @@ describe('imported list items follow the one display rule (note 52 C3)', () => {
     expect(listItemCase('ñandú')).toBe('Ñandú');
   });
 });
+
+describe('a Word file at the knowledge upload (note 52 C15)', () => {
+  it('is named as one, and the message gives the way through', async () => {
+    const { isWordFile, UNSUPPORTED_UPLOAD } = await import('../src');
+    expect(['prices.docx', 'old.DOC', 'notes.odt', 'menu.rtf', 'list.pages'].every(isWordFile)).toBe(true);
+    expect(['prices.pdf', 'notes.txt', 'faq.md', 'docx.pdf'].some(isWordFile)).toBe(false);
+    expect(UNSUPPORTED_UPLOAD).toBe('Upload a PDF, a text file or a markdown file. A Word file? Save it as PDF from Word, then upload it.');
+  });
+});

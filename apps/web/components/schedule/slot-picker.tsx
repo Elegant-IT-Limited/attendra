@@ -73,24 +73,51 @@ export function SlotPicker({ clinicId, clinic, visitTypeId, providerId, from, on
           {[...byDay.entries()].map(([day, list]) => (
             <div key={day} className="space-y-2">
               <p className="text-xs font-medium uppercase tracking-wide text-text-muted">{dayTitle(day)}</p>
-              <div className="flex flex-wrap gap-2">
-                {list.map((s) => {
-                  const selected = value?.startsAt === s.startsAt && value.providerId === s.providerId;
-                  return (
-                    <button key={`${s.providerId}@${s.startsAt}`} type="button" role="radio" aria-checked={selected} data-starts-at={s.startsAt}
-                      onClick={() => onChange({ providerId: s.providerId, startsAt: s.startsAt })}
-                      className={cn('rounded-md border px-2.5 py-1.5 text-left text-sm focus-ring',
-                        selected ? 'border-primary bg-primary text-on-primary' : 'border-border-strong bg-surface hover:bg-surface-sunken')}>
-                      <span className="font-medium tabular-nums">{timeOf(s.startsAt, clinic.timezone)}</span>
-                      {!providerId && <span className={cn('block text-xs', selected ? 'text-on-primary/80' : 'text-text-muted')}>{nameOf(s.providerId)}</span>}
-                    </button>
-                  );
-                })}
-              </div>
+              {providerId ? (
+                // one provider chosen: its times, one button each
+                <div className="flex flex-wrap gap-2">
+                  {list.map((s) => <SlotButton key={`${s.providerId}@${s.startsAt}`} slot={s} label={timeOf(s.startsAt, clinic.timezone)} value={value} onChange={onChange} />)}
+                </div>
+              ) : (
+                // anyone: one row per time with whoever is free at it, never the same time repeated for each (note 52 C6)
+                <ul className="space-y-1.5" data-testid="slot-rows">
+                  {byTime(list).map(([startsAt, same]) => {
+                    const time = timeOf(startsAt, clinic.timezone);
+                    return (
+                      <li key={startsAt} className="flex items-start gap-3">
+                        <span className="w-[4.75rem] shrink-0 pt-1.5 text-sm font-medium tabular-nums">{time}</span>
+                        <div className="flex min-w-0 flex-wrap gap-1.5">
+                          {same.map((s) => <SlotButton key={`${s.providerId}@${s.startsAt}`} slot={s} label={nameOf(s.providerId)} aria={`${time} with ${nameOf(s.providerId)}`} value={value} onChange={onChange} />)}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </div>
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+/** The slots of one day by start time, in order: each time once, with the providers free at it. */
+function byTime(list: SlotList['slots']): [string, SlotList['slots']][] {
+  const out = new Map<string, SlotList['slots']>();
+  for (const s of list) out.set(s.startsAt, [...(out.get(s.startsAt) ?? []), s]);
+  return [...out.entries()];
+}
+
+/** One open time to pick: a radio, with the start it books on it for the tests and the desk's own checks. */
+function SlotButton({ slot, label, aria, value, onChange }: { slot: SlotList['slots'][number]; label: string; aria?: string; value: PickedSlot | null; onChange: (slot: PickedSlot) => void }) {
+  const selected = value?.startsAt === slot.startsAt && value.providerId === slot.providerId;
+  return (
+    <button type="button" role="radio" aria-checked={selected} aria-label={aria} data-starts-at={slot.startsAt}
+      onClick={() => onChange({ providerId: slot.providerId, startsAt: slot.startsAt })}
+      className={cn('max-w-full truncate rounded-md border px-2.5 py-1.5 text-left text-sm focus-ring',
+        selected ? 'border-primary bg-primary text-on-primary' : 'border-border-strong bg-surface hover:bg-surface-sunken')}>
+      <span className={aria ? undefined : 'font-medium tabular-nums'}>{label}</span>
+    </button>
   );
 }

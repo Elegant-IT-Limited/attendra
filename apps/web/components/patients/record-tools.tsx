@@ -137,7 +137,7 @@ function MergeDialog({ clinicId, patient, pet, onClose }: { clinicId: string; pa
         ) : (
           <div className="space-y-2">
             <p className="text-sm font-medium">The other record</p>
-            <PatientPicker clinicId={clinicId} onPick={setOther} canAdd={false} />
+            <PatientPicker clinicId={clinicId} onPick={setOther} canAdd={false} exclude={patient.id} />
           </div>
         )}
         {body && (preview.isPending ? <Skeleton className="h-20" /> : preview.isError ? <Alert tone="warn">{failure(preview.error)}</Alert> : (

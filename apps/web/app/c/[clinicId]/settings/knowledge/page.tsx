@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { KnowledgeAnswer, KnowledgeDocument, KnowledgeDocuments } from '@attendra/api/contracts';
+import { isWordFile, UNSUPPORTED_UPLOAD } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Search, Trash2, Upload } from 'lucide-react';
 import { useParams } from 'next/navigation';
@@ -76,7 +77,7 @@ export default function Knowledge() {
       void queries.invalidateQueries({ queryKey: ['knowledge', clinicId] });
       toast({ tone: 'success', message: 'Uploaded. It is being indexed.' });
     },
-    onError: (e, { f }) => e instanceof ApiFailure && e.status === 409 && e.body.error === 'not_clinic_information' ? setUnsure(f) : setProblem(e instanceof ApiFailure && e.status === 415 ? 'Upload a PDF, a text file or a markdown file.' : e instanceof ApiFailure && e.status === 413 ? 'The file is over 5 MB.'
+    onError: (e, { f }) => e instanceof ApiFailure && e.status === 409 && e.body.error === 'not_clinic_information' ? setUnsure(f) : setProblem(e instanceof ApiFailure && e.status === 415 ? UNSUPPORTED_UPLOAD : e instanceof ApiFailure && e.status === 413 ? 'The file is over 5 MB.'
       : e instanceof ApiFailure && e.body.error === 'empty_file' ? 'The file is empty. Choose one with the text in it.'
       : e instanceof ApiFailure && e.body.error === 'too_many_documents' ? 'You have 50 documents, the most a clinic can keep. Delete one, or upload with the same title to replace it.' : 'The upload did not work. Try again.'),
   });
@@ -99,6 +100,8 @@ export default function Knowledge() {
   const choose = (f: File | null) => {
     setProblem(null);
     if (f && f.size > MAX) { setProblem('The file is over 5 MB.'); setChosen(null); return; }
+    // a Word file is refused at once, with the way through, not after an upload that cannot work (note 52 C15)
+    if (f && isWordFile(f.name)) { setProblem(UNSUPPORTED_UPLOAD); setChosen(null); if (file.current) file.current.value = ''; return; }
     setChosen(f);
     if (f && !title) setTitle(f.name.replace(/\.[^.]+$/, ''));
   };

@@ -1,4 +1,4 @@
-import { DEMO_CLINIC } from '@attendra/core';
+import { DEMO_CLINIC, UNSUPPORTED_UPLOAD } from '@attendra/core';
 import { KnowledgeRepository } from '@attendra/db';
 import { HybridKnowledgeBase, indexDocument, LocalAnswerer, LocalEmbedder } from '@attendra/knowledge';
 import type { DocumentJob } from '@attendra/worker/queue';
@@ -45,7 +45,11 @@ describe('the clinic\'s knowledge', () => {
   });
 
   it('refuses a file type it cannot read, one over 5 MB, and an empty one', async () => {
-    expect((await upload(as.admin, 'Scan', Buffer.from([1, 2, 3]), 'application/octet-stream', 'scan.docx')).statusCode).toBe(415);
+    const word = await upload(as.admin, 'Scan', Buffer.from([1, 2, 3]), 'application/octet-stream', 'scan.docx');
+    expect(word.statusCode).toBe(415);
+    // the way through, in the same words the page shows (note 52 C15)
+    expect(word.json()).toEqual({ error: 'unsupported_type', message: UNSUPPORTED_UPLOAD });
+    expect(UNSUPPORTED_UPLOAD).toContain('Save it as PDF from Word, then upload it.');
     expect((await upload(as.admin, 'Huge', Buffer.alloc(5 * 1024 * 1024 + 1, 97))).statusCode).toBe(413);
     expect((await upload(as.admin, 'Empty', Buffer.alloc(0))).statusCode).toBe(400);
   });

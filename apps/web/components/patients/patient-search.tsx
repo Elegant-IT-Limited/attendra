@@ -38,8 +38,10 @@ export function searchableBy(pets: boolean, exampleDob: string) {
  * whole date of birth, or a request number. What is typed goes in a POST body and
  * stays in this component: never in the address bar, never in a log.
  */
-export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty, status }: {
+export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty, status, exclude }: {
   clinicId: string;
+  /** A record never offered: the one a merge keeps (note 52 C5), which cannot be merged into itself. */
+  exclude?: string;
   onPick?: (p: PatientCard) => void;
   /** Render each result yourself, as a link for example; `query` is what was typed, for highlighting. */
   renderResult?: (p: PatientCard, query: string) => ReactNode;
@@ -56,7 +58,7 @@ export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty
   const hint = `Results show as you type: ${searchableBy(pets, copy.exampleDob)}.`;
   const query = useSettled(text.trim());
   const ready = query.length >= 1;
-  const results = useQuery({
+  const found = useQuery({
     queryKey: ['patient-search', clinicId, query, status ?? 'all'],
     queryFn: () => api<PatientList>(`/clinics/${clinicId}/patients/search`, { method: 'POST', body: JSON.stringify({ query, ...(status ? { status } : {}) }) }),
     enabled: ready,
@@ -64,6 +66,7 @@ export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty
     staleTime: 30_000,
     retry: false,
   });
+  const results = { ...found, data: found.data && { ...found.data, patients: found.data.patients.filter((p) => p.id !== exclude) } };
 
   return (
     <div className="space-y-3">

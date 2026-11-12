@@ -115,7 +115,8 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
       {step === 1 && (
         <div className="space-y-4">
           {patient && <p className="text-sm">For <span className="font-medium">{patient.name}</span></p>}
-          <div className="grid gap-3 sm:grid-cols-2">
+          {/* one field a row: the visit type's name and length were cut side by side ("Wellness exam (30 min", note 52 C6) */}
+          <div className="grid gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="visit-type">Visit type</Label>
               <Select id="visit-type" value={visitTypeId} onChange={(e) => { setVisitTypeId(e.target.value); setSlot(null); setProviderId(null); }}>
