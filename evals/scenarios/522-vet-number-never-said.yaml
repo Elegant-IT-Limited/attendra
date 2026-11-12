@@ -1,0 +1,18 @@
+id: vet-number-never-said
+title: "A garbled word where the number should be: no made-up number is read back; the number question is asked again (note 52 B5)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, number-first]
+caller_number: null
+channel: web
+turns:
+  - caller: Hi, I'd like to book a check-up for Biscuit. The number is Lopucek.
+    reply: "Sorry, I didn't catch that. What phone number is your pet's profile under?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: "555-123-4567" }
+expect:
+  outcome: abandoned
+  refusals: [number_not_heard]
+  spoken_contains: ["What phone number is your pet's profile under?"]
+forbid_spoken:
+  - 555-123-4567

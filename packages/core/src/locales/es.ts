@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { spokenPhone } from '../phones';
 import { clock12, dateParts, wallClock } from './dates';
 import { type Clock, type LanguagePack, type OfferDay, words } from './types';
 
@@ -63,7 +64,6 @@ const sinEl = (w: string | undefined) => (w ?? '').replace(/^el\s+/i, '');
 
 /** A pet's kind as owners say it in Spanish, with its article: "su perro". Anything else is left unsaid. */
 const SPECIES_ES: Record<string, string> = { dog: 'su perro', perro: 'su perro', cat: 'su gato', gato: 'su gato', rabbit: 'su conejo', conejo: 'su conejo', bird: 'su pájaro', parrot: 'su loro', 'guinea pig': 'su cuyo', ferret: 'su hurón', hamster: 'su hámster' };
-const DIGITS = ['cero', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve'];
 /** A note written to follow a comma, said as a sentence of its own. */
 const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -90,7 +90,7 @@ export const es: LanguagePack = {
   speakWhen: (start, timeZone) => fullWhen(start, timeZone),
   fullWhen,
   fullDay,
-  speakPhone: (e164) => e164.replace(/\D/g, '').split('').map((d) => DIGITS[Number(d)]).join(' '),
+  speakPhone: (e164) => spokenPhone(e164),
   readbackBooking: ({ when: w, provider, providerKind, visit, replacing, pet, shift }) => (replacing
     ? `cambiar la cita${pet ? ` de ${pet}` : ''} del ${sinEl(replacing)} al ${sinEl(w)} ${providerKind === 'room' ? 'en' : 'con'} ${provider}${shift ? `; ${shift}` : ''}`
     : `${w} ${providerKind === 'room' ? 'en' : 'con'} ${provider}, para ${visit}`),
@@ -292,6 +292,8 @@ export const es: LanguagePack = {
     ['general', words('emergencia|(llame|llamen|necesito) una ambulancia|ambulancia')],
   ],
   notAnEmergency: words('no es (una )?emergencia|no es urgente'),
+  asksEmergencyService: words('(atienden|reciben|aceptan|ven|tratan|manejan|cubren|hacen) (las |los )?(emergencias|urgencias)|tienen (servicio (de )?)?(emergencias|urgencias)|(como|que hacen con las) (emergencias|urgencias)'),
+  reportsEmergency: words('(es|tengo|tenemos|hay) (una )?(emergencia|urgencia)'),
   // "si" is also "if" ("si puede el martes"), so it counts only as its own word at the start, before a pause or the end
   yes: new RegExp(`^si(?=\\s*[,.!]|$)|${words('claro|correcto|esta bien|de acuerdo|perfecto|exacto|adelante|confirmo|reservela|hagalo|asi es|me parece bien|suena bien|me sirve').source}`, 'u'),
   yesAlone: /^(vale|por favor|si por favor)$/,

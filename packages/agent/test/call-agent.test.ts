@@ -359,6 +359,7 @@ describe('safety', () => {
 
   it('at a veterinary clinic, an owner who gave only a first name is looked up, never asked for a last name (2026-10-23)', async () => {
     const c = await w.call(null, { clinic: RIVERBEND_CLINIC });
+    c.caller('This is Jamie, about Pepper. My number is 720 555 0165.');
     expect((await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Jamie', pet_name: 'Pepper', phone: '+17205550165' } }])).errors).toEqual(['confirm_number']);
     c.assistant("That's 720-555-0165?");
     c.caller('Yes.');

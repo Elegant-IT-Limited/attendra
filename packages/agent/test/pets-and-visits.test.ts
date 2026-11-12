@@ -40,6 +40,7 @@ describe('an owner caller ID knows picks from their pets', () => {
       // a wrong name: the check says no match, and the pick question is never asked
       const wrong = await w.call(null, { clinic, channel: 'web' });
       if (lang === 'es') wrong.caller('Hola, soy Jordan. Quiero una cita, por favor.');
+      wrong.caller(lang === 'es' ? 'Es el 720 555 0172.' : 'It is 720 555 0172.');
       const readBack = await wrong.delegate([{ tool: 'verify_caller', args: { owner_name: 'Jordan Lee', pet_name: null, phone: '720 555 0172' } }]);
       expect(readBack.errors).toEqual(['confirm_number']);
       wrong.assistant(lang === 'es' ? '¿Es el 720-555-0172?' : "That's 720-555-0172?");
@@ -56,6 +57,7 @@ describe('an owner caller ID knows picks from their pets', () => {
 
       // no name given, even after "And the owner's name on that profile?": the same, nothing from the record
       const nameless = await w.call(null, { clinic, channel: 'web' });
+      nameless.caller(lang === 'es' ? 'Es el 720 555 0172.' : 'It is 720 555 0172.');
       await nameless.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: null, phone: '720 555 0172' } }]);
       nameless.assistant("That's 720-555-0172?");
       nameless.caller('Yes.');
@@ -74,6 +76,7 @@ describe('an owner caller ID knows picks from their pets', () => {
         const c = await w.call(null, { clinic, channel: 'web' });
         if (lang === 'es') c.caller('Hola, quiero una cita, por favor.');
         // the name is asked first on both numbers: the question itself tells nothing
+        c.caller(lang === 'es' ? `Es el ${phone}.` : `It is ${phone}.`);
         const first = await c.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: null, phone } }]);
         expect(first.errors).toEqual(['confirm_number']);
         c.assistant(lang === 'es' ? `¿Es el ${spoken}?` : `That's ${spoken}?`);
@@ -126,6 +129,7 @@ describe('an owner caller ID knows picks from their pets', () => {
     // a number the caller says, on a browser test call: that number's pets, to pick from
     const web = await w.call(null, { clinic, channel: 'web' });
     // read back first, searched only after the yes
+    web.caller('It is 720 555 0172.');
     const readBack = await web.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: null, phone: '720 555 0172' } }]);
     expect(readBack.errors).toEqual(['confirm_number']);
     expect(handed(readBack)).toContain("That's 720-555-0172?");
@@ -141,6 +145,7 @@ describe('an owner caller ID knows picks from their pets', () => {
     // a number with nothing on it, said by the caller: the same answer as a client's number with a name that does not
     // match, so a caller can't tell which numbers are clients' (2026-11-09)
     const unknown = await w.call(null, { clinic, channel: 'web' });
+    unknown.caller('It is 720 555 0199.');
     await unknown.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: null, phone: '720 555 0199' } }]);
     unknown.assistant("That's 720-555-0199?");
     unknown.caller('Yes, that is right.');

@@ -1,0 +1,25 @@
+id: vet-emergency-service-question
+title: "\"Do you receive emergency?\" asks about the clinic's emergency service: it is explained from the setting, and no danger question is asked (note 52 B6)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, emergency-handling]
+settings:
+  emergencies:
+    mode: handle
+    number: "+17205550179"
+    backupHospital:
+      name: Front Range Pet Emergency
+      phone: "+17205550188"
+      address: 1200 Larkspur Avenue, Denver
+turns:
+  - caller: "Do you receive emergency?"
+    reply: "Our team handles emergencies at any hour, on call."
+    delegate:
+      - get_clinic_info: { question: "Do you receive emergency?" }
+expect:
+  outcome: info
+  emergency_instruction: false
+  returned: ["on call"]
+forbid_spoken:
+  - Is this still an emergency
+  - ¿Sigue siendo una emergencia

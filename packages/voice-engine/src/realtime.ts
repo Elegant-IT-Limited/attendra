@@ -151,6 +151,11 @@ export function replyUsage(model: string, u: RealtimeUsage | undefined): { model
  */
 /** The words while a lookup is slow: a front desk's, never what is being done or why (note 49 B2: "it's still running in the background"). */
 export const HOLD_LINE = 'Say only "One moment." in the caller\'s language, and nothing about what is happening or why. Do not answer the question yet.';
+/**
+ * A wait that goes on, after "One moment." was said: a thank-you, never the same line again. Asked for "One moment."
+ * twice, a test call's voice varied it into "I'm still waiting on that lookup to finish" (note 52 B4).
+ */
+export const HOLD_AGAIN_LINE = 'Say only "Thanks for waiting." in the caller\'s language, and nothing about what is happening or why. Do not answer the question yet.';
 export const TURN_NOTE = 'Reply now. A tool you need is called first, with no words before it (never "let me...", "one moment"). Then say what it gives you, in the caller\'s language. Ask only what a tool result asks for, or a detail a tool needs.';
 /**
  * A tool's own words that end in a question ("Dr. Rahman and Dr. Khan do dental care. Shall I look with them?", a
@@ -556,7 +561,8 @@ export class RealtimeEngine implements VoiceEngine {
         respond();
       } else if (c.type === 'session.thinking.append') {
         // GPT-Live hears progress notes as context; here only "still working" is said, the rest is silent
-        if (/^Still working/.test(c.content)) respond({ type: 'response.create', response: { instructions: HOLD_LINE, tool_choice: 'none' } });
+        // the first note of a wait is "One moment."; a later one (told not to say it again) a thank-you
+        if (/^Still working/.test(c.content)) respond({ type: 'response.create', response: { instructions: /Do not say again|still checking or still working/.test(c.content) ? HOLD_AGAIN_LINE : HOLD_LINE, tool_choice: 'none' } });
       } else {
         // new instructions (an emergency script, a staff note, a nudge): a system message in
         // the conversation, so it stays in context without becoming a standing rule, acted on

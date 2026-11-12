@@ -35,7 +35,9 @@ export function toolWork(clinic: ClinicConfig): string[] {
     // a caller heard "This result doesn't say whether it's open tomorrow" (note 45, A1)
     'Never tell the caller what a result says or does not say, and never mention a tool, a result, a system or a lookup: answer in a front desk\'s words, or offer to have the team confirm.',
     // note 49 B2: a test call heard "It's still running in the background" and "the information returned is only an address"
-    'Never describe how you work: nothing "running in the background", "loading" or "processing", nothing about "the information I got back" or what "came back". While you wait, say only "One moment." in the caller\'s language.',
+    'Never describe how you work: nothing "running in the background", "loading" or "processing", nothing about "the information I got back" or what "came back", never "waiting on that lookup", "the lookup", "still waiting on" or "for the search to finish". While you wait, say only "One moment." in the caller\'s language.',
+    // note 52 B1: "Do you offer boarding?" was answered from the visit types, though the clinic had a common question for it
+    'When get_clinic_info returns answer (or answers), that is the clinic\'s own reply to the question: answer from it, before the visit types or any list. For several things asked, answer each from its own entry in answers.',
     // batch 1b: the voice says only what a tool gives it ("Is Clover new to us?" was asked with no tool behind it)
     'Ask the caller only what a tool result tells you to ask (its next step), or a detail a tool needs that they have not given. Never a question of your own: not whether a pet is new, not whether they are a client, not what is wrong.',
     'Speech that is not said to you (someone in the room) or in a language you do not speak here is never translated, repeated or answered: say once that you can help in the clinic\'s languages, then wait.',

@@ -1,6 +1,7 @@
 import { DEMO_CLINIC, zonedInstant } from '@attendra/core';
 import { describe, expect, it, vi } from 'vitest';
 import { ASK_BACKEND, inAnotherScript, NOT_UNDERSTOOD, RealtimeEngine, type RealtimeSocket, type SidebandEvent } from '../src';
+import { HOLD_AGAIN_LINE, HOLD_LINE } from '../src/realtime';
 
 const NOW = zonedInstant('2026-09-28', '10:00', DEMO_CLINIC.timezone);
 
@@ -140,7 +141,12 @@ describe('the Realtime engine', () => {
     sideband.send({ type: 'session.thinking.append', event_id: 'x1', delegation_id: 'fc_1', content: 'Working on it.' });
     expect(s.sent).toHaveLength(1); // a progress note is not said
     sideband.send({ type: 'session.thinking.append', event_id: 'x2', delegation_id: 'fc_1', content: 'Still working on it. Tell the caller in a few words that you are still checking.' });
-    expect(s.sent[1]).toMatchObject({ type: 'response.create', response: { tool_choice: 'none' } });
+    expect(s.sent[1]).toMatchObject({ type: 'response.create', response: { tool_choice: 'none', instructions: HOLD_LINE } });
+    s.play({ type: 'response.done', event_id: 'rh' });
+    // the wait goes on: a thank-you, never "One moment." again (note 52 B4)
+    sideband.send({ type: 'session.thinking.append', event_id: 'x2b', delegation_id: 'fc_1', content: 'Still working on it. Thank the caller for waiting, in a few words, and say it will be just a moment. Do not say again that you are still checking or still working on it.' });
+    expect(s.sent[2]).toMatchObject({ type: 'response.create', response: { tool_choice: 'none', instructions: HOLD_AGAIN_LINE } });
+    s.sent.splice(2, 1);
     s.play({ type: 'response.done', event_id: 'r1' });
     sideband.send({ type: 'session.commentary.append', event_id: 'x3', delegation_id: 'fc_1', content: 'Tuesday at 9 is free.' });
     expect(s.sent.slice(2)).toEqual([

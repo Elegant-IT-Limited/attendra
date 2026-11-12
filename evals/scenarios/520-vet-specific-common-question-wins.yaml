@@ -1,0 +1,22 @@
+id: vet-specific-common-question-wins
+title: "\"Do you offer boarding services?\" is answered from the clinic's own boarding answer, not its broad services answer; boarding and grooming get both (note 52 B1)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, settings, common-questions]
+settings:
+  faqs:
+    - { id: faq_services, question: "What services do you offer?", answer: "We offer wellness exams, vaccinations, dental care and surgery." }
+    - { id: faq_boarding, question: "Do you offer boarding?", answer: "Yes, we offer boarding for dogs and cats, with a visit from a vet each day." }
+    - { id: faq_grooming, question: "Do you offer grooming?", answer: "Yes, we offer grooming on weekdays." }
+turns:
+  - caller: Do you offer boarding services?
+    reply: "Yes, we offer boarding for dogs and cats, with a visit from a vet each day."
+    delegate:
+      - get_clinic_info: { question: Do you offer boarding services? }
+expect:
+  outcome: info
+  answered_from: faq_boarding
+  returned: ["boarding for dogs and cats"]
+forbid_spoken:
+  - isn't listed
+  - not listed

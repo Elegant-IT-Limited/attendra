@@ -44,6 +44,7 @@ describe('caller ID and the pet named at once', () => {
 describe('a number the caller says', () => {
   async function onWeb() {
     const c = await w.call(null, { clinic, channel: 'web' });
+    c.caller('It is 720 555 0172.');
     await c.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: null, phone: '720 555 0172' } }]);
     c.assistant("That's 720-555-0172?");
     c.caller('Yes.');

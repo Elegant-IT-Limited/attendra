@@ -254,6 +254,14 @@ export interface LanguagePack {
   emergencyPhrases: [EmergencyKind, RegExp][];
   /** "It is not an emergency": honoured for the generic word only. */
   notAnEmergency: RegExp;
+  /**
+   * A question about the clinic's emergency service ("Do you handle emergencies?", "¿Atienden emergencias?"), not a
+   * report of one (note 52 B6: "Do you receive emergency?" heard the danger question). Read only for the word alone,
+   * and never when the caller also says it is one (reportsEmergency).
+   */
+  asksEmergencyService: RegExp;
+  /** The caller saying they have one: "it's an emergency", "es una emergencia". */
+  reportsEmergency: RegExp;
 
   /** A clear yes, in the caller's own words. */
   yes: RegExp;

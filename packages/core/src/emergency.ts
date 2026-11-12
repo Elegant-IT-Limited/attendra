@@ -49,6 +49,8 @@ export function detectEmergencies(recentCallerText: string, extra: EmergencyPhra
       // "it's not an emergency" is the one negation we honour, and only for the
       // generic word: "no chest pain" style negations are too easy to mishear
       if (kind === 'general' && LANGUAGES.some((l) => PACKS[l].notAnEmergency.test(text))) continue;
+      // a question about the clinic's emergency service is clinic information, unless they also say it is one (note 52 B6)
+      if (kind === 'general' && LANGUAGES.some((l) => PACKS[l].asksEmergencyService.test(text)) && !LANGUAGES.some((l) => PACKS[l].reportsEmergency.test(text))) continue;
       seen.add(kind);
       found.push({ kind, phrase: m[0], language, at: m.index ?? text.indexOf(m[0]) });
     }
