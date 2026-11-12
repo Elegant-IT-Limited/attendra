@@ -68,10 +68,15 @@ test('watch a live call, coach the assistant, and end it; the page becomes the c
   await expect(page.getByText('Ended by staff')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Transcript' })).toBeVisible();
   await expect(page.getByText('she is a new patient')).toHaveCount(0); // the note is never in the record
-  // the summary appears when the worker has written it, with no reload
+  // the summary appears when the worker has written it, with no reload. The worker shares a busy in-memory Postgres
+  // with the whole suite, so first wait (on the API) until it has written the summary, then expect the page to show it
+  const record = new URL(page.url()).pathname;
+  await expect.poll(async () => {
+    const res = await page.request.get(`/api/v1/clinics/${clinic}/calls/${callId}`);
+    return res.ok() && (await res.json() as { summary: unknown }).summary != null;
+  }, { timeout: 90_000, intervals: [1_000] }).toBe(true);
   await expect(page.getByTestId('call-summary')).toBeVisible({ timeout: 30_000 });
   // a browser test is not counted on Today, and not listed there either
-  const record = new URL(page.url()).pathname;
   await page.goto(record.split('/calls/')[0]!);
   await expect(page.getByRole('list', { name: 'Recent calls' })).toBeVisible();
   await expect(page.locator(`a[href="${record}"]`)).toHaveCount(0);

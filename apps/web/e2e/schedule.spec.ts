@@ -282,14 +282,23 @@ test('the desk marks a visit arrived with a key, the grid says so, and puts it b
     test.setTimeout(test.info().timeout + 4 * 60_000);
     await page.waitForTimeout(startOf().getTime() - testNow() + 1000);
   }
-  const start = startOf();
-  const today = denverDay(start);
-  const booked = await page.request.post(`/api/v1/clinics/${clinic}/appointments`, { headers: origin, data: {
-    patientId: james.id, providerId: 'prov_okafor', visitTypeId: 'vt_sick', startsAt: start.toISOString(), idempotencyKey: `e2e-mark-${testNow()}`,
-    override: true, overrideReason: 'late check',
-  } });
-  expect(booked.status(), await booked.text()).toBe(201);
-  const { appointmentId } = await booked.json() as { appointmentId: string };
+  // the demo day has visits of its own: in clinic hours "a few minutes from now" may be taken, so the first free
+  // start from then on, in 15-minute steps, still today in the clinic's time
+  const first = startOf();
+  const today = denverDay(first);
+  let booked = null as Awaited<ReturnType<typeof page.request.post>> | null;
+  for (let step = 0; ; step++) {
+    const at = new Date(first.getTime() + step * 15 * 60_000);
+    if (denverDay(at) !== today) break;
+    booked = await page.request.post(`/api/v1/clinics/${clinic}/appointments`, { headers: origin, data: {
+      patientId: james.id, providerId: 'prov_okafor', visitTypeId: 'vt_sick', startsAt: at.toISOString(), idempotencyKey: `e2e-mark-${testNow()}-${step}`,
+      override: true, overrideReason: 'late check',
+    } });
+    if (booked.status() !== 409) break;
+  }
+  expect(booked, 'no free start left today').not.toBeNull();
+  expect(booked!.status(), await booked!.text()).toBe(201);
+  const { appointmentId } = await booked!.json() as { appointmentId: string };
   await page.goto(`/c/${clinic}/schedule?view=day&date=${today}&appointment=${appointmentId}`);
   const panel = page.getByRole('dialog', { name: 'James Whitaker' });
   await expect(panel.getByRole('group', { name: 'Mark the visit' })).toBeVisible();
