@@ -23,9 +23,9 @@ export function StaleGreeting({ text, language, clinic, onFix }: { text: string;
   const said = stale.map((s) => `"${s.said}"`).join(' and ');
   return (
     <div data-testid={`greeting-stale-${language}`}><Alert tone="warn">
-      <span className="flex flex-wrap items-center justify-between gap-2">
-        <span>Your {PACKS[language].name} greeting still says {said}.</span>
-        <Button type="button" size="sm" variant="outline" onClick={() => onFix(toSuggested ? suggestion : fixed)}>
+      <span className="block min-w-0 space-y-2 break-words">
+        <span className="block">Your {PACKS[language].name} greeting still says {said}.</span>
+        <Button type="button" size="sm" variant="outline" className="h-auto max-w-full whitespace-normal py-1.5 text-left" onClick={() => onFix(toSuggested ? suggestion : fixed)}>
           {toSuggested ? 'Use the suggested greeting' : `Change it to ${stale.map((s) => `"${s.now}"`).join(' and ')}`}
         </Button>
       </span>
