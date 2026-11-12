@@ -67,8 +67,15 @@ describe('speaking dates and numbers', () => {
     expect(speakSlot(zonedInstant('2026-09-29', '08:00', denver), denver)).toBe('Tuesday, September 29, at 8:00 AM');
   });
 
-  it('phone numbers are read digit by digit', () => {
-    expect(PACKS.en.speakPhone('+13035550100')).toBe('one three zero three five five five zero one zero zero');
+  it('phone numbers are read as a person reads one: in groups, with no leading country 1 (note 52 B7)', () => {
+    for (const l of ['en', 'es'] as const) {
+      expect(PACKS[l].speakPhone('+13035550100')).toBe('303-555-0100');
+      // elsewhere the national number with its home 0, a short number as it is
+      expect(PACKS[l].speakPhone('+442079460123')).toBe('020-794-60123');
+      expect(PACKS[l].speakPhone('911')).toBe('911');
+      expect(PACKS[l].speakPhone('112')).toBe('112');
+      expect(PACKS[l].speakPhone('+13035550100')).not.toMatch(/^1\b|\b\d \d \d/);
+    }
   });
 });
 

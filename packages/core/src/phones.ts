@@ -205,6 +205,22 @@ export function groupedNumber(clinic: PhoneCountry, number: string): string {
   return d.length > 7 ? `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}` : d.length > 4 ? `${d.slice(0, d.length - 4)}-${d.slice(-4)}` : d;
 }
 
+/**
+ * A number as a person reads it out: "720-555-0179" in North America, never its digits one by one with the country's
+ * 1 in front (note 52 B7: a test call heard its emergency line one digit at a time, the 1 first); elsewhere the national number with its
+ * home 0 ("020-794-60123"), in groups; a short number (911, 112) as it is. The voice says it as written.
+ */
+export function spokenPhone(number: string): string {
+  const digits = number.replace(/\D/g, '');
+  if (!number.trim().startsWith('+') && digits.length <= 6) return digits;
+  const e164 = number.trim().startsWith('+') ? `+${digits}` : number;
+  const code = callingCode(e164);
+  if (!code) return groupedNumber({ phoneNumbers: [] }, digits);
+  const national = `${TRUNK[code] ?? ''}${e164.slice(code.length + 1)}`;
+  if (code === '1' && national.length === 10) return `${national.slice(0, 3)}-${national.slice(3, 6)}-${national.slice(6)}`;
+  return national.length > 7 ? `${national.slice(0, 3)}-${national.slice(3, 6)}-${national.slice(6)}` : national.length > 4 ? `${national.slice(0, -4)}-${national.slice(-4)}` : national;
+}
+
 /** What a phone field takes: digits and the phone characters (a leading +, spaces, -, (, ), .). No letters, ever. */
 export const PHONE_TYPED = /^\+?[\d\s().-]*$/;
 /** The one message for a phone typed with anything else, in the browser and from the API. */

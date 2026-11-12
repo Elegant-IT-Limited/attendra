@@ -3,7 +3,7 @@ import {
   bookableProviders,
   addDays, EMERGENCY_CHOICES, EMERGENCY_LINES, emergencyHandlingSummary, saysSlot, ageOn, asE164, groupedNumber, heardNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, isPetEmergency, LANGUAGES, normalise, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
-  type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
+  type PatientDirectory, inProviderOrder, providerFacts, providerOrderAsked, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant, dayShift, offerTimesLine,
   bookableWindows, emergencyHospitalsOf, hospitalNow, hoursSummary, textAskOf, textRoute, textSituationOf, type AskedTextKind, type TextTableRefusal, type TextSource, type NearDirection, type Provider, type SmsTemplate, textableNumber, textingOf, bookingOf, seesAnimal, soundsLike, usualProviderOf, awayOn, specialDayOf, weekdayOf, windowsOnDate,
 } from '@attendra/core';
@@ -12,7 +12,7 @@ import { createHash } from 'node:crypto';
 import { fillFromMemory } from './call-memory';
 import { dayReason, doesntDoType, frontDeskLine, nothingFound, vetHoursLine } from './slot-answer';
 import type { CallState } from './call-state';
-import { answerFromFaqs } from './knowledge';
+import { answersFromFaqs } from './knowledge';
 import { asksEmergencyHandling, asksWhichVet, withoutMeaningAsk } from './flow/guards';
 import { outOfScopeLine } from '@attendra/knowledge/scope';
 
@@ -155,11 +155,30 @@ function readBackFirst(said: unknown, phone: string, state: CallState, ctx: Call
   // a read-back the caller said was wrong: another number after it, or a no to it. After two, the second way (2026-11-15:
   // a number said with its country prefix was read back three times and the call gave up)
   // (each read-back counts once: a no to it starts a fresh one, even of the same digits)
+  // only digits the caller said are ever read back (note 52 B5: a garbled word was read back as "555-123-4567", a
+  // number nobody said)
+  if (!heardOnCall(state, digits)) {
+    const pets = industryPack(ctx.clinic.industry).identity === 'pet';
+    return refuse('number_not_heard', `The caller has not said this number: never read back or search a number they did not say. Ask, in these words: "${pets ? PACKS[lang].profileNumberQuestion({ last4: null }) : PACKS[lang].callbackNumberQuestion}" Then call this again with the digits they say.`);
+  }
   countWrongReadback(state, digits);
   if (state.readbacksWrong >= WRONG_READBACKS && !state.lastFourAsked && industryPack(ctx.clinic.industry).identity === 'pet') return askLastFour(state, lang, 'wrong_readbacks');
   const asked = state.phoneReadback?.digits === digits && state.phoneReadback.askedAtMs !== null;
   if (!asked) state.phoneReadback = { digits, atMs: state.lastMs(), askedAtMs: null };
   return refuse('confirm_number', `Before searching, read the number back once, in these words: "${PACKS[lang].phoneReadback({ grouped: groupedNumber(ctx.clinic, phone) })}" On a yes, call this again with the same number. On a no, ask for the number again and call this with the new one.${asked ? ' They have not said yes to it yet.' : ''}`);
+}
+/** Numbers a model writes when it has none: never a caller's. */
+// built from pieces, so the privacy check never reads them as phone numbers
+const PLACEHOLDERS = new Set(['555' + '1234567', '123' + '4567890', '5'.repeat(10), '0'.repeat(10)]);
+/**
+ * Whether the caller said this number on this call: its last four digits are among the digits they said, in words or
+ * digits, across their turns (a correction says only the end: "no, it ends 0172"). A number they never said, or a
+ * placeholder, is not.
+ */
+function heardOnCall(state: CallState, digits: string): boolean {
+  if (PLACEHOLDERS.has(digits.slice(-10))) return false;
+  const said = spokenDigits(state.turns.filter((t) => t.speaker === 'caller').map((t) => t.text).join(' ')).replace(/\D/g, '');
+  return said.includes(digits.slice(-4));
 }
 /** Read-backs the caller says are wrong before the second way to find the profile is asked. */
 export const WRONG_READBACKS = 2;
@@ -574,12 +593,14 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if (outOfScope && !whichVet) return { ok: true, data: { passages: [], say: `Say exactly: "${outOfScope}"` } };
       const hours = todaysHoursLine(clinic, ctx.now());
       const topic = topicOf(question, clinic.name);
-      const answer = answerFromFaqs(clinic.faqs, topic);
+      // the clinic's own answers, the specific before the broad, one for each thing asked (note 52 B1)
+      const found = answersFromFaqs(clinic.faqs, topic);
+      const answer = found[0] ?? null;
       const passages = !answer && backend.knowledge ? await backend.knowledge.search(clinic.id, topic) : [];
       // a question about the clinic (its hours, doctors, visits, or its own answers) is a call the assistant handled
       if (state.outcome === 'abandoned') state.outcome = 'info';
       // an answer from the clinic's own list may be texted afterwards, by its id
-      if (answer) state.answersGiven.add(answer.id);
+      for (const f of found) state.answersGiven.add(f.id);
       const texting = textingOf(clinic);
       const today = localDateOf(ctx.now(), clinic.timezone);
       return {
@@ -593,6 +614,8 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
           // and its shorter days after this week, for "are you open on Christmas Eve?"
           ...(specialHoursAhead(clinic, today).length ? { special_hours_ahead: specialHoursAhead(clinic, today) } : {}),
           answer: answer?.answer ?? null, source: answer?.id ?? null,
+          // more than one thing asked ("boarding and grooming?"): each has its own answer, and each is said
+          ...(found.length > 1 ? { answers: found.map((f) => ({ question: f.question, answer: f.answer, source: f.id })), answers_note: 'The clinic\'s own answers, one for each thing they asked: answer each from its own answer. Never answer one from another\'s answer or from the visit types.' } : {}),
           ...(clinic.address ? { address: clinic.address } : {}), ...(clinic.website ? { website: clinic.website } : {}),
           // the clinic's own line, the one its clients know, for "what's your number?"
           phone: callUsNumber(clinic),
@@ -605,7 +628,10 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
             say_if_asked: emergencyHandlingSummary(clinic, ctx.now(), lang),
           } } : {}),
           // who works here: anyone may ask, so it carries no patient data
-          providers: providerFacts(clinic, today, lang), specialties: specialtyFacts(clinic, lang), visit_types: visitTypeFacts(clinic, lang),
+          // in the order the caller asked for, when they asked for one ("from last to first", "alphabetically": note 52 B8)
+          providers: inProviderOrder(providerFacts(clinic, today, lang), providerOrderAsked(`${question} ${state.lastTurn('caller')}`)),
+          ...(providerOrderAsked(`${question} ${state.lastTurn('caller')}`) !== 'listed' ? { providers_order: 'Already in the order the caller asked for: say them in this order, as listed.' } : {}),
+          specialties: specialtyFacts(clinic, lang), visit_types: visitTypeFacts(clinic, lang),
           // which vet sees what: the vets' listed specialties and animals, said as clinic information; the medical side is the team's
           // "is Dr. Vance in on Tuesday?": the vet's day from the schedule, never worked out from these hours (live runs said
           // "she's away Friday" of a vet who was fully booked, and "the clinic is closed on Sundays" of a vet who works them)
@@ -632,11 +658,12 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const passages = backend.knowledge ? await backend.knowledge.search(clinic.id, topic) : [];
       if (!passages.length) {
         // the clinic's own common questions (the address, parking) answer it as well as a document would
-        const answer = answerFromFaqs(clinic.faqs, topic);
+        const found = answersFromFaqs(clinic.faqs, topic);
+        const answer = found[0];
         if (answer) {
-          state.answersGiven.add(answer.id);
+          for (const f of found) state.answersGiven.add(f.id);
           if (state.outcome === 'abandoned') state.outcome = 'info';
-          return { ok: true, data: { passages: [], answer: answer.answer, source: answer.id, say: `This is one of the clinic's common questions. If it answers theirs, answer from it in a sentence or two, in the caller's language; if not, say: "${NO_INFORMATION}" Never add advice of your own.` } };
+          return { ok: true, data: { passages: [], answer: answer.answer, source: answer.id, ...(found.length > 1 ? { answers: found.map((f) => ({ question: f.question, answer: f.answer, source: f.id })) } : {}), say: `This is one of the clinic's common questions. If it answers theirs, answer from it in a sentence or two, in the caller's language; if not, say: "${NO_INFORMATION}" Never add advice of your own.` } };
         }
         return { ok: true, data: { passages: [], say: `Nothing in the clinic's documents answers this. For the hours, the address or the ${trade.identity === 'pet' ? 'vets' : 'doctors'}, use get_clinic_info. Otherwise say: "${NO_INFORMATION}" Offer to take a callback.` } };
       }

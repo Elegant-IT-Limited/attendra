@@ -6,6 +6,7 @@ import { windowsOn } from './hours';
 import { phoneDigits } from './identity';
 import { asE164 } from './phones';
 import type { Language } from './locales';
+import { normalise } from './locales/types';
 import { addDays } from './time';
 import { tookPlace } from './visit-status';
 
@@ -56,6 +57,39 @@ export const audienceLine = (v: Pick<VisitType, 'audience'>) =>
  * four weeks only, which is as far as anyone asks on a call. The clinic's own fields
  * on each one come under their labels, except those it keeps for the team.
  */
+export type ProviderOrder = 'listed' | 'reversed' | 'first_name' | 'first_name_desc' | 'last_name' | 'last_name_desc';
+// "from last to first", "backwards", "in reverse"; "alphabetically", "A to Z"; "by last name"; "Z to A" (EN + ES)
+const REVERSED = /\b(?:last to (?:the )?first|backwards?|in reverse|reverse order|bottom to (?:the )?top|al reves|del ultimo al primero|en orden inverso)\b/;
+const Z_TO_A = /\b(?:z to a|reverse alphabetical|de la z a la a)\b/;
+const ALPHA = /\b(?:alphabetical(?:ly)?|a to z|abc order|by name|orden alfabetico|alfabeticamente|de la a a la z)\b/;
+const BY_LAST = /\b(?:(?:by|of) (?:their |the )?(?:last|family|sur) ?names?|por (?:el )?apellido)\b/;
+/**
+ * The order a caller asked the vets in (note 52 B8: "from last to first" was read in the stored order, the model left
+ * to turn it round, and it did not): the tool hands the list already in that order. 'listed' when none was asked.
+ */
+export function providerOrderAsked(words: string): ProviderOrder {
+  const t = normalise(words);
+  const last = BY_LAST.test(t);
+  if (Z_TO_A.test(t)) return last ? 'last_name_desc' : 'first_name_desc';
+  if (last) return REVERSED.test(t) ? 'last_name_desc' : 'last_name';
+  if (ALPHA.test(t)) return 'first_name';
+  return REVERSED.test(t) ? 'reversed' : 'listed';
+}
+/** The vets in an asked order, by their names without a title ("Dr." is said, never sorted on). */
+export function inProviderOrder<T extends { name: string }>(list: T[], order: ProviderOrder): T[] {
+  const bare = (n: string) => n.replace(/^(?:dr|dra)\.?\s+/i, '').trim();
+  const lastOf = (n: string) => bare(n).split(/\s+/).at(-1) ?? '';
+  const by = (key: (n: string) => string) => [...list].sort((a, b) => key(a.name).localeCompare(key(b.name)) || bare(a.name).localeCompare(bare(b.name)));
+  switch (order) {
+    case 'reversed': return [...list].reverse();
+    case 'first_name': return by(bare);
+    case 'first_name_desc': return by(bare).reverse();
+    case 'last_name': return by(lastOf);
+    case 'last_name_desc': return by(lastOf).reverse();
+    default: return list;
+  }
+}
+
 export function providerFacts(clinic: Pick<ClinicConfig, 'providers' | 'visitTypes' | 'hours' | 'providerFields'>, today: string, language: Language) {
   const horizon = addDays(today, 28);
   return bookableProviders(clinic.providers).map((p) => ({

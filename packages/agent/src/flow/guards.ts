@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, type Language, normalise } from '@attendra/core';
+import { type ClinicConfig, type Language, LANGUAGES, normalise, PACKS } from '@attendra/core';
 
 /**
  * The rest of the 11-16 set (batch 1b), in code so every engine follows it the same way: the reason behind a refusal
@@ -103,7 +103,11 @@ export const asksWhichVet = (question: string) => WHICH_VET.test(normalise(quest
  */
 const EMERGENCY_WORD = /\bemergenc/;
 const HANDLING_WORD = /\b(?:handle|handles|handling|on call|on-call|any time|anytime|after hours|setting|policy|de guardia|atiende|atienden|maneja|manejan|cualquier hora|horario|fuera de horario)\b/;
-export const asksEmergencyHandling = (question: string) => { const t = normalise(question); return EMERGENCY_WORD.test(t) && HANDLING_WORD.test(t); };
+export const asksEmergencyHandling = (question: string) => {
+  const t = normalise(question);
+  // "do you take/receive/see emergencies?" asks the same (note 52 B6)
+  return (EMERGENCY_WORD.test(t) && HANDLING_WORD.test(t)) || LANGUAGES.some((l) => PACKS[l].asksEmergencyService.test(t));
+};
 /** Where a "what does it mean?" starts in a sentence: "what does", "what do", "¿qué significa", "qué quiere decir". */
 const MEANING_START = /(?:¿ ?)?\bqu[eé] (?:significa|quiere decir)\b|\bwhat (?:does|do)\b/i;
 const MEANING_WORD = /\b(?:mean|means|significa|quiere decir)\b/i;

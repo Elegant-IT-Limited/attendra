@@ -1,0 +1,25 @@
+id: vet-emergency-service-question-es
+title: "\"¿Ustedes atienden emergencias?\" asks about the clinic's emergency service: it is explained from the setting, and no danger question is asked (note 52 B6)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, emergency-handling]
+settings:
+  emergencies:
+    mode: handle
+    number: "+17205550179"
+    backupHospital:
+      name: Front Range Pet Emergency
+      phone: "+17205550188"
+      address: 1200 Larkspur Avenue, Denver
+turns:
+  - caller: "¿Ustedes atienden emergencias?"
+    reply: "Nuestro equipo atiende emergencias a cualquier hora, de guardia."
+    delegate:
+      - get_clinic_info: { question: "¿Ustedes atienden emergencias?" }
+expect:
+  outcome: info
+  emergency_instruction: false
+  returned: ["on call"]
+forbid_spoken:
+  - Is this still an emergency
+  - ¿Sigue siendo una emergencia

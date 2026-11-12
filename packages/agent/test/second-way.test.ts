@@ -18,6 +18,7 @@ const verify = (phone: string | null, pet: string | null = null, last4: string |
 describe('a spoken country prefix', () => {
   it('is dropped before the read-back, and the number found', async () => {
     const c = await w.call(null, { clinic, channel: 'web' });
+    c.caller('It\'s 52 720 555 0174.'); // the caller says the number first, as on a call (note 52 B5)
     const out = await c.delegate([verify('52 720 555 0174', 'Luna')]);
     expect(out.errors).toEqual(['confirm_number']);
     expect(said(out)).toContain("That's 720-555-0174?");
@@ -36,6 +37,7 @@ describe('a spoken country prefix', () => {
 describe('after two wrong read-backs', () => {
   it('asks for the last four digits and the pet\'s name, and finds the one pet', async () => {
     const c = await w.call(null, { clinic, channel: 'web' });
+    c.caller('It\'s 720 555 0177.'); // the caller says the number first, as on a call (note 52 B5)
     await c.delegate([verify('720 555 0177', 'Luna')]);
     c.assistant("That's 720-555-0177?");
     c.caller('No, it is 720 555 0178.');
@@ -43,6 +45,7 @@ describe('after two wrong read-backs', () => {
     expect(second.errors).toEqual(['confirm_number']);
     c.assistant("That's 720-555-0178?");
     c.caller('No, sorry.');
+    c.caller('It\'s 720 555 0179.'); // the caller says the number first, as on a call (note 52 B5)
     const third = await c.delegate([verify('720 555 0179', 'Luna')]);
     expect(third.errors).toEqual(['ask_last_four']);
     expect(said(third)).toContain("Let's try another way. What are the last four digits of the number the profile is under, and your pet's name?");
@@ -61,6 +64,7 @@ describe('after two wrong read-backs', () => {
 
   it('one wrong read-back is not enough, and a yes is never wrong', async () => {
     const c = await w.call(null, { clinic, channel: 'web' });
+    c.caller('It\'s 720 555 0175.'); // the caller says the number first, as on a call (note 52 B5)
     await c.delegate([verify('720 555 0175', 'Luna')]);
     c.assistant("That's 720-555-0175?");
     c.caller('No, it ends 0174.');
@@ -76,6 +80,7 @@ describe('after two wrong read-backs', () => {
   it('two households sharing the last four digits with a pet of that name: nobody is found, and a request for the team', async () => {
     const c = await w.call(null, { clinic, channel: 'web' });
     await w.backend.patients.create(RIVERBEND_CLINIC.id, { firstName: 'Mochi', lastName: 'Quinn', dob: '2021-01-01', phone: '+13035550172', guardianName: 'Avery Quinn', gender: 'female', species: 'cat' });
+    c.caller('It\'s 720 555 0170.'); // the caller says the number first, as on a call (note 52 B5)
     await c.delegate([verify('720 555 0170', 'Mochi')]);
     c.assistant("That's 720-555-0170?");
     c.caller('No.');
@@ -105,6 +110,7 @@ describe('after two wrong read-backs', () => {
 describe('a number with no profile', () => {
   it('said by the caller: the name is asked as on any number, then the same answer as a client\'s number with a wrong name, and no second way (2026-11-09)', async () => {
     const c = await w.call(null, { clinic, channel: 'web' });
+    c.caller('It\'s 720 555 0190.'); // the caller says the number first, as on a call (note 52 B5)
     await c.delegate([verify('720 555 0190')]);
     c.assistant("That's 720-555-0190?");
     c.caller('Yes.');
@@ -132,6 +138,7 @@ describe('a number with no profile', () => {
   it('a caller who said the pet is new is not asked', async () => {
     const c = await w.call(null, { clinic, channel: 'web' });
     c.caller('I want to register my new puppy.');
+    c.caller('It\'s 720 555 0191.'); // the caller says the number first, as on a call (note 52 B5)
     await c.delegate([verify('720 555 0191')]);
     c.assistant("That's 720-555-0191?");
     c.caller('Yes.');
@@ -141,9 +148,11 @@ describe('a number with no profile', () => {
 
   it('a second no counts even when the planner asks for the last four digits itself, before another number (a live run)', async () => {
     const c = await w.call(null, { clinic, channel: 'web' });
+    c.caller('It\'s 720 555 0177.'); // the caller says the number first, as on a call (note 52 B5)
     await c.delegate([verify('720 555 0177', 'Luna')]);
     c.assistant("That's 720-555-0177?");
     c.caller('No, ese no es.');
+    c.caller('It\'s 720 555 0178.'); // the caller says the number first, as on a call (note 52 B5)
     await c.delegate([verify('720 555 0178', 'Luna')]);
     c.assistant("That's 720-555-0178?");
     c.caller('No, ese tampoco.');

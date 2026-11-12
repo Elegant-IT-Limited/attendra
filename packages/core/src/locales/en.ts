@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { spokenPhone } from '../phones';
 import { clock12, dateParts, wallClock } from './dates';
 import { type Clock, type LanguagePack, type OfferDay, type Pronoun } from './types';
 
@@ -51,7 +52,6 @@ const capitalFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** "a sick visit", "an exam". */
 const withArticle = (s: string) => `${/^[aeiou]/i.test(s) ? 'an' : 'a'} ${s}`;
 
-const DIGITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
 /** A note written to follow a comma, said as a sentence of its own. */
 const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -82,7 +82,7 @@ export const en: LanguagePack = {
   speakWhen: (start, timeZone) => fullWhen(start, timeZone),
   fullWhen,
   fullDay,
-  speakPhone: (e164) => e164.replace(/\D/g, '').split('').map((d) => DIGITS[Number(d)]).join(' '),
+  speakPhone: (e164) => spokenPhone(e164),
   readbackBooking: ({ when: w, provider, providerKind, visit, replacing, pet, shift }) => {
     const where = providerKind === 'room' ? `in the ${provider.replace(/^the /i, '').replace(/^\p{Lu}(?!\p{Lu})/u, (c) => c.toLowerCase())}` : `with ${provider}`;
     // a move says both times in full, and how the day shifts when it does
@@ -272,6 +272,8 @@ export const en: LanguagePack = {
   ],
   // also a question about emergencies, not a report of one: "is this an emergency?", "what counts as an emergency?"
   notAnEmergency: /\b(not an? emergency|isn'?t an emergency|no emergency|not urgent|is (this|that|it) an emergency|counts? as an emergency|emergency (fees?|charges?|prices?|costs?|policy))\b/,
+  asksEmergencyService: /\b(?:(?:do|does|can|will|would) (?:you|y'?all|you guys|your (?:clinic|team|vets?|doctors?|office)|the (?:clinic|vets?|doctors?|office)) (?:ever |also |even )?(?:handle|take|see|treat|accept|receive|get|do|deal with|cover|offer|have)|(?:are|is) (?:you|the clinic|your clinic) (?:open|available|set up) for|how do you (?:handle|deal with)|what (?:are|is) your)(?: any)?(?: an?)? emergenc(?:y|ies)\b/,
+  reportsEmergency: /\b(?:(?:it'?s|it is|this is|that'?s|we have|i have|i'?ve got|there'?s) (?:a |an )?(?:real |medical |pet )?emergency|emergency(?: here)?!)/,
   yes: /\b(yes|yeah|yep|yup|correct|that'?s (right|correct|fine|good|perfect)|sounds good|perfect|please do|go ahead|book it|do it|sure)\b/,
   yesAlone: /^(ok|okay|confirm|confirmed)$/,
   hedge: /\b(no|nope|not|don'?t|wait|actually|hold on|hmm|maybe|instead|rather|change|different|other|but|although|though)\b|\?/,

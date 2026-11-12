@@ -42,6 +42,7 @@ describe('a booking on the tools path', () => {
     expect(clock.say).toContain('say that day\'s answer from days as written');
 
     // the number first, read back before it is searched
+    c.caller('Biscuit, on 720 555 0172.');
     const asked = await tool('verify_caller', { owner_name: null, pet_name: 'Biscuit', phone: '720 555 0172' });
     expect(asked).toMatchObject({ ok: false, outcome: 'confirm_number', stage: 'number_asked' });
     expect(asked.say).toContain("That's 720-555-0172?");
@@ -85,6 +86,7 @@ describe('a booking on the tools path', () => {
   it('a no after a yes, in a later piece, is a no', async () => {
     const c = await w.call(null, { clinic, channel: 'web' });
     c.state.answersAcrossPieces = true;
+    c.caller('Biscuit, on 720 555 0172.');
     await c.agent.onToolCall('verify_caller', { owner_name: null, pet_name: 'Biscuit', phone: '720 555 0172' });
     c.assistant("That's 720-555-0172?");
     c.caller('Yes.');
