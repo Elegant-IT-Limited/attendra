@@ -83,7 +83,7 @@ export default function Patients() {
         <Card>
           <CardContent className="py-5">
             {/* one filter row, the same as on the other lists: which patients, then the dropdowns */}
-            <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Filter the list" data-toolbar="pets">
+            <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Filter the list" data-toolbar="pets" data-filters="pets">
             <Segmented label={`Which ${terms.patients}`} value={onlyNew ? 'new' : 'all'} onValueChange={(v) => setOnlyNew(v === 'new')}
               options={[{ value: 'all', label: `All ${terms.patients}` }, { value: 'new', label: 'Added by the assistant, to check' }]} />
             {(pet && speciesList.length > 0) || filterable.length > 0 ? (
@@ -91,7 +91,7 @@ export default function Patients() {
                 {pet && speciesList.length > 0 && (
                   <>
                     <Label htmlFor="pet-species" className="sr-only">Kind of animal</Label>
-                    <Select id="pet-species" className="h-8 w-auto" value={species} onChange={(e) => setSpecies(e.target.value)}>
+                    <Select id="pet-species" className="h-8 w-full sm:w-auto" value={species} onChange={(e) => setSpecies(e.target.value)}>
                       <option value="">Any kind of animal</option>
                       {speciesList.map((s) => <option key={s} value={s}>{s}</option>)}
                     </Select>
@@ -100,14 +100,14 @@ export default function Patients() {
                 {filterable.length > 0 && (
                   <>
                     <Label htmlFor="patient-field" className="sr-only">Field</Label>
-                    <Select id="patient-field" className="h-8 w-44" value={fieldFilter.id} onChange={(e) => setFieldFilter({ id: e.target.value, value: '' })}>
+                    <Select id="patient-field" className="h-8 w-full sm:w-44" value={fieldFilter.id} onChange={(e) => setFieldFilter({ id: e.target.value, value: '' })}>
                       <option value="">Any field</option>
                       {filterable.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
                     </Select>
                     {filterField && (
                       <>
                         <Label htmlFor="patient-field-value" className="sr-only">Value</Label>
-                        <Select id="patient-field-value" className="h-8 w-40" value={fieldFilter.value} onChange={(e) => setFieldFilter({ ...fieldFilter, value: e.target.value })}>
+                        <Select id="patient-field-value" className="h-8 w-full sm:w-40" value={fieldFilter.value} onChange={(e) => setFieldFilter({ ...fieldFilter, value: e.target.value })}>
                           <option value="">Any value</option>
                           {(filterField.kind === 'yesno' ? ['yes', 'no'] : filterField.options ?? []).map((o) => <option key={o} value={o}>{filterField.kind === 'yesno' ? (o === 'yes' ? 'Yes' : 'No') : o}</option>)}
                         </Select>

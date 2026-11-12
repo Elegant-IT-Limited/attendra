@@ -142,8 +142,11 @@ export const EMERGENCY_LINES = {
   },
 } as const;
 
-/** Where the "no emergency setting yet" line points: Settings and the test-call page send to Settings > Emergencies; the setup page has the choices right under it. */
-export const NO_SETTING_NEXT = { settings: 'Set one under Settings > Emergencies.', setup: 'Choose one below.' } as const;
+/**
+ * Where the "no emergency setting yet" line points: a page without the choices (the test-call page) sends to Settings >
+ * Emergencies; a page with the choices right under the line (Settings > Emergencies itself, the setup page) says so.
+ */
+export const NO_SETTING_NEXT = { elsewhere: 'Set one under Settings > Emergencies.', form: 'Choose one below.' } as const;
 export type CallLinePlace = keyof typeof NO_SETTING_NEXT;
 
 /**
@@ -151,7 +154,7 @@ export type CallLinePlace = keyof typeof NO_SETTING_NEXT;
  * dashboard's words (staff only, so English only). "Emergency calls here: transfer to the team now (open until 6 PM),
  * Riverside Emergency Vet after." `place` changes only where a clinic with no setting is pointed to.
  */
-export function emergencyCallLine(clinic: RouteClinic & Pick<ClinicConfig, 'phoneNumbers'>, now: Date, place: CallLinePlace = 'settings'): string {
+export function emergencyCallLine(clinic: RouteClinic & Pick<ClinicConfig, 'phoneNumbers'>, now: Date, place: CallLinePlace = 'elsewhere'): string {
   const r = emergencyRoute(clinic, now);
   const twelve = (clinic.phoneNumbers[0] ?? '').startsWith('+1');
   const after = r.backup?.name ?? 'the hospital';

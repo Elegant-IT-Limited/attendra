@@ -19,6 +19,8 @@ const LANE_MIN_REM = 7;
  * would be narrower than a target anyone can tap, so a busier moment shows one visit and "+N more" (placeLane).
  */
 const WEEK_LANE_MIN_REM = 5;
+/** A closed weekend day in the week: a narrow column that keeps the day's place, so the week starts where the Month's rows do. */
+const CLOSED_DAY_REM = 4.5;
 const REM_PX = 16;
 type Provider = ClinicConfig['providers'][number];
 
@@ -31,9 +33,11 @@ const shortName = (name: string) => name.replace(/^Dr\.?\s+/, '').split(/\s+/).a
  * with a lane per provider for a week. Closed time is shaded, holidays are marked,
  * and each appointment is a block as long as the visit.
  */
-export function Calendar({ clinic, dates, providers, appointments, today, now, onOpen }: {
+export function Calendar({ clinic, dates, collapsed = [], providers, appointments, today, now, onOpen }: {
   clinic: ClinicConfig;
   dates: string[];
+  /** Week days drawn as a narrow "Closed" column (a closed weekend day with nothing booked): in the week, not in the way. */
+  collapsed?: string[];
   providers: Provider[];
   appointments: Appointment[];
   today: string;
@@ -55,8 +59,12 @@ export function Calendar({ clinic, dates, providers, appointments, today, now, o
   // nothing: a day's lane is 7rem, a week's lane 5rem (two visits side by side stay 24px targets, a third goes in "+N more"), so a week is
   // days × vets lanes wide. Headings stay at the top and the hour column on the left while it scrolls.
   const laneRem = week ? WEEK_LANE_MIN_REM : LANE_MIN_REM;
-  const columns = `3.5rem repeat(${week ? dates.length : providers.length}, minmax(${week ? `${providers.length * laneRem}rem` : `${laneRem}rem`}, 1fr))`;
-  const minWidth = `max(640px, calc(3.5rem + ${(week ? dates.length : 1) * providers.length * laneRem}rem))`;
+  const narrow = (d: string) => week && collapsed.includes(d);
+  const openDays = week ? dates.filter((d) => !narrow(d)).length : 1;
+  const columns = week
+    ? `3.5rem ${dates.map((d) => (narrow(d) ? `${CLOSED_DAY_REM}rem` : `minmax(${providers.length * laneRem}rem, 1fr)`)).join(' ')}`
+    : `3.5rem repeat(${providers.length}, minmax(${laneRem}rem, 1fr))`;
+  const minWidth = `max(640px, calc(3.5rem + ${openDays * providers.length * laneRem + (dates.length - openDays) * CLOSED_DAY_REM}rem))`;
   // the grid's own render time, for the render-speed test (e2e/schedule-scale.spec.ts) and the browser's performance panel
   useRenderMark(RENDER_MARKS.grid, providers.length > 0);
 
@@ -70,8 +78,14 @@ export function Calendar({ clinic, dates, providers, appointments, today, now, o
           <div className="sticky left-0 z-10 bg-surface" />
           {week ? dates.map((d) => {
             const holiday = closedDay(clinic, d);
+            if (narrow(d)) return (
+              <div key={d} data-testid="week-day-closed" className={cn('min-w-0 border-l border-border px-1.5 py-2 text-xs', d === today && 'bg-primary-soft')}>
+                <p className={cn('truncate font-medium', d === today && 'text-primary')} title={dayTitle(d)}>{dayTitle(d, 'short')}</p>
+                <p className="mt-1 text-text-muted">Closed</p>
+              </div>
+            );
             return (
-              <div key={d} className={cn('border-l border-border px-2 py-2 text-sm', d === today && 'bg-primary-soft')}>
+              <div key={d} data-testid="week-day" className={cn('border-l border-border px-2 py-2 text-sm', d === today && 'bg-primary-soft')}>
                 <p className={cn('font-medium', d === today && 'text-primary')}>{dayTitle(d, 'short')}</p>
                 <div className="mt-1 flex gap-1 text-xs text-text-muted">
                   {holiday ? <span>{holiday === 'Holiday' ? 'Holiday, closed' : holiday}</span> : providers.map((p) => <span key={p.id} className="flex-1 truncate" title={providerName(p)}><abbr title={providerName(p)} className="no-underline">{shortName(providerName(p))}</abbr></span>)}
@@ -90,16 +104,20 @@ export function Calendar({ clinic, dates, providers, appointments, today, now, o
           ))}
         </div>
         <div className="relative grid" style={{ gridTemplateColumns: columns, height }}>
-          {/* hour labels and lines */}
+          {/* hour labels and lines; the first hour's label sits just under the top edge, beside the first visit, where a
+              centred label would be cut by the column headings */}
           <div className="sticky left-0 z-[25] bg-surface">
             {hours.map((h) => (
-              <span key={h} className="absolute right-2 -translate-y-1/2 whitespace-nowrap text-xs tabular-nums text-text-muted" style={{ top: (h - start) * PX }}>
-                {h === start ? '' : hourMark(h)}
+              <span key={h} data-testid="hour-label" className={cn('absolute right-2 whitespace-nowrap text-xs tabular-nums text-text-muted', h === start ? 'translate-y-0.5' : '-translate-y-1/2')} style={{ top: (h - start) * PX }}>
+                {hourMark(h)}
               </span>
             ))}
           </div>
           {hours.slice(1).map((h) => <div key={h} className="pointer-events-none absolute inset-x-0 border-t border-border/70" style={{ top: (h - start) * PX, left: '3.5rem' }} />)}
-          {(week ? dates : [dates[0]!]).map((date) => (
+          {(week ? dates : [dates[0]!]).map((date) => narrow(date) ? (
+            <div key={date} data-testid="closed-day" aria-label={`${dayTitle(date)}, closed`} role="group"
+              className="border-l border-border bg-[repeating-linear-gradient(135deg,var(--muted),var(--muted)_6px,transparent_6px,transparent_12px)] opacity-80" />
+          ) : (
             <div key={date} className="relative border-l border-border"
               style={week ? { gridTemplateColumns: `repeat(${providers.length}, minmax(${WEEK_LANE_MIN_REM}rem, 1fr))`, display: 'grid' } : { display: 'contents' }}>
               {providers.map((p) => (
@@ -275,7 +293,7 @@ export function ScheduleList({ clinic, dates, appointments, onOpen }: { clinic: 
 const MONTH_SHOWN = 3;
 
 /**
- * A month at a glance: six weeks from the Monday before the 1st, a box per day with
+ * A month at a glance: six weeks from the clinic's first day of the week before the 1st (Sunday at a US clinic), a box per day with
  * its first visits (time, name, visit colour) and how many more. A day's number opens
  * that day; a visit opens its panel. Days of other months are dimmed, closed days say so.
  */

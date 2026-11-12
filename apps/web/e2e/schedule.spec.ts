@@ -219,7 +219,7 @@ test.describe.serial('the schedule', () => {
 
 // The desk marks what happened to a visit from its panel (SCH-1): a key on a keyboard, a button on a phone. Each state
 // is one the server allows now; the block on the grid says it.
-test('one status default in every view (booked only), and a US clinic\'s month starts on Sunday', async ({ browser }) => {
+test('one status default in every view (booked only), and a US clinic\'s month and week both start on Sunday', async ({ browser }) => {
   const page = await openAs(browser, 'frontdesk');
   const clinic = clinicOf(page);
   for (const view of ['day', 'week', 'month', 'agenda']) {
@@ -231,6 +231,33 @@ test('one status default in every view (booked only), and a US clinic\'s month s
   await expect(page.getByRole('columnheader')).toHaveText(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
   const first = await page.getByTestId('month-day').first().getAttribute('aria-label');
   expect(first).toMatch(/^Sunday /);
+  // the Week view starts on the same day (note 52 C7): seven days from Sunday, a closed weekend day kept as a narrow
+  // "Closed" column, never a week that starts on Monday beside a month that starts on Sunday
+  await page.goto(`/c/${clinic}/schedule?view=week`);
+  await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false');
+  await expect(page.getByRole('heading', { level: 2, name: /^Week of Sunday \d{1,2} \w+$/ })).toBeVisible();
+  const days = page.locator('[data-testid="week-day"], [data-testid="week-day-closed"]');
+  await expect(days).toHaveCount(7);
+  await expect(days.first()).toContainText(/^Sun \d{1,2} \w{3}/);
+  await expect(days.last()).toContainText(/^Sat \d{1,2} \w{3}/);
+});
+
+// Note 52 C7: the Day view's first hour had no label, so the first visit sat beside an empty hour column.
+test('the Day view labels its first hour, under the headings, beside the first visit', async ({ browser }) => {
+  const page = await openAs(browser, 'frontdesk');
+  await page.goto(`/c/${clinicOf(page)}/schedule?view=day`);
+  await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false');
+  const labels = page.getByTestId('hour-label');
+  await expect(labels.first()).toHaveText(/^\d{1,2} [AP]M$/);
+  // one label per hour of the grid, the first one included, in order
+  const texts = await labels.allTextContents();
+  const hours = texts.map((t) => { const [h, m] = t.split(' '); return (Number(h) % 12) + (m === 'PM' ? 12 : 0); });
+  expect(hours).toEqual(hours.map((_, i) => hours[0]! + i));
+  // whole: below the lane headings, not cut by them, and level with the top of the grid where the first hour starts
+  const head = (await page.getByTestId('lane-head').first().boundingBox())!;
+  const label = (await labels.first().boundingBox())!;
+  expect(label.y).toBeGreaterThanOrEqual(head.y + head.height - 0.5);
+  expect(label.y).toBeLessThan(head.y + head.height + 12);
 });
 
 test('the desk marks a visit arrived with a key, the grid says so, and puts it back to booked on a phone', async ({ browser }) => {

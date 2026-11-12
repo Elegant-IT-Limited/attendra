@@ -13,6 +13,8 @@ import { decryptSummary } from './summaries';
 export type StaffRole = 'owner' | 'admin' | 'staff' | 'viewer';
 export type TaskOutcome = 'called_back' | 'left_message' | 'refill_sent' | 'refill_ready' | 'refill_declined' | 'not_needed' | 'details_confirmed';
 const TASK_TYPES = ['callback', 'refill', 'voicemail', 'review', 'follow_up'] as const;
+/** A row id as Postgres writes a uuid: what an audit row's entity id is when it names one request. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type TaskType = (typeof TASK_TYPES)[number];
 
 /**
@@ -512,19 +514,28 @@ export class FrontDeskRepository {
     });
   }
 
-  /** Marks an open request urgent or not, and sets or clears the day it is due. What is left out stays as it was. Audited. */
+  /**
+   * Marks an open request urgent or not, and sets or clears the day it is due. What is left out stays as it was.
+   * Audited only when something changed: a new request written down as not urgent with no due day, or the same choice
+   * made twice, writes no "changed" row (the audit log showed one under every request added at the desk).
+   */
   async planTask(clinicId: string, taskId: string, plan: { urgent?: boolean; dueOn?: string | null }, userId: string): Promise<'planned' | 'taken' | 'not_found'> {
     return withClinic(this.db, clinicId, async (tx) => {
-      const set = { ...(plan.urgent !== undefined ? { urgent: plan.urgent } : {}), ...(plan.dueOn !== undefined ? { dueOn: plan.dueOn } : {}) };
-      const updated = Object.keys(set).length
-        ? await tx.update(tasks).set(set).where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId), eq(tasks.status, 'open'))).returning({ id: tasks.id, callId: tasks.callId })
-        : await tx.select({ id: tasks.id, callId: tasks.callId }).from(tasks).where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId), eq(tasks.status, 'open')));
-      if (updated.length) {
-        await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'task.planned', entity: 'task', entityId: taskId, callId: updated[0]!.callId });
-        return 'planned';
+      const open = and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId), eq(tasks.status, 'open'));
+      const [now] = await tx.select({ callId: tasks.callId, urgent: tasks.urgent, dueOn: tasks.dueOn }).from(tasks).where(open).for('update');
+      if (!now) {
+        const [exists] = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId)));
+        return exists ? 'taken' : 'not_found';
       }
-      const [exists] = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId)));
-      return exists ? 'taken' : 'not_found';
+      const set = {
+        ...(plan.urgent !== undefined && plan.urgent !== now.urgent ? { urgent: plan.urgent } : {}),
+        ...(plan.dueOn !== undefined && (plan.dueOn ?? null) !== (now.dueOn ?? null) ? { dueOn: plan.dueOn } : {}),
+      };
+      if (Object.keys(set).length) {
+        await tx.update(tasks).set(set).where(open);
+        await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'task.planned', entity: 'task', entityId: taskId, callId: now.callId });
+      }
+      return 'planned';
     });
   }
 
@@ -834,13 +845,29 @@ export class FrontDeskRepository {
   }
 
   /** Newest first. Pages by id, not time: one request can write several rows with the same timestamp. */
+  /**
+   * The audit log, newest first. A row about one request carries the request's number in its counts ({ number: 5 }),
+   * read from the request itself, so every row names it as the team does ("Request R-5"): only the row that created it
+   * stored the number, and views, claims and changes read as a bare "Request".
+   */
   async auditTrail(clinicId: string, opts: { beforeId?: number; limit: number; actions?: string[] }) {
-    return withClinic(this.db, clinicId, (tx) => tx.select({
-      id: auditLogs.id, at: auditLogs.at, actor: auditLogs.actor, action: auditLogs.action,
-      entity: auditLogs.entity, entityId: auditLogs.entityId, callId: auditLogs.callId, counts: auditLogs.counts,
-    }).from(auditLogs)
-      .where(and(eq(auditLogs.clinicId, clinicId), opts.beforeId ? lt(auditLogs.id, opts.beforeId) : undefined,
-        opts.actions?.length ? inArray(auditLogs.action, opts.actions) : undefined))
-      .orderBy(desc(auditLogs.id)).limit(opts.limit));
+    return withClinic(this.db, clinicId, async (tx) => {
+      const rows = await tx.select({
+        id: auditLogs.id, at: auditLogs.at, actor: auditLogs.actor, action: auditLogs.action,
+        entity: auditLogs.entity, entityId: auditLogs.entityId, callId: auditLogs.callId, counts: auditLogs.counts,
+      }).from(auditLogs)
+        .where(and(eq(auditLogs.clinicId, clinicId), opts.beforeId ? lt(auditLogs.id, opts.beforeId) : undefined,
+          opts.actions?.length ? inArray(auditLogs.action, opts.actions) : undefined))
+        .orderBy(desc(auditLogs.id)).limit(opts.limit);
+      const ids = [...new Set(rows.filter((r) => r.entity === 'task' && r.counts?.number === undefined && r.entityId && UUID.test(r.entityId)).map((r) => r.entityId!))];
+      const numbers = new Map(ids.length
+        ? (await tx.select({ id: tasks.id, number: tasks.number }).from(tasks).where(and(eq(tasks.clinicId, clinicId), inArray(tasks.id, ids)))).map((t) => [t.id, t.number])
+        : []);
+      return rows.map((r) => {
+        const number = r.entity === 'task' && r.entityId ? numbers.get(r.entityId) : undefined;
+        return number === undefined ? r : { ...r, counts: { ...r.counts, number } };
+      });
+    });
   }
+
 }

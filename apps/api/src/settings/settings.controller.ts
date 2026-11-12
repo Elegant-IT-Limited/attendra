@@ -103,7 +103,7 @@ export class SettingsController {
   @ApiBody({ schema: schemaOf(EmergencyDraft) })
   async emergencyPreview(@Param('clinicId') clinicId: string, @Body(new ZodPipe(EmergencyDraft)) draft: z.infer<typeof EmergencyDraft>, @Query('for') place?: string) {
     // the setup page has the choices under its "Right now" line: ?for=setup says "Choose one below." instead of pointing to Settings
-    return emergencyFormView(await this.config(clinicId), draft, this.now(), place === 'setup' ? 'setup' : 'settings');
+    return emergencyFormView(await this.config(clinicId), draft, this.now(), place === 'setup' ? 'form' : 'elsewhere');
   }
 
   private async config(clinicId: string): Promise<ClinicConfig> {

@@ -102,3 +102,32 @@ test('the no-shows card shows what the server counted, as it sent it', async ({ 
   await expect(page.getByTestId('quality-noShows').locator('p').nth(1)).toHaveText(shown);
   await expect(page.getByTestId('quality-noShows')).toContainText(`This week, ${week!.visitsDue} visit${week!.visitsDue === 1 ? '' : 's'} due`);
 });
+
+// Note 52 C11: "Turns to a booking 17" did not say what 17 counted. The card names it, says it in a line, and shows the
+// server's own number (avgTurnsToBooking: the caller's turns, averaged over the week's booked or moved calls).
+test('the caller-turns card says what it counts and shows the server\'s number', async ({ browser }) => {
+  const page = await openAs(browser, 'manager', (p) => p.route((url) => url.pathname.startsWith('/api/v1/') && url.pathname.endsWith('/quality'), async (route) => {
+    const res = await route.fetch();
+    const body = await res.json() as { weeks: Record<string, unknown>[] };
+    body.weeks[0] = { ...body.weeks[0], avgTurnsToBooking: 17, bookings: 3 };
+    await route.fulfill({ response: res, json: body });
+  }));
+  const clinic = new URL(page.url()).pathname.split('/')[2];
+  await page.goto(`/c/${clinic}/quality`);
+  const card = page.getByTestId('quality-turns');
+  await expect(card).toContainText('Caller turns per booking, average');
+  await expect(card).toContainText('17');
+  await expect(card).toContainText('Times the caller spoke, over 3 booked calls');
+  await expect(page.getByText('Turns to a booking')).toHaveCount(0);
+  // the week's row and the page's own words say the same
+  await expect(page.getByRole('columnheader', { name: 'Caller turns per booking, average' })).toBeVisible();
+  await page.getByText('What each number means').click();
+  await expect(page.getByText('On calls that booked or moved a visit: how many times the caller spoke, start to end, on average.', { exact: false })).toBeVisible();
+
+  // without the stand-in, the card shows what the server counted this week
+  await page.unrouteAll();
+  const served = await (await page.request.get(`/api/v1/clinics/${clinic}/quality?weeks=26`)).json() as { weeks: { avgTurnsToBooking: number | null }[] };
+  await page.reload();
+  const value = served.weeks[0]!.avgTurnsToBooking;
+  await expect(page.getByTestId('quality-turns').locator('p').nth(1)).toHaveText(value === null ? '—' : String(value));
+});

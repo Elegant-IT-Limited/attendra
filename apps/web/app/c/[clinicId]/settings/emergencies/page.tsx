@@ -36,12 +36,14 @@ export default function EmergencySettingsPage() {
   const problem = useProblem();
   const slice = useSettingsSlice(clinicId);
   const [draft, setDraft] = useState<EmergencyDraft | null>(null);
+  // with no setting saved, no choice is shown as made until the manager picks one (the form's own default is not a choice)
+  const [picked, setPicked] = useState(false);
   useEffect(() => { if (slice.config && !draft) setDraft(emergencyDraftOf(slice.config)); }, [slice.config, draft]);
   const now = useMemo(() => new Date(), []);
 
   const save = useMutation({
     mutationFn: (emergencies: EmergencySettings) => slice.save({ emergencies }),
-    onSuccess: (config: ClinicConfig) => { setDraft(emergencyDraftOf(config)); toast({ tone: 'success', message: 'Saved. The next call follows this setting.' }); },
+    onSuccess: (config: ClinicConfig) => { setDraft(emergencyDraftOf(config)); setPicked(false); toast({ tone: 'success', message: 'Saved. The next call follows this setting.' }); },
     onError: (e) => problem(e instanceof ApiFailure
       ? { title: 'Not saved. Fix these first', items: (e.body.issues ?? [{ path: '', message: e.message }]).map((i) => i.message) }
       : { title: 'Not saved', message: 'The changes did not reach the server. Check your connection and press Save changes again.' }),
@@ -52,14 +54,16 @@ export default function EmergencySettingsPage() {
   const c = slice.config;
   const writable = can('settings:write');
   const set = (patch: Partial<EmergencyDraft>) => setDraft({ ...draft, ...patch });
-  // the draft's problems, the setting it makes, the "Right now" line and the preview: the same view the setup page gets
-  const view = emergencyFormView(c, draft, now);
+  // the draft's problems, the setting it makes, the "Right now" line and the preview: the same view the setup page gets.
+  // The choices are right under the line, so a clinic with no setting is told to choose one below, not sent here.
+  const view = emergencyFormView(c, draft, now, 'form');
   const saved = emergencySettingsOf(c);
+  const chosen = !!saved || picked;
   // changed from what is saved (a draft from the saved setting saves back the same one); a clinic with no setting yet
   // sees the form, not a "Still needed" bar, until it types
-  const dirty = JSON.stringify(draft) !== JSON.stringify(emergencyDraftOf(c)) || (!!view.setting && JSON.stringify(view.setting) !== JSON.stringify(saved));
+  const dirty = picked || JSON.stringify(draft) !== JSON.stringify(emergencyDraftOf(c)) || (!!view.setting && JSON.stringify(view.setting) !== JSON.stringify(saved));
   const phonePlaceholder = countryCopy(c).phone.local || countryCopy(c).phone.e164;
-  const hasHospital = draft.mode !== 'handle' || draft.backupOn;
+  const hasHospital = chosen && (draft.mode !== 'handle' || draft.backupOn);
 
   const hospitalFields = (id: string, h: EmergencyHospitalDraft, onChange: (h: EmergencyHospitalDraft) => void) => (
     <div className="space-y-4">
@@ -95,16 +99,16 @@ export default function EmergencySettingsPage() {
       <Alert className="mb-6" title={W.rightNow}>{view.callLine}</Alert>
       <fieldset disabled={!writable || save.isPending} className="min-w-0 space-y-6 pb-24">
         <Section id="mode" title={W.modeTitle} description={emergencyIntro(emergencyNumberFor(c, 'en'))}>
-          <RadioGroup label={W.modeTitle} value={draft.mode} onValueChange={(mode) => set({ mode })} options={EMERGENCY_CHOICES.map((x) => ({ ...x }))} />
+          <RadioGroup label={W.modeTitle} value={chosen ? draft.mode : ''} onValueChange={(mode) => { setPicked(true); set({ mode }); }} options={EMERGENCY_CHOICES.map((x) => ({ ...x }))} />
         </Section>
 
-        {draft.mode === 'refer' && (
+        {chosen && draft.mode === 'refer' && (
           <Section id="hospital" title={W.sections.hospital.title} description={W.sections.hospital.description}>
             {hospitalFields('hospital', draft.hospital, (hospital) => set({ hospital }))}
           </Section>
         )}
 
-        {draft.mode === 'handle' && (
+        {chosen && draft.mode === 'handle' && (
           <Section id="line" title={W.sections.line.title} description={W.sections.line.description}>
             {line}
             <Switch id="backup-on" label={W.backup.label} hint={W.backup.hint} checked={draft.backupOn} onCheckedChange={(backupOn) => set({ backupOn })} />
@@ -112,7 +116,7 @@ export default function EmergencySettingsPage() {
           </Section>
         )}
 
-        {draft.mode === 'hours' && (
+        {chosen && draft.mode === 'hours' && (
           <>
             <Section id="line" title={W.sections.lineAndHours.title} description={W.sections.lineAndHours.description}>
               {line}
@@ -167,7 +171,7 @@ export default function EmergencySettingsPage() {
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-8">
             <p className="text-sm text-text-muted">{view.issues.length ? `${W.stillNeeded} ${view.issues.join(', ')}.` : 'You have unsaved changes.'}</p>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setDraft(emergencyDraftOf(c))}>Discard</Button>
+              <Button variant="outline" onClick={() => { setDraft(emergencyDraftOf(c)); setPicked(false); }}>Discard</Button>
               <Button onClick={() => view.setting && save.mutate(view.setting)} disabled={save.isPending || !view.setting}>{save.isPending ? 'Saving…' : 'Save changes'}</Button>
             </div>
           </div>

@@ -10,7 +10,7 @@ Owners and practice managers (`quality:read`) see `/c/<clinic>/quality`: the las
 |---|---|
 | Handled without staff | Calls that ended booked, moved, cancelled, or with a question answered from the FAQ or the clinic's documents, out of all calls. A transfer, a request for staff, an emergency, or a call that ended with nothing done is not. |
 | Booking success | Calls that ended booked or moved, out of calls where the assistant proposed a time. |
-| Turns to a booking | How many times the caller spoke, on calls that ended in a booking. |
+| Caller turns per booking, average | On calls that ended booked or moved: how many times the caller spoke, start to end, on average (`avgTurnsToBooking`, the caller's transcript lines). Fewer turns is a smoother call. |
 | Why the assistant said no | The refusals the code enforced, from `call_actions` errors: `no_clear_yes`, `slot_not_offered`, `not_verified`, `medical_question` and the rest. |
 | Transferred to a person | Share of calls transferred. |
 | Flagged for review | Share of calls someone should look at: emergency language, a caller who could not be verified, security or abusive language, an upset caller, or something left unfinished with no request for the team. Hang-ups before the caller said what they wanted, and calm calls that already made a request, are not counted (`modelFlagDropped` in apps/worker/src/summarise.ts). |

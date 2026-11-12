@@ -45,16 +45,16 @@ describe('emergencyRoute: the mode, open or closed', () => {
     expect(emergencyCallLine(old, OPEN)).toContain('no emergency setting yet');
   });
 
-  it('points a clinic with no setting to Settings, except on the setup page, which has the choices right below (2026-11-08)', () => {
+  it('points a clinic with no setting to Settings > Emergencies, except on a page with the choices right below: that page and setup (2026-11-08, note 52 C10)', () => {
     const none = ClinicConfig.parse({ ...base, emergencies: undefined });
     expect(emergencyCallLine(none, OPEN)).toBe('Emergency calls here: no emergency setting yet, so callers hear "the nearest 24-hour emergency vet". Set one under Settings > Emergencies.');
-    expect(emergencyCallLine(none, OPEN, 'settings')).toBe(emergencyCallLine(none, OPEN));
-    expect(emergencyCallLine(none, OPEN, 'setup')).toBe('Emergency calls here: no emergency setting yet, so callers hear "the nearest 24-hour emergency vet". Choose one below.');
+    expect(emergencyCallLine(none, OPEN, 'elsewhere')).toBe(emergencyCallLine(none, OPEN));
+    expect(emergencyCallLine(none, OPEN, 'form')).toBe('Emergency calls here: no emergency setting yet, so callers hear "the nearest 24-hour emergency vet". Choose one below.');
     // a draft that is not complete yet keeps the setup wording; a clinic with a setting reads the same in both places
-    expect(emergencyFormView(none, emergencyDraftOf(none), OPEN, 'setup').callLine).toMatch(/Choose one below\.$/);
+    expect(emergencyFormView(none, emergencyDraftOf(none), OPEN, 'form').callLine).toMatch(/Choose one below\.$/);
     expect(emergencyFormView(none, emergencyDraftOf(none), OPEN).callLine).toMatch(/Set one under Settings > Emergencies\.$/);
     const set = withMode({ mode: 'handle', number: TEAM });
-    expect(emergencyCallLine(set, OPEN, 'setup')).toBe(emergencyCallLine(set, OPEN, 'settings'));
+    expect(emergencyCallLine(set, OPEN, 'form')).toBe(emergencyCallLine(set, OPEN, 'elsewhere'));
   });
 
   it('several hospitals in order: the first one open at that moment is named, in refer, hours (closed) and as the backup', () => {
