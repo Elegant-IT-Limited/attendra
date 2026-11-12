@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarOff, FileUp, Plus, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { type FormEvent, useMemo, useState } from 'react';
+import { type FormEvent, type ReactNode, useMemo, useState } from 'react';
 import { ImportPanel } from '@/components/import-panel';
 import { CustomFieldInputs, shownValue } from '@/components/patients/custom-fields';
 import { ChipsPicker } from '@/components/ui/chips';
@@ -98,6 +98,9 @@ export default function DoctorsPage() {
   if (doctors.isError || !doctors.data) return <><PageHeader title={terms.title('providers')} /><Alert tone="danger">The list of {terms.providers} did not load. Refresh to try again.</Alert></>;
   const { visitTypes, noProvider } = doctors.data;
   const visitName = (id: string) => visitTypeName(visitTypes.find((v) => v.id === id)?.name ?? id);
+  // a row only some vets fill in is on every card when any card shown has it, so the cards still line up
+  const withCredentials = shown.some((p) => !!p.credentials?.length);
+  const shownFields = providerFields.filter((f) => shown.some((p) => !!p.custom?.[f.id]));
 
   return (
     <>
@@ -112,26 +115,27 @@ export default function DoctorsPage() {
       <ConflictsAlert clinicId={clinicId} className="mb-4" />
       {/* the server's words, the same as Settings shows: a visit type nobody does can't be booked */}
       {noProvider.length > 0 && <div className="mb-4 space-y-2" data-testid="no-provider-warnings">{noProvider.map((w) => <Alert key={w.visitTypeId} tone="warn">{w.message}</Alert>)}</div>}
-      {/* the same filter bar as Pets and Requests: a card, search first, then the dropdowns */}
+      {/* the same filter bar as Pets and Requests: a card, search first, then the dropdowns. On a phone each control
+          spans the row, so no choice is cut ("Any animal or servic"); from a tablet the search fills what the dropdowns leave */}
       <Card className="mb-4"><CardContent className="py-4">
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter the list">
-        <div className="relative w-full max-w-md">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter the list" data-filters="doctors">
+        <div className="relative w-full sm:min-w-64 sm:flex-1">
           <Label htmlFor="doctor-search" className="sr-only">Find a {terms.provider}</Label>
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
           <Input id="doctor-search" type="search" className="pl-9" autoComplete="off" value={text} onChange={(e) => setText(e.target.value)} placeholder={terms.patient === 'pet' ? 'Name, specialty, animal or service' : 'Name, specialty or reason'} />
         </div>
         <Label htmlFor="doctor-specialty" className="sr-only">Specialty</Label>
-        <Select id="doctor-specialty" className="w-48" value={specialty} onChange={(e) => setSpecialty(e.target.value)}>
+        <Select id="doctor-specialty" className="w-full sm:w-48" value={specialty} onChange={(e) => setSpecialty(e.target.value)}>
           <option value="">{providerTerms(terms.patient === 'pet').anySpecialty}</option>
           {specialties.map((s) => <option key={s} value={s}>{s}</option>)}
         </Select>
         <Label htmlFor="doctor-category" className="sr-only">{providerTerms(terms.patient === 'pet').sees}</Label>
-        <Select id="doctor-category" className="w-48" value={category} onChange={(e) => setCategory(e.target.value)}>
+        <Select id="doctor-category" className="w-full sm:w-52" value={category} onChange={(e) => setCategory(e.target.value)}>
           <option value="">{providerTerms(terms.patient === 'pet').anySees}</option>
           {categories.map((c) => <option key={c} value={c}>{c}</option>)}
         </Select>
         <Label htmlFor="doctor-sort" className="sr-only">Sort</Label>
-        <Select id="doctor-sort" className="w-52" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
+        <Select id="doctor-sort" className="w-full sm:w-48" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
           <option value="added">In the order added</option>
           <option value="name">By name</option>
           <option value="specialty">By specialty</option>
@@ -140,11 +144,34 @@ export default function DoctorsPage() {
       </div>
       </CardContent></Card>
       {!shown.length ? <Card><Empty title={filtered ? `No ${terms.provider} matches` : `No ${terms.providers} yet`}>{filtered ? 'Try another word, specialty or filter.' : `Add the first ${terms.provider}, or import a list.`}</Empty></Card> : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        // Every card is one column of the page's grid with the same rows (C4): the header, one row per detail, and the
+        // button. The cards share those rows (subgrid), so side by side each row starts at the same height on every card,
+        // an empty row keeps its place, and nothing stretches or gets cut when one card is taller.
+        <div className="grid gap-x-4 gap-y-4 md:grid-cols-2 xl:grid-cols-3" data-testid="doctor-cards">
           {shown.map((p) => {
             const away = p.timeOff.filter((t) => t.to >= today).sort((a, b) => a.from.localeCompare(b.from));
+            const rows: { key: string; label: string; node: ReactNode }[] = [
+              ...(terms.patient !== 'pet' ? [{ key: 'sees', label: 'Sees', node: agesLine(p).replace(/^./, (c) => c.toUpperCase()) }] : []),
+              { key: 'phone', label: 'Phone', node: p.phone ? <span className="tabular-nums" data-testid="doctor-phone">{[p.phone, ...(p.otherPhones ?? [])].map(phone).join(', ')}</span> : <NotSet>None yet</NotSet> },
+              ...(withCredentials ? [{ key: 'qualified', label: 'Qualified', node: p.credentials?.length ? p.credentials.join(', ') : <NotSet>None listed</NotSet> }] : []),
+              { key: 'categories', label: providerTerms(terms.patient === 'pet').sees,
+                node: p.categories.length ? <span className="flex flex-wrap gap-1">{p.categories.map((c) => <Badge key={c} tone="accent">{c}</Badge>)}</span> : <NotSet>None set</NotSet> },
+              ...shownFields.map((f) => ({ key: `field-${f.id}`, label: f.label, node: p.custom?.[f.id] ? shownValue(f, p.custom[f.id]) : <NotSet>Not set</NotSet> })),
+              { key: 'visit-types', label: 'Visit types they do', node: doesEveryVisitType(p, { visitTypes }) ? 'All visit types' : p.visitTypeIds.map(visitName).join(', ') },
+              { key: 'hours', label: 'Hours', node: <>
+                {weeklyHoursLine(p.hours ?? clinicHours, localTime).split('; ').map((line) => <span key={line} className="block">{line}</span>)}
+                {!p.hours && <span className="block text-text-muted">The clinic&apos;s hours</span>}
+              </> },
+              { key: 'away', label: 'Away', node: away.length ? away.slice(0, 3).map((t, i) => (
+                // the icon sits on the first line of its text, as tall as the text's capitals
+                <span key={`${t.from}-${i}`} className="flex items-start gap-1.5">
+                  <CalendarOff className="mt-0.5 size-4 shrink-0 text-text-muted" aria-hidden data-testid="away-icon" />
+                  <span className="min-w-0">{t.from === t.to ? dayTitle(t.from) : `${dayTitle(t.from)} to ${dayTitle(t.to)}`}{t.start && t.end ? `, ${localTime(t.start)} to ${localTime(t.end)}` : ''}{t.note ? `, ${t.note}` : ''}</span>
+                </span>
+              )) : <NotSet>No days off coming up</NotSet> },
+            ];
             return (
-              <Card key={p.id} className="flex flex-col" data-testid="doctor">
+              <Card key={p.id} className="grid grid-rows-subgrid gap-y-0" style={{ gridRow: `span ${rows.length + (manager ? 2 : 1)}` }} data-testid="doctor">
                 <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
                   <div className="min-w-0">
                     <p className="truncate font-medium">{providerName(p)}</p>
@@ -155,18 +182,16 @@ export default function DoctorsPage() {
                   </div>
                   {p.acceptingNewPatients ? <Badge tone="ok">Takes new {terms.patients}</Badge> : <Badge>No new {terms.patients}</Badge>}
                 </div>
-                <dl className="grid flex-1 grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-5 py-4 text-sm">
-                  {terms.patient !== 'pet' && <><dt className="text-text-muted">Sees</dt><dd>{agesLine(p).replace(/^./, (c) => c.toUpperCase())}</dd></>}
-                  {p.phone && <><dt className="text-text-muted">Phone</dt><dd className="tabular-nums" data-testid="doctor-phone">{[p.phone, ...(p.otherPhones ?? [])].map(phone).join(', ')}</dd></>}
-                  {!!p.credentials?.length && <><dt className="text-text-muted">Qualified</dt><dd>{p.credentials.join(', ')}</dd></>}
-                  {p.categories.length > 0 && <><dt className="text-text-muted">{providerTerms(terms.patient === 'pet').sees}</dt><dd className="flex flex-wrap content-start items-start gap-1">{p.categories.map((c) => <Badge key={c} tone="accent">{c}</Badge>)}</dd></>}
-                  {providerFields.filter((f) => p.custom?.[f.id]).map((f) => <div key={f.id} className="contents"><dt className="text-text-muted">{f.label}</dt><dd>{shownValue(f, p.custom?.[f.id])}</dd></div>)}
-                  <dt className="text-text-muted">Visit types they do</dt><dd>{doesEveryVisitType(p, { visitTypes }) ? 'All visit types' : p.visitTypeIds.map(visitName).join(', ')}</dd>
-                  <dt className="text-text-muted">Hours</dt><dd className="space-y-0.5">{weeklyHoursLine(p.hours ?? clinicHours, localTime).split('; ').map((line) => <span key={line} className="block">{line}</span>)}{!p.hours && <span className="block text-text-muted">The clinic&apos;s hours</span>}</dd>
-                  {away.length > 0 && <><dt className="text-text-muted">Away</dt><dd className="space-y-0.5">{away.slice(0, 3).map((t, i) => <span key={`${t.from}-${i}`} className="flex items-center gap-1"><CalendarOff className="size-3.5 text-text-muted" aria-hidden />{t.from === t.to ? dayTitle(t.from) : `${dayTitle(t.from)} to ${dayTitle(t.to)}`}{t.start && t.end ? `, ${localTime(t.start)} to ${localTime(t.end)}` : ''}{t.note ? `, ${t.note}` : ''}</span>)}</dd></>}
+                <dl className="grid grid-rows-subgrid gap-y-0 py-3 text-sm" style={{ gridRow: `span ${rows.length}` }} data-testid="doctor-details">
+                  {rows.map((r) => (
+                    <div key={r.key} className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3 px-5 py-1" data-testid={`doctor-row-${r.key}`}>
+                      <dt className="text-text-muted">{r.label}</dt>
+                      <dd className="min-w-0 space-y-0.5 break-words">{r.node}</dd>
+                    </div>
+                  ))}
                 </dl>
                 {manager && (
-                  <div className="flex justify-end border-t border-border px-5 py-3">
+                  <div className="flex items-end justify-end border-t border-border px-5 py-3">
                     <Button size="sm" variant="outline" onClick={() => setEditing({ id: p.id, draft: draftOf(p) })}>Edit hours and details</Button>
                   </div>
                 )}
@@ -185,6 +210,9 @@ export default function DoctorsPage() {
     </>
   );
 }
+
+/** A row with nothing in it yet: it keeps its place on the card, in the muted colour. */
+const NotSet = ({ children }: { children: ReactNode }) => <span className="text-text-muted">{children}</span>;
 
 function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, today, onClose, onSaved }: {
   clinicId: string; editing: { id: string | null; draft: Draft }; visitTypes: VisitType[]; clinicHours: Hours; languages: Language[]; today: string;

@@ -250,7 +250,8 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
       await page.getByPlaceholder('Search, like Madrid or New York').fill(search);
       await page.getByRole('option', { name: zone }).click();
       await page.getByRole('button', { name: 'Save changes' }).click();
-      await expect(page.locator('[aria-live=polite]').getByText('Saved. The next call uses these settings.')).toBeVisible();
+      // the newest note: the one from the save before may still be showing (notes no longer cover the Save button)
+      await expect(page.locator('[aria-live=polite]').getByText('Saved. The next call uses these settings.').last()).toBeVisible();
     };
     await pick('madrid', /Europe\/Madrid/);
     await zoneOnSchedule('Europe/Madrid');

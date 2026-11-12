@@ -78,7 +78,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <FeedbackContext.Provider value={value.current}>
       {children}
-      <div className="pointer-events-none fixed inset-x-0 bottom-4 z-[60] flex flex-col items-center gap-2 px-4 max-md:bottom-20 md:right-4 md:left-auto md:items-end" aria-live="polite" role="status">
+      {/* centred under the page's content (beside the side menu from a tablet up), never over a list's right column,
+          where the status badges and the buttons are (a "Request added" note sat on the request list's right edge) */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-4 z-[60] flex flex-col items-center gap-2 px-4 max-md:bottom-20 md:left-16 xl:left-60" aria-live="polite" role="status" data-testid="toasts">
         {toasts.map((t) => (
           <div key={t.id} className="pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-md border border-border bg-surface-raised px-4 py-3 text-base shadow-lg animate-rise-in">
             <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden />

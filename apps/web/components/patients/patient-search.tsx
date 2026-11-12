@@ -69,10 +69,11 @@ export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty
     <div className="space-y-3">
       <div className="space-y-1.5">
         <Label htmlFor="patient-search">{pets ? 'Find a pet' : 'Find a patient'}</Label>
+        {/* the hint is short enough to show whole in a phone's search box; the line under it says the rest */}
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
           <Input id="patient-search" type="search" maxLength={SEARCH_MAX} autoComplete="off" spellCheck={false} autoFocus={autoFocus} className="pl-9" value={text}
-            onChange={(e) => setText(e.target.value)} placeholder={pets ? 'Pet or owner name, phone, or birthday' : 'Name, date of birth, or phone number'} />
+            onChange={(e) => setText(e.target.value)} placeholder={pets ? 'Pet, owner, phone or birthday' : 'Name, birthday or phone'} />
         </div>
         <p className="text-xs text-text-muted">{hint}</p>
       </div>

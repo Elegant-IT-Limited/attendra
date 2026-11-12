@@ -52,3 +52,60 @@ test('a request written down at the desk says who added it, is named as typed, a
   await page.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(rows.filter({ hasText: 'Dana Whitfield' }).first()).toContainText('Added by Jordan (front desk)');
 });
+
+// Note 52 C8 and C9: New request's example fits the kind chosen (a refill showed a dental cleaning); "Added by …" is
+// never cut in the list; the note after adding stays off the list's right column; and the audit log records the
+// request once, by its number, with no "changed" row for a change nobody made.
+test('New request shows an example per kind; the list never cuts who added it; the note and the audit log say it right', async ({ browser }) => {
+  const page = await openAs(browser, 'manager');
+  const clinic = new URL(page.url()).pathname.split('/')[2];
+  await page.goto(`/c/${clinic}/requests`);
+  await page.getByRole('button', { name: 'New request' }).click();
+  const form = page.getByRole('dialog', { name: 'New request' });
+  const reason = form.getByLabel('What it is about');
+  const kinds = form.getByRole('group', { name: 'Kind of request' });
+  const examples: Record<string, string> = {
+    Callback: 'e.g. Wants to know if the blood test results are back',
+    'Prescription refill': 'e.g. Needs a refill of the heart pill before Friday',
+    Voicemail: 'e.g. Left a voicemail asking to move the visit to next week',
+    'Follow up': 'e.g. Check how they are feeling after Monday\'s visit',
+  };
+  for (const [kind, example] of Object.entries(examples)) {
+    await kinds.getByRole('button', { name: new RegExp(`^${kind}`) }).click();
+    await expect(reason).toHaveAttribute('placeholder', example);
+  }
+  // a callback, written down as it comes: not urgent, no due day (a callback, so the refill specs after this one still
+  // find the assistant's refills first)
+  await kinds.getByRole('button', { name: /^Callback/ }).click();
+  const words = `Wants a call about the lab results ${Date.now()}`;
+  await reason.fill(words);
+  await form.getByRole('button', { name: 'Add request' }).click();
+  const note = page.getByTestId('toasts').getByText('Request added. It is in the queue for the team.');
+  await expect(note).toBeVisible();
+  const row = page.getByTestId('task-row').filter({ hasText: words });
+  await expect(row).toBeVisible();
+  // the note sits clear of the list's right column, where each row's status and buttons are
+  const box = (await note.boundingBox())!;
+  for (const status of await page.getByTestId('row-status').all()) {
+    const s = await status.boundingBox();
+    if (s && s.y < box.y + box.height && box.y < s.y + s.height) expect(box.x + box.width, 'the note covers a row\'s status').toBeLessThanOrEqual(s.x);
+  }
+  // who added it, whole at desktop, tablet and phone widths: wrapped, never cut with an ellipsis
+  for (const width of [1380, 820, 400]) {
+    await page.setViewportSize({ width, height: 900 });
+    const added = row.getByTestId('row-added-by');
+    await expect(added).toBeVisible();
+    await expect(added).toHaveText(/^Added by .+ \(Practice manager\)$/);
+    expect(await added.evaluate((el) => el.scrollWidth <= el.clientWidth + 1 && getComputedStyle(el).textOverflow !== 'ellipsis'), `${width}`).toBe(true);
+  }
+  await page.setViewportSize({ width: 1380, height: 900 });
+
+  // the audit log: added once, under its number, and no "changed its urgency or due day" for it
+  const number = (await row.getByTestId('request-number').textContent())!.trim();
+  await page.goto(`/c/${clinic}/audit`);
+  const rows = page.locator('tbody tr').filter({ hasText: `Request ${number}` });
+  await expect(rows.filter({ hasText: 'Took a callback request' })).toHaveCount(1);
+  await expect(rows.filter({ hasText: 'Changed a request\'s urgency or due day' })).toHaveCount(0);
+  // every row about one request names it by number, never a bare "Request"
+  await expect(page.locator('tbody tr td').filter({ hasText: /^Request$/ })).toHaveCount(0);
+});

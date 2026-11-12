@@ -52,7 +52,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   const { data: me, dataUpdatedAt: meAt, clinic, can, isPending } = useClinic(clinicId);
   // the clock and money follow the clinic's country; set before the page below formats anything
   const config = useClinicConfig(clinicId);
-  if (config.data) setClinicCountry(config.data.phoneNumbers);
+  if (config.data) setClinicCountry(config.data.phoneNumbers, config.data.country);
   // every screen updates as the clinic changes, without a refresh
   useClinicChanges(clinicId, !!clinic);
   // home opens this clinic next time, from an account page or after signing in again

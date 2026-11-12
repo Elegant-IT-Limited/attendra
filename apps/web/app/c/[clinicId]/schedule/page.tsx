@@ -41,8 +41,11 @@ export default function SchedulePage() {
   return <Suspense fallback={<Skeleton className="h-96" />}><ScheduleScreen /></Suspense>;
 }
 
-const mondayOf = (date: string) => addDays(date, -((weekdayOf(date) + 6) % 7));
-/** The first day of the week a date is in on the clinic's calendar: the Sunday before at a US clinic (lib/format firstWeekday). */
+/**
+ * The first day of the week a date is in on the clinic's calendar, from its country: the Sunday before at a US clinic,
+ * the Monday before in most of Europe (lib/format firstWeekday). The one rule for the Week view, the Month view's rows
+ * and the Agenda's week, so they all start on the same day.
+ */
 const weekStartOf = (date: string) => addDays(date, -((weekdayOf(date) - firstWeekday() + 7) % 7));
 /**
  * What the schedule shows when nobody chose: booked visits only, in every view, as ezyVet and Provet open theirs.
@@ -58,15 +61,20 @@ const shiftMonth = (date: string, by: number) => {
 };
 const monthTitle = (date: string) => new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${monthOf(date)}T12:00:00Z`));
 
-/** The days a week view shows: Monday to Friday, and a weekend day only when the clinic opens or something is booked. */
-function weekDays(clinic: ClinicConfig, monday: string, appointments: Appointment[]) {
-  const all = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
-  return all.filter((d) => {
+/**
+ * The seven days a week view shows, from the clinic's first day of the week, and the ones drawn as a narrow "Closed"
+ * column: a weekend day the clinic is closed with nothing booked. Every day keeps its place, so the week starts on the
+ * same day as the Month view's rows (a US clinic's closed Sunday is a narrow first column, not a week that starts Monday).
+ */
+function weekDays(clinic: ClinicConfig, first: string, appointments: Appointment[]) {
+  const dates = Array.from({ length: 7 }, (_, i) => addDays(first, i));
+  const collapsed = dates.filter((d) => {
     const wd = weekdayOf(d);
-    if (wd >= 1 && wd <= 5) return true;
-    return windowsOn(clinic.hours, wd).length > 0 || clinic.providers.some((p) => bookableWindows(clinic, p, d).windows.length > 0)
-      || appointments.some((a) => localDateOf(new Date(a.startsAt), clinic.timezone) === d);
+    if (wd >= 1 && wd <= 5) return false;
+    return !(windowsOn(clinic.hours, wd).length > 0 || clinic.providers.some((p) => bookableWindows(clinic, p, d).windows.length > 0)
+      || appointments.some((a) => localDateOf(new Date(a.startsAt), clinic.timezone) === d));
   });
+  return { dates, collapsed };
 }
 
 function ScheduleScreen() {
@@ -113,9 +121,9 @@ function ScheduleScreen() {
     router.replace(`${pathname}?${q}`, { scroll: false });
   };
 
-  // a month is six whole weeks, from the first day of the week the 1st is in (Sunday at a US clinic)
+  // a month is six whole weeks, from the first day of the week the 1st is in (Sunday at a US clinic); a week starts on that same day
   const weekly = view === 'week' || agendaWeek;
-  const from = view === 'month' ? weekStartOf(monthOf(date)) : weekly ? mondayOf(date) : date;
+  const from = view === 'month' ? weekStartOf(monthOf(date)) : weekly ? weekStartOf(date) : date;
   const days = view === 'month' ? 42 : weekly ? 7 : 1;
   const schedule = useQuery({
     queryKey: ['schedule', clinicId, from, days, providerId],
@@ -139,8 +147,8 @@ function ScheduleScreen() {
   if (!clinic) return <><PageHeader title="Schedule" /><Skeleton className="h-96" /></>;
   // the stand-in a new clinic starts with is shown only while it is the only one, or has visits on screen
   const listed = shownProviders(clinic.providers, (schedule.data?.appointments ?? []).map((a) => a.providerId));
-  const dates = view === 'month' ? Array.from({ length: 42 }, (_, i) => addDays(from, i))
-    : weekly ? weekDays(clinic, from, schedule.data?.appointments ?? []) : [date];
+  const week = weekly ? weekDays(clinic, from, schedule.data?.appointments ?? []) : null;
+  const dates = view === 'month' ? Array.from({ length: 42 }, (_, i) => addDays(from, i)) : week ? week.dates : [date];
   // one provider picked in the dropdown is the grid; otherwise every lane, or on a big clinic the lanes in use (lib/schedule-lanes.ts)
   const lanesInUse = providerId ? listed.filter((p) => p.id === providerId) : laneProviders(clinic, listed, dates, appointments.map((a) => a.providerId), chosen);
   // A big clinic's Day and Week draw at most MAX_CHOSEN lanes, My vets first, then the others with visits (note 24): a
@@ -166,7 +174,7 @@ function ScheduleScreen() {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-7 pb-5" data-toolbar="schedule">
           <div className="flex items-center gap-1">
             <Button variant="outline" size="sm" onClick={() => go(-1)} aria-label={`Previous ${unit}`}><ChevronLeft /></Button>
-            <Button variant="outline" size="sm" onClick={() => set({ date: today })} disabled={view === 'month' ? monthOf(today) === monthOf(date) : weekly ? mondayOf(today) === from : date === today}>Today</Button>
+            <Button variant="outline" size="sm" onClick={() => set({ date: today })} disabled={view === 'month' ? monthOf(today) === monthOf(date) : weekly ? weekStartOf(today) === from : date === today}>Today</Button>
             <Button variant="outline" size="sm" onClick={() => go(1)} aria-label={`Next ${unit}`}><ChevronRight /></Button>
           </div>
           <div className="space-y-1">
@@ -249,7 +257,7 @@ function ScheduleScreen() {
                 ? <MonthGrid clinic={clinic} month={date.slice(0, 7)} dates={dates} appointments={appointments} today={today} onOpen={(id) => named && set({ appointment: id })} onDay={(d) => set({ view: 'day', date: d })} />
                 : view === 'agenda'
                   ? <Agenda clinic={clinic} dates={dates} appointments={appointments} onOpen={(id) => named && set({ appointment: id })} word={pets ? 'veterinarian' : 'provider'} />
-                  : <Calendar clinic={clinic} dates={dates} providers={providers} appointments={appointments} today={today} now={new Date()} onOpen={(id) => named && set({ appointment: id })} />}
+                  : <Calendar clinic={clinic} dates={dates} collapsed={week?.collapsed} providers={providers} appointments={appointments} today={today} now={new Date()} onOpen={(id) => named && set({ appointment: id })} />}
             </div>
             <div className="md:hidden">
               <ScheduleList clinic={clinic} dates={view === 'month' ? dates.filter((d) => d.startsWith(date.slice(0, 7))) : dates} appointments={appointments} onOpen={(id) => named && set({ appointment: id })} />

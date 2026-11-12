@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { weeklyHoursLine } from '@attendra/core';
-import { age, ago, clinicTime, firstWeekday, hourMark, localTime, NEW_MEMBER, personName, phone, setClinicCountry, telHref, tenDigitPhones, timeOf, usd, visitTypeName, weekdayHeads } from '../lib/format';
+import { age, ago, clinicTime, firstWeekday, firstWeekdayIn, hourMark, localTime, NEW_MEMBER, personName, phone, setClinicCountry, telHref, tenDigitPhones, timeOf, usd, visitTypeName, WEEK_STARTS, weekdayHeads } from '../lib/format';
 
 afterEach(() => setClinicCountry(['+13035550100']));
 
@@ -117,5 +117,26 @@ describe('the first day of the week', () => {
     setClinicCountry(['+442079460123']);
     expect(firstWeekday()).toBe(1);
     expect(weekdayHeads()).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+  });
+
+  // note 52 C7: one rule for the Week and Month views, from the clinic's country
+  it('follows the country set in Settings first, then the first number\'s country; a clinic with no number reads as a US one', () => {
+    setClinicCountry(['+13035550100'], 'DE');
+    expect(firstWeekday()).toBe(1);
+    setClinicCountry(['+34911234567']);
+    expect(firstWeekday()).toBe(1); // Spain, by its number
+    setClinicCountry(['+525512345678']);
+    expect(firstWeekday()).toBe(0); // Mexico
+    setClinicCountry(['+442079460123'], 'EG');
+    expect(firstWeekday()).toBe(6);
+    expect(weekdayHeads()).toEqual(['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
+    setClinicCountry([]);
+    expect(firstWeekday()).toBe(0);
+  });
+
+  it('reads the browser\'s calendar data, and the table it falls back on says the same for every country', () => {
+    expect([firstWeekdayIn('US'), firstWeekdayIn('CA'), firstWeekdayIn('GB'), firstWeekdayIn('DE'), firstWeekdayIn('ES'), firstWeekdayIn('IE'), firstWeekdayIn('AE')]).toEqual([0, 0, 1, 1, 1, 1, 1]);
+    const mondays = ['GB', 'IE', 'FR', 'DE', 'ES', 'IT', 'NL', 'BE', 'AT', 'CH', 'SE', 'NO', 'DK', 'FI', 'PL', 'CZ', 'GR', 'RO', 'HU', 'AU', 'NZ', 'AE', 'TR', 'RU', 'AR', 'CL', 'NG', 'VN'];
+    for (const region of [...Object.keys(WEEK_STARTS), ...mondays]) expect(firstWeekdayIn(region, false), region).toBe(firstWeekdayIn(region));
   });
 });

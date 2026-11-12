@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { asE164, type CallOutcome, type EmergencyResult, formatPhone, isE164, roleLabel } from '@attendra/core';
+import { asE164, type CallOutcome, emergencyCountryOf, type EmergencyResult, formatPhone, isE164, roleLabel } from '@attendra/core';
 
 /**
  * What depends on the clinic's country, from its first number: a 12-hour clock in
@@ -7,12 +7,19 @@ import { asE164, type CallOutcome, type EmergencyResult, formatPhone, isE164, ro
  * saying as US dollars (the model's cost is billed in them). The shell sets it once the
  * clinic's settings arrive; until then the dashboard reads as a US clinic.
  */
-const country = { hour12: true, us: true, phoneNumbers: ['+13035550100'] as readonly string[] };
-export function setClinicCountry(phoneNumbers: readonly string[]) {
+const country = { hour12: true, us: true, phoneNumbers: ['+13035550100'] as readonly string[], firstWeekday: 0 };
+/**
+ * Called with the clinic's numbers and, when Settings has one, its country (ISO code). The week's first day follows the
+ * country set in Settings, else the country of the first number (+1 is North America); a clinic with no number yet reads
+ * as a US one, as everything else here does.
+ */
+export function setClinicCountry(phoneNumbers: readonly string[], iso?: string | null) {
   const first = phoneNumbers[0] ?? '';
   country.us = first.startsWith('+1');
   if (first) country.phoneNumbers = phoneNumbers;
   country.hour12 = country.us || first.startsWith('+61');
+  const region = iso || (first ? emergencyCountryOf({ phoneNumbers })?.code : 'US');
+  country.firstWeekday = region ? firstWeekdayIn(region) : 1;
 }
 /** "$0.05" at a US clinic, "US$0.05" anywhere else. */
 export const usd = (n: number) => `${country.us ? '$' : 'US$'}${n.toFixed(2)}`;
@@ -150,6 +157,26 @@ export const TASK_TYPES: Record<string, string> = { refill: 'Prescription refill
 export const TASK_KIND_ORDER = ['callback', 'refill', 'voicemail', 'review', 'follow_up'] as const;
 /** A request type in the clinic's words: a vet clinic checks a new pet, not a new patient. */
 export const taskType = (type: string, patient = 'patient') => (type === 'review' ? `New ${patient} to check` : TASK_TYPES[type] ?? type);
+/**
+ * The example under "What it is about" in New request, one per kind of request: what someone at the desk would write
+ * for that kind ("Needs a refill of the heart pill before Friday" for a refill). The clinic's own kinds get a general one.
+ */
+export function requestExample(kind: string, pets: boolean): string {
+  const examples: Record<string, string> = pets
+    ? {
+      callback: 'Wants to know if Bella\'s blood test results are back',
+      refill: 'Needs a refill of the heart pill before Friday',
+      voicemail: 'Left a voicemail asking to move Bella\'s visit to next week',
+      follow_up: 'Check how Bella is eating after Monday\'s dental cleaning',
+    }
+    : {
+      callback: 'Wants to know if the blood test results are back',
+      refill: 'Needs a refill of the heart pill before Friday',
+      voicemail: 'Left a voicemail asking to move the visit to next week',
+      follow_up: 'Check how they are feeling after Monday\'s visit',
+    };
+  return `e.g. ${examples[kind] ?? (pets ? 'Wants a dental cleaning for Bella next month' : 'Wants a check-up next month')}`;
+}
 /** A pet's sex, or a person's gender, as the record shows it. */
 export const sexLabel = (g: string, pet: boolean) => (pet ? ({ female: 'Female', male: 'Male' } as Record<string, string>)[g] ?? 'Sex unknown' : GENDER_LABEL[g] ?? g);
 
@@ -189,11 +216,37 @@ export function waited(iso: string, now = Date.now()) {
 
 export const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+// The regions whose calendars do not start the week on Monday, from CLDR's week data (what Intl.Locale's week info
+// reads), for a browser without that API. Every region not listed starts on Monday. test/format.test.ts checks this
+// table against Intl, so the two never disagree.
+export const WEEK_STARTS: Record<string, 0 | 5 | 6> = Object.fromEntries([
+  ...'AG AS BD BR BS BT BW BZ CA CO DM DO ET GT GU HK HN ID IL IN JM JP KE KH KR LA MH MM MO MT MX MZ NI NP PA PE PH PK PR PT PY SA SG SV TH TT TW UM US VE VI WS YE ZA ZW'.split(' ').map((r) => [r, 0]),
+  ...'AF BH DJ DZ EG IQ IR JO KW LY OM QA SD SY'.split(' ').map((r) => [r, 6]),
+  ['MV', 5],
+]);
+
+type WeekInfo = { firstDay: number };
 /**
- * The day a week starts on the clinic's calendar, as a weekday (0 is Sunday): Sunday in North America, as US and
- * Canadian clinics and their calendars count, Monday elsewhere. The Month view's columns follow it.
+ * The day a week starts in a country (ISO code), as a weekday (0 is Sunday): Sunday in the United States and Canada,
+ * Monday in most of Europe, Saturday in much of the Middle East. From the browser's own calendar data (Intl.Locale week
+ * info) where it has it, else the same data as a table.
  */
-export const firstWeekday = () => (country.us ? 0 : 1);
+export function firstWeekdayIn(region: string, intl = true): number {
+  if (intl) {
+    try {
+      const locale = new Intl.Locale(`und-${region.toUpperCase()}`) as Intl.Locale & { getWeekInfo?: () => WeekInfo; weekInfo?: WeekInfo };
+      const day = (locale.getWeekInfo?.() ?? locale.weekInfo)?.firstDay;
+      if (day) return day % 7;
+    } catch { /* not a region Intl knows: the table decides */ }
+  }
+  return WEEK_STARTS[region.toUpperCase()] ?? 1;
+}
+
+/**
+ * The day a week starts on the clinic's calendar, as a weekday (0 is Sunday), from its country (setClinicCountry). The
+ * one rule for the Schedule: the Week view's first column and the Month view's first column are both this day.
+ */
+export const firstWeekday = () => country.firstWeekday;
 /** The Month view's column heads, from the clinic's first weekday: "Sun" to "Sat" at a US clinic. */
 export const weekdayHeads = () => Array.from({ length: 7 }, (_, i) => DAYS[(firstWeekday() + i) % 7]!.slice(0, 3));
 

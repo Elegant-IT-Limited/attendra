@@ -238,7 +238,42 @@ test('a vet card writes hours and time off on the clinic\'s 12-hour clock and ph
     await expect(card).not.toContainText('+1303');
     // no specialty: the subtitle says so, and nothing else
     await expect(card.getByTestId('doctor-subtitle')).toHaveText('No specialty set');
+    // note 52 C4: an empty row keeps its place, and the Away icon sits on its text's first line, as tall as the text
+    await expect(card.getByTestId('doctor-row-categories')).toContainText('None set');
+    const away = card.getByTestId('doctor-row-away');
+    const icon = (await away.getByTestId('away-icon').boundingBox())!;
+    const lineHeight = await away.locator('dd').evaluate((el) => parseFloat(getComputedStyle(el).lineHeight));
+    const text = (await away.getByTestId('away-icon').locator('xpath=following-sibling::span').boundingBox())!;
+    expect(Math.abs(icon.y + icon.height / 2 - (text.y + lineHeight / 2))).toBeLessThanOrEqual(1.5);
+    expect(icon.height).toBeGreaterThanOrEqual(14);
   } finally {
     await manager.request.delete(`/api/v1/clinics/${clinic}/doctors/${stored.id}`, { headers: origin });
+  }
+});
+
+// Note 52 C4: the cards had uneven gaps (rows spread out to the tallest card), a row missing when it was empty, and a
+// caption cut at the bottom. Every card has the same rows, side by side each row starts at the same height, and no
+// card's content is cut, at desktop, tablet and phone widths.
+test('doctor cards line up row for row, keep empty rows, and cut nothing, at every width', async ({ browser }) => {
+  const manager = await openAs(browser, 'manager');
+  await manager.getByRole('link', { name: 'Doctors' }).click();
+  const cards = manager.getByTestId('doctor');
+  for (const width of [1380, 820, 400]) {
+    await manager.setViewportSize({ width, height: 900 });
+    await expect(cards.first()).toBeVisible();
+    const shown = await cards.evaluateAll((els) => els.map((el) => ({
+      top: Math.round(el.getBoundingClientRect().top),
+      cut: el.scrollHeight > el.clientHeight + 1 || [...el.querySelectorAll('dd')].some((dd) => dd.scrollWidth > dd.clientWidth + 1),
+      rows: [...el.querySelectorAll('[data-testid^="doctor-row-"]')].map((r) => [r.getAttribute('data-testid'), Math.round(r.getBoundingClientRect().top)] as const),
+    })));
+    expect(shown.length, `${width}`).toBeGreaterThan(1);
+    for (const c of shown) {
+      expect(c.cut, `${width}: a card's content is cut`).toBe(false);
+      expect(c.rows.map(([k]) => k), `${width}`).toEqual(shown[0]!.rows.map(([k]) => k));
+    }
+    // cards in the same row of the page: each of their rows starts at the same height
+    const side = shown.filter((c) => c.top === shown[0]!.top);
+    if (width >= 768) expect(side.length, `${width}`).toBeGreaterThan(1);
+    for (const c of side) expect(c.rows, `${width}`).toEqual(side[0]!.rows);
   }
 });

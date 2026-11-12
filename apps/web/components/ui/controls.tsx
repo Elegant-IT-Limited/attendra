@@ -40,7 +40,8 @@ export function Switch({ id, label, hint, checked, onCheckedChange, disabled }: 
 
 /** One choice from a few, all visible. */
 export function RadioGroup<T extends string>({ label, value, onValueChange, options, disabled }: {
-  label: string; value: T; onValueChange: (v: T) => void; options: { value: T; label: ReactNode; hint?: ReactNode; disabled?: boolean }[]; disabled?: boolean;
+  /** '' when nothing is chosen yet: no option shows as selected. */
+  label: string; value: T | ''; onValueChange: (v: T) => void; options: { value: T; label: ReactNode; hint?: ReactNode; disabled?: boolean }[]; disabled?: boolean;
 }) {
   return (
     <R.Root aria-label={label} value={value} onValueChange={(v) => onValueChange(v as T)} disabled={disabled} className="space-y-2">

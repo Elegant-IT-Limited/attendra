@@ -139,7 +139,7 @@ export type EmergencyPreviewLines = ReturnType<typeof emergencyPreview>;
  * what callers will hear in each language with the emergency hours open and closed (the saved setting until the draft
  * is complete, as Settings does).
  */
-export function emergencyFormView(clinic: PreviewClinic & Pick<ClinicConfig, 'phoneNumbers'>, d: EmergencyDraft, now: Date, place: CallLinePlace = 'settings') {
+export function emergencyFormView(clinic: PreviewClinic & Pick<ClinicConfig, 'phoneNumbers'>, d: EmergencyDraft, now: Date, place: CallLinePlace = 'elsewhere') {
   const r = emergencySettingOf(d, clinic);
   const shown = { ...clinic, emergencies: r.success ? r.data : emergencySettingsOf(clinic) ?? undefined };
   const preview = Object.fromEntries((['en', 'es'] as const satisfies readonly Language[]).map((lang) => [lang, {

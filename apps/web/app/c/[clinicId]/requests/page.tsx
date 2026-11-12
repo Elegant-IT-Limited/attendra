@@ -21,7 +21,7 @@ import { PhoneInput } from '@/components/ui/phone-input';
 import { Panel } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { ago, clinicTime, dayTitle, dob, personName, personWithRole, phone, requestCreator, requestNumber, TASK_HISTORY, TASK_KIND_ORDER, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, telHref, zoneLabel } from '@/lib/format';
+import { ago, clinicTime, dayTitle, dob, personName, personWithRole, phone, requestCreator, requestExample, requestNumber, TASK_HISTORY, TASK_KIND_ORDER, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, telHref, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { Avatar, RelativeTime } from '@/components/ui/bits';
 import { Segmented } from '@/components/ui/tabs';
@@ -203,12 +203,13 @@ function Requests() {
           ))}
         </dl>
       </details>
-      {/* the same filter bar as Pets and Veterinarians: a card, the switch first, then search and the dropdowns */}
+      {/* the same filter bar as Pets and Veterinarians: a card, the switch first, then search and the dropdowns. On a
+          phone each control spans the row, so nothing is cut or runs past the card */}
       <Card className="mb-4"><CardContent className="py-4">
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter the list" data-toolbar="requests">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter the list" data-toolbar="requests" data-filters="requests">
         <Segmented label="Status" value={status} onValueChange={setStatus} options={[{ value: 'open', label: 'Open' }, { value: 'done', label: 'Done' }]} />
         <Label htmlFor="request-type" className="sr-only">Type</Label>
-        <Select id="request-type" className="h-8 w-48" value={topic ? `topic:${topic}` : type} onChange={(e) => {
+        <Select id="request-type" className="h-8 w-full sm:w-48" value={topic ? `topic:${topic}` : type} onChange={(e) => {
           const v = e.target.value;
           if (v.startsWith('topic:')) { setType(''); setTopic(v.slice(6)); } else { setTopic(''); setType(v); }
         }}>
@@ -223,22 +224,22 @@ function Requests() {
           )}
         </Select>
         <Label htmlFor="request-who" className="sr-only">Assigned to</Label>
-        <Select id="request-who" className="h-8 w-44" value={who} onChange={(e) => setWho(e.target.value as Who)}>
+        <Select id="request-who" className="h-8 w-full sm:w-44" value={who} onChange={(e) => setWho(e.target.value as Who)}>
           <option value="everyone">Anyone</option>
           <option value="me">Assigned to me</option>
           <option value="unassigned">Unassigned</option>
         </Select>
-        <div className="relative min-w-56 flex-1">
+        <div className="relative w-full sm:w-auto sm:min-w-56 sm:flex-1">
           <Label htmlFor="request-search" className="sr-only">Search requests</Label>
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
           <Input id="request-search" type="search" className="h-8 pl-8" autoComplete="off" spellCheck={false} value={text} onChange={(e) => setText(e.target.value)}
-            placeholder="R-1042, a pet, an owner, a phone, a note…" />
+            placeholder={terms.patient === 'pet' ? 'R-1042, pet, owner, phone or note' : 'R-1042, name, phone or note'} />
         </div>
-        <div className="flex items-center gap-1.5 text-sm" role="group" aria-label="Came in between">
+        <div className="grid w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-1.5 text-sm sm:flex sm:w-auto" role="group" aria-label="Came in between">
           <Label htmlFor="request-from" className="text-text-muted">From</Label>
-          <Input id="request-from" type="date" className="h-8 w-38" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+          <Input id="request-from" type="date" className="h-8 w-full sm:w-38" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
           <Label htmlFor="request-to" className="text-text-muted">to</Label>
-          <Input id="request-to" type="date" className="h-8 w-38" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+          <Input id="request-to" type="date" className="h-8 w-full sm:w-38" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
         </div>
         {filterable.length > 0 && (
           <div className="flex items-center gap-1.5" role="group" aria-label="Filter by a field">
@@ -374,14 +375,14 @@ function RequestRow({ task: t, patientWord, tz, today, meId, selected, onOpen }:
   return (
     <button type="button" data-testid="task-row" onClick={onOpen} aria-current={selected || undefined}
       className={cn('focus-ring relative grid w-full grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 text-left text-sm hover:bg-surface-sunken/60',
-        'md:grid-cols-[2.25rem_minmax(0,1.1fr)_minmax(0,1.6fr)_8.5rem_auto_1rem]', selected && 'bg-primary-soft hover:bg-primary-soft')}>
+        'md:grid-cols-[2.25rem_minmax(0,1.1fr)_minmax(0,1.6fr)_10rem_auto_1rem]', selected && 'bg-primary-soft hover:bg-primary-soft')}>
       {open && t.urgent && <span className="absolute inset-y-0 left-0 w-1 rounded-r bg-danger" aria-hidden />}
       <span className="flex size-9 items-center justify-center rounded-full bg-primary-soft text-primary md:order-1"><Icon className="size-4" aria-hidden /></span>
       <span className="min-w-0 md:order-2">
         <span className="block truncate font-medium">{nameOf(t, patientWord)}</span>
         <span className="block truncate text-xs text-text-muted"><span className="font-medium tabular-nums text-text" data-testid="request-number">{requestNumber(t.number)}</span> · {taskType(t.type, patientWord)}</span>
       </span>
-      <span className="flex flex-wrap justify-end gap-1.5 md:order-5">
+      <span className="flex flex-wrap justify-end gap-1.5 md:order-5" data-testid="row-status">
         {open && t.urgent && <Badge tone="danger"><AlertTriangle /> {t.origin === 'emergency' ? 'Emergency' : 'Urgent'}</Badge>}
         {open && t.dueOn && <Badge tone={t.dueOn <= today ? 'warn' : 'neutral'}>{t.dueOn < today ? 'Overdue' : 'Due'} {t.dueOn === today ? 'today' : dayTitle(t.dueOn, 'short')}</Badge>}
         {!open ? <Badge tone="ok">{t.outcome ? TASK_OUTCOMES[t.outcome] : 'Done'}</Badge>
@@ -391,9 +392,11 @@ function RequestRow({ task: t, patientWord, tz, today, meId, selected, onOpen }:
         <span className="block truncate">{need.main}</span>
         {need.sub && <span className="block truncate text-xs text-text-muted">{need.sub}</span>}
       </span>
-      <span className="hidden min-w-0 text-xs md:order-4 md:block">
-        <time dateTime={at} title={clinicTime(at, tz, 'long')} className="block font-medium text-text">{open ? ago(Date.now() - Date.parse(at)) : clinicTime(at, tz)}</time>
-        <span className="block truncate text-text-muted">{madeBy(t)}</span>
+      {/* when and who added it: a column from a tablet up, a line under what it needs on a phone. It wraps instead of
+          being cut ("Added by Robin (practi…"), at every width; the whole line is on hover too */}
+      <span className="col-span-2 col-start-2 flex min-w-0 flex-wrap gap-x-2 text-xs md:order-4 md:col-span-1 md:col-start-auto md:block">
+        <time dateTime={at} title={clinicTime(at, tz, 'long')} className="font-medium text-text md:block">{open ? ago(Date.now() - Date.parse(at)) : clinicTime(at, tz)}</time>
+        <span className="min-w-0 break-words text-text-muted md:block" title={madeBy(t)} data-testid="row-added-by">{madeBy(t)}</span>
       </span>
       <ChevronRight className="hidden size-4 text-text-muted md:order-6 md:block" aria-hidden />
     </button>
@@ -701,7 +704,7 @@ function NewRequest({ clinicId, open, onOpenChange, topics, fields, patientWord 
           )}
           {refill && <Alert tone="info">Only a {patientWord === 'pet' ? 'veterinarian' : 'prescriber'} marked as approving refills on the Team page decides it: sent, ready or not approved.</Alert>}
           <Field label="What it is about" hint="In a sentence, for whoever picks it up.">
-            {(p) => <Textarea {...p} rows={3} maxLength={300} value={draft.reason} onChange={(e) => setDraft({ ...draft, reason: e.target.value })} placeholder="e.g. Wants a dental cleaning for Bella next month" />}
+            {(p) => <Textarea {...p} rows={3} maxLength={300} value={draft.reason} onChange={(e) => setDraft({ ...draft, reason: e.target.value })} placeholder={requestExample(draft.kind, patientWord === 'pet')} />}
           </Field>
         </fieldset>
         <fieldset className="space-y-3">

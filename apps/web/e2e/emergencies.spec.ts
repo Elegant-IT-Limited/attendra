@@ -78,4 +78,33 @@ test.describe.serial('emergency settings at a vet clinic', () => {
     await expect(page.getByText('Saved. The next call follows this setting.')).toBeVisible();
     await expect(page.getByText('Emergency calls here: transfer to the team now, any time.')).toBeVisible();
   });
+  // Note 52 C10: a clinic with no emergency setting saw "Refer emergencies to a hospital" selected, and a banner sending
+  // it to the page it was on. Nothing is chosen until the manager chooses; the banner says to choose below.
+  test('with no setting saved, no choice shows as made and the line says to choose one below', async ({ browser }) => {
+    const page = await signInAgain(browser, 'Vet clinic manager');
+    // this clinic's settings as the server sends them, without an emergency setting: the page's own handling is under test
+    await page.route((url) => url.pathname.startsWith('/api/v1/') && url.pathname.endsWith('/settings'), async (route) => {
+      if (route.request().method() !== 'GET') return route.continue();
+      const res = await route.fetch();
+      const body = await res.json() as Record<string, unknown>;
+      delete body.emergencies;
+      await route.fulfill({ response: res, json: body });
+    });
+    await page.goto(`${new URL(page.url()).pathname.replace(/\/$/, '')}/settings/emergencies`);
+    await expect(page.getByText('Emergency calls here: no emergency setting yet, so callers hear "the nearest 24-hour emergency vet". Choose one below.')).toBeVisible();
+    await expect(page.getByText('Set one under Settings > Emergencies')).toHaveCount(0);
+    const radios = page.getByRole('radiogroup', { name: 'How this location handles emergencies' }).getByRole('radio');
+    await expect(radios).toHaveCount(3);
+    for (const radio of await radios.all()) await expect(radio).not.toBeChecked();
+    // no form for a choice nobody made, and nothing to save yet
+    await expect(page.getByLabel('Hospital name')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Save changes' })).toHaveCount(0);
+    // choosing one shows it chosen, with what it needs and the bar to save it; Discard goes back to none chosen
+    await page.getByRole('radio', { name: /Refer emergencies to a hospital/ }).click();
+    await expect(page.getByRole('radio', { name: /Refer emergencies to a hospital/ })).toBeChecked();
+    await expect(page.getByLabel('Hospital name').first()).toBeVisible();
+    await expect(page.getByText(/Still needed: /)).toBeVisible();
+    await page.getByRole('button', { name: 'Discard' }).click();
+    for (const radio of await radios.all()) await expect(radio).not.toBeChecked();
+  });
 });
