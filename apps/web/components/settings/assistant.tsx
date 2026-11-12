@@ -1,11 +1,37 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { allowedEmergencyNumbers, cleanDigitsTyping, type ClinicConfig, DIGITS_ONLY, DEFAULT_ASSISTANT_NAME, EMERGENCY_COUNTRIES, emergencyCountry, emergencyNumberFor, type Language, LANGUAGES, normalise, PACKS } from '@attendra/core';
+import { allowedEmergencyNumbers, cleanDigitsTyping, type ClinicConfig, DIGITS_ONLY, DEFAULT_ASSISTANT_NAME, EMERGENCY_COUNTRIES, emergencyCountry, emergencyNumberFor, type Language, LANGUAGES, normalise, PACKS, renameInGreeting, staleGreetingNames } from '@attendra/core';
+import { Alert } from '@/components/ui/feedback';
 import { Field, Section } from '@/components/settings/section';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/controls';
 import { Input, Select, Textarea } from '@/components/ui/input';
 import { useState } from 'react';
+
+/**
+ * A greeting that still says an old clinic or assistant name (note 52 B3: a test clinic renamed both, and callers kept
+ * hearing the old ones): "Your greeting still says 'Riverside'", with the one-click change to the name now. With no
+ * assistant name of its own, the change is the suggested greeting.
+ */
+export function StaleGreeting({ text, language, clinic, onFix }: { text: string; language: Language; clinic: ClinicConfig; onFix: (text: string) => void }) {
+  const names = { clinicName: clinic.name, assistantName: clinic.assistantName };
+  const stale = staleGreetingNames(text, language, names);
+  if (!stale.length) return null;
+  const fixed = stale.reduce((t, s) => (s.now ? renameInGreeting(t, s.said, s.now) ?? t : t), text);
+  const suggestion = PACKS[language].greeting({ clinicName: clinic.name, assistantName: clinic.assistantName?.trim() || null });
+  const toSuggested = stale.some((s) => !s.now);
+  const said = stale.map((s) => `"${s.said}"`).join(' and ');
+  return (
+    <div data-testid={`greeting-stale-${language}`}><Alert tone="warn">
+      <span className="block min-w-0 space-y-2 break-words">
+        <span className="block">Your {PACKS[language].name} greeting still says {said}.</span>
+        <Button type="button" size="sm" variant="outline" className="h-auto max-w-full whitespace-normal py-1.5 text-left" onClick={() => onFix(toSuggested ? suggestion : fixed)}>
+          {toSuggested ? 'Use the suggested greeting' : `Change it to ${stale.map((s) => `"${s.now}"`).join(' and ')}`}
+        </Button>
+      </span>
+    </Alert></div>
+  );
+}
 
 /** Whatever a language pack says, marked with its language so screen readers pick it up. */
 export function Spoken({ language, children }: { language: Language; children: string }) {
@@ -16,7 +42,7 @@ export function Spoken({ language, children }: { language: Language; children: s
  * The assistant's name, the languages it speaks and the number its emergency script
  * gives. The dashboard itself stays in English; only what callers hear changes.
  */
-export function AssistantSection({ c, set, disabled }: { c: ClinicConfig; set: (patch: Partial<ClinicConfig>) => void; disabled: boolean }) {
+export function AssistantSection({ c, set, rename, disabled }: { c: ClinicConfig; set: (patch: Partial<ClinicConfig>) => void; rename: (patch: Pick<Partial<ClinicConfig>, 'name' | 'assistantName'>) => void; disabled: boolean }) {
   const name = c.assistantName?.trim() || null;
   const defaultNumber = emergencyNumberFor({ phoneNumbers: c.phoneNumbers, country: c.country });
   const allowed = allowedEmergencyNumbers(c.phoneNumbers, c.country);
@@ -31,7 +57,7 @@ export function AssistantSection({ c, set, disabled }: { c: ClinicConfig; set: (
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Assistant name" htmlFor="assistant-name" hint={`One word, 2 to 24 letters. Without one it is "${DEFAULT_ASSISTANT_NAME}". A name never replaces the AI disclosure.`}>
           <Input id="assistant-name" autoComplete="off" value={c.assistantName ?? ''} placeholder="e.g. Maya" maxLength={24}
-            onChange={(e) => set({ assistantName: e.target.value.trim() ? e.target.value : undefined })} />
+            onChange={(e) => rename({ assistantName: e.target.value.trim() ? e.target.value : undefined })} />
         </Field>
         <Field label="Country" htmlFor="clinic-country" hint="Sets the emergency number the assistant gives a person in danger.">
           <Select id="clinic-country" value={c.country ?? ''} disabled={disabled}
@@ -99,6 +125,7 @@ export function AssistantSection({ c, set, disabled }: { c: ClinicConfig; set: (
                   <Textarea id={`greeting-${l}`} lang={PACKS[l].locale} maxLength={400} rows={2} value={own ?? suggested} disabled={disabled}
                     aria-invalid={missing || undefined} aria-describedby={missing ? `greeting-${l}-error` : undefined} onChange={(e) => setOther(e.target.value === suggested ? undefined : e.target.value)} />
                   {missing && <p id={`greeting-${l}-error`} className="text-xs text-danger">The {PACKS[l].name} greeting must say the caller is speaking with an AI assistant.</p>}
+                  {own && <StaleGreeting text={own} language={l} clinic={c} onFix={(text) => setOther(text === suggested ? undefined : text)} />}
                 </>
               )}
             </div>

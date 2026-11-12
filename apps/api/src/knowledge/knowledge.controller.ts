@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { KnowledgeBase } from '@attendra/core';
+import { type KnowledgeBase, UNSUPPORTED_UPLOAD } from '@attendra/core';
 import { type Database, KnowledgeRepository, type SourceType, staffNames } from '@attendra/db';
 import { type Answerer, answerQuestion, assessDocument, extractText, MAX_BYTES, MAX_DOCUMENTS, sourceTypeOf } from '@attendra/knowledge';
 import type { JobQueue } from '@attendra/worker/queue';
@@ -66,7 +66,7 @@ export class KnowledgeController {
     if (typeof q.title !== 'string' || typeof q.name !== 'string') throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: typeof q.title !== 'string' ? 'title' : 'name', message: 'required' }] });
     const content = Buffer.from(body);
     const type = sourceTypeOf(q.name || q.title, String(req.headers['content-type'] ?? '').split(';')[0]);
-    if (!type) throw new HttpException({ error: 'unsupported_type', message: 'Upload a PDF, a text file or a markdown file.' }, 415);
+    if (!type) throw new HttpException({ error: 'unsupported_type', message: UNSUPPORTED_UPLOAD }, 415);
     // a new title counts against the clinic's limit; the same title replaces its document
     const docs = await this.repo.list(clinicId);
     if (docs.length >= MAX_DOCUMENTS && !docs.some((d) => d.title === q.title)) {

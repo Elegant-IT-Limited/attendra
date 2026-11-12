@@ -106,7 +106,7 @@ const ACTIONS: Record<string, string> = {
   'member.refill_approval.on': 'Allowed someone to approve refills',
   'member.refill_approval.off': 'Stopped someone approving refills',
   'clinic.list.updated.specialties': 'Changed the list of specialties',
-  'clinic.list.updated.categories': 'Changed the list of what doctors see',
+  'clinic.list.updated.categories': 'Changed the list of what providers see',
   'clinic.list.updated.species': 'Changed the list of kinds of animal',
   'clinic.texting.on': 'Texting during calls was turned on (text registration approved)',
   'clinic.texting.off': 'Texting during calls was turned off',
@@ -115,7 +115,7 @@ const ACTIONS: Record<string, string> = {
 };
 const TEXTS: Record<string, string> = {
   booking_confirmed: 'a booking confirmation', request_ready: 'that a request is ready to pick up', refill_sent: 'that a refill went to the pharmacy', refill_not_approved: 'to call about a refill', change_confirmed: 'that a visit moved', cancel_confirmed: 'that a visit was cancelled',
-  directions: 'the address and a map link', hours: 'the opening hours', emergency_hospital: 'the emergency hospital\'s details', provider: 'a doctor\'s details', answer: 'an answer', link: 'one of the clinic\'s links', reminder: 'an appointment reminder',
+  directions: 'the address and a map link', hours: 'the opening hours', emergency_hospital: 'the emergency hospital\'s details', provider: 'a provider\'s details', answer: 'an answer', link: 'one of the clinic\'s links', reminder: 'an appointment reminder',
 };
 const NOT_SENT: Record<string, string> = {
   opted_out: 'the number opted out', rate_limited: 'too many texts today', monthly_limit: 'the monthly safety limit on texts', not_textable: 'a number outside the country, premium or toll-free', no_number: 'no mobile number',

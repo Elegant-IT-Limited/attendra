@@ -187,7 +187,7 @@ function Requests() {
       <PageHeader title="Requests" description={<>What callers asked the team for, the newest first. The assistant never approves a refill; that stays with your team. Times are {zoneLabel(tz)}.</>}
         actions={(
           <>
-            {can('settings:write') && <Link href={`/c/${clinicId}/settings/fields?tab=requests`} className={buttonStyles({ variant: 'ghost' })}><SlidersHorizontal /> Manage fields</Link>}
+            {can('settings:write') && <Link href={`/c/${clinicId}/settings/fields?tab=requests`} className={buttonStyles({ variant: 'ghost' })}><SlidersHorizontal /> Fields and lists</Link>}
             {can('tasks:work') && <Button onClick={() => setAdding(true)}><Plus /> New request</Button>}
           </>
         )} />

@@ -36,6 +36,8 @@ export * from './readback';
 export * from './tool-notes';
 export * from './tools';
 export * from './voices';
+export * from './greeting-names';
+export * from './uploads';
 export * from './security';
 export * from './texts';
 export * from './visit-coverage';

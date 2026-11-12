@@ -122,6 +122,13 @@ test.describe.serial('the schedule', () => {
     const shown = await dialog.getByRole('radio').evaluateAll((els) => els.map((e) => e.getAttribute('data-starts-at')!));
     const earliest = testNow() + server.leadMinutes * 60_000;
     expect(shown.filter((t) => new Date(t).getTime() < earliest)).toEqual([]);
+    // with anyone: each time once a day, the providers free at it as the choices (note 52 C6)
+    const rows = dialog.getByTestId('slot-rows').first();
+    const times = await rows.locator(':scope > li > span').allTextContents();
+    expect(times.length).toBeGreaterThan(0);
+    expect(new Set(times).size).toBe(times.length);
+    const firstTime = times[0]!;
+    await expect(rows.locator(':scope > li').first().getByRole('radio').first()).toHaveAccessibleName(new RegExp(`^${firstTime.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} with `));
   });
 
   test('N opens New booking on the Schedule itself, again after the dialog is closed', async ({ browser }) => {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { asE164, localDateOf, providerName, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, listedVapiVoice, PREVIEW_VOICES, type TalkStyle, VAPI_VOICE_MODEL, VAPI_VOICES, vapiVoiceOf, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel, DEFAULT_RECORDING_NOTICE, noticeIsSentence, openingWords, noProviderWarnings, SETTINGS_LIMITS } from '@attendra/core';
+import { asE164, localDateOf, providerName, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, listedVapiVoice, PREVIEW_VOICES, type TalkStyle, VAPI_VOICE_MODEL, VAPI_VOICES, vapiVoiceOf, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel, DEFAULT_RECORDING_NOTICE, noticeIsSentence, openingWords, noProviderWarnings, SETTINGS_LIMITS, greetingFollowingNames, type Language } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react';
 import { SHOW_MENU_LINKS } from '@/lib/flags';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { VisitMoreOptions } from '@/components/settings/visit-options';
-import { AssistantSection, LocalNames } from '@/components/settings/assistant';
+import { AssistantSection, LocalNames, StaleGreeting } from '@/components/settings/assistant';
 import { BookingRulesSection } from '@/components/settings/booking-rules';
 import { EmptyNote, Field, Item, SaveIssues, Section, TeamOnly } from '@/components/settings/section';
 import { SettingsHeader } from '@/components/settings/settings-nav';
@@ -195,6 +195,25 @@ export default function Settings() {
   if (!draft) return <><SettingsHeader clinicId={clinicId} /><Skeleton className="h-96" /></>;
   const c = draft;
   const set = (patch: Partial<ClinicConfig>) => setDraft({ ...c, ...patch });
+  // a new clinic or assistant name moves the greetings with it, shown before saving (note 52 B3): each greeting that
+  // says the saved names follows them; one edited by hand since the save keeps its words (StaleGreeting points at it)
+  const was = saved.data ? { clinicName: saved.data.name, assistantName: saved.data.assistantName } : null;
+  const rename = (patch: Pick<Partial<ClinicConfig>, 'name' | 'assistantName'>) => {
+    const base = saved.data;
+    if (!base || !was) return set(patch);
+    const before = { clinicName: c.name, assistantName: c.assistantName };
+    const after = { clinicName: patch.name ?? c.name, assistantName: 'assistantName' in patch ? patch.assistantName : c.assistantName };
+    // still the saved greeting moved to the names in the form: it follows them on
+    const follows = (savedText: string | undefined, text: string | undefined) => savedText !== undefined && text === greetingFollowingNames(savedText, was, before);
+    const greeting = follows(base.greeting, c.greeting) ? greetingFollowingNames(base.greeting, was, after) : c.greeting;
+    const greetings = c.greetings && Object.fromEntries(Object.entries(c.greetings).map(([l, t]) => {
+      const savedText = base.greetings?.[l as Language];
+      return [l, follows(savedText, t) ? greetingFollowingNames(savedText!, was, after) : t];
+    })) as ClinicConfig['greetings'];
+    set({ ...patch, greeting, ...(greetings ? { greetings } : {}) });
+  };
+  const followedRename = !!was && !!saved.data && (c.name !== saved.data.name || (c.assistantName ?? '') !== (saved.data.assistantName ?? ''))
+    && c.greeting !== saved.data.greeting && c.greeting === greetingFollowingNames(saved.data.greeting, was, { clinicName: c.name, assistantName: c.assistantName });
   const dirty = JSON.stringify(c) !== JSON.stringify(saved.data);
   const writable = can('settings:write');
   // the clinic's own date, for the days that must be today or later (holidays, special days, an offer's end)
@@ -239,7 +258,7 @@ export default function Settings() {
         </nav>
       <fieldset disabled={!writable || save.isPending} className="min-w-0 space-y-6 pb-24">
         <Section id="greeting-voice" title="Greeting and voice" description="Callers must hear that they are talking to an AI assistant. The greeting cannot be saved without it.">
-          <Field label="Clinic name" htmlFor="name"><Input id="name" required maxLength={100} autoComplete="off" value={c.name} onChange={(e) => set({ name: e.target.value })} /></Field>
+          <Field label="Clinic name" htmlFor="name"><Input id="name" required maxLength={100} autoComplete="off" value={c.name} onChange={(e) => rename({ name: e.target.value })} /></Field>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Address" htmlFor="address" hint="Given to callers who ask where you are."><Input id="address" maxLength={200} autoComplete="off" value={c.address ?? ''} placeholder="e.g. 400 Main Street, Denver" onChange={(e) => set({ address: e.target.value || undefined })} /></Field>
             <Field label="Website" htmlFor="website" hint="Optional."><Input id="website" type="url" maxLength={200} autoComplete="off" value={c.website ?? ''} placeholder="https://" onChange={(e) => set({ website: e.target.value && e.target.value !== 'https://' ? e.target.value : undefined })} /></Field>
@@ -247,6 +266,8 @@ export default function Settings() {
           <Field label="Greeting" htmlFor="greeting" hint={`${c.greeting.length}/400. Mention "AI assistant", "virtual receptionist" or similar.`}>
             <Textarea id="greeting" value={c.greeting} maxLength={SETTINGS_LIMITS.greeting} onChange={(e) => set({ greeting: e.target.value })} />
           </Field>
+          {followedRename && <p className="text-sm text-text-muted" data-testid="greeting-followed" role="status">The greeting now says the new name. Read it, then save.</p>}
+          <StaleGreeting text={c.greeting} language={c.primaryLanguage} clinic={c} onFix={(greeting) => set({ greeting })} />
           {clinicWarnings(c).filter((w) => w.path !== 'routing').map((w) => <Alert key={w.path} tone="warn">{w.message}</Alert>)}
           <div className="grid gap-4 sm:grid-cols-2">
             {c.voiceEngine === 'vapi' ? (
@@ -329,7 +350,7 @@ export default function Settings() {
           </div>
         </Section>
 
-        <AssistantSection c={c} set={set} disabled={!writable || save.isPending} />
+        <AssistantSection c={c} set={set} rename={rename} disabled={!writable || save.isPending} />
 
         <Section id="hours" title="Opening hours" description={c.afterHours === 'requests'
           ? 'Outside these hours the assistant still answers and takes requests and callbacks, but books nothing. It transfers only to numbers set for closed hours under Transfers.'

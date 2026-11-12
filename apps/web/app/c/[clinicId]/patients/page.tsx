@@ -74,7 +74,7 @@ export default function Patients() {
       <PageHeader title={terms.title('patients')} description={pet ? 'Find a pet by its name, its owner\'s name, a phone number, a birthday or a request number as you type, and see its visits, calls and requests. The newest are at the top.' : 'Find a patient by name, phone, date of birth or request number as you type, and see their visits, calls and requests. The newest are at the top.'}
         actions={(
           <>
-            {can('settings:write') && <Link href={`/c/${clinicId}/settings/fields?tab=patients`} className={buttonStyles({ variant: 'ghost' })}><SlidersHorizontal /> Manage fields</Link>}
+            {can('settings:write') && <Link href={`/c/${clinicId}/settings/fields?tab=patients`} className={buttonStyles({ variant: 'ghost' })}><SlidersHorizontal /> Fields and lists</Link>}
             {can('patients:import') && <Button variant="outline" onClick={() => setImporting(true)}><FileUp /> Import</Button>}
             {can('patients:write') && <Button onClick={() => setAdding(true)}><UserPlus /> Add {terms.patient}</Button>}
           </>

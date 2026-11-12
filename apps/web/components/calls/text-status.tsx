@@ -6,6 +6,7 @@ import { MessageSquare } from 'lucide-react';
 import { StatusPill } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { shortWhen } from '@/lib/format';
+import { useTerms } from '@/lib/terms';
 
 /** What each text was, in the front desk's words. */
 export const TEXT_TEMPLATES: Record<string, string> = {
@@ -18,7 +19,8 @@ export const TEXT_TEMPLATES: Record<string, string> = {
   directions: 'Address and map',
   hours: 'Opening hours',
   emergency_hospital: 'Emergency hospital',
-  provider: 'Doctor\'s details',
+  // the clinic's own word for who is booked: "Veterinarian's details" at a vet clinic (note 52 C2)
+  provider: 'Provider\'s details',
   answer: 'Answer to a question',
   link: 'Link',
   reminder: 'Appointment reminder',
@@ -37,8 +39,8 @@ const REASONS: Record<string, string> = {
 };
 
 /** One line per text: a status, and what it was with when or why not. */
-export function textLine(t: TextItem, timeZone: string): { tone: 'ok' | 'warn' | 'danger' | 'neutral'; label: string; detail: string } {
-  const what = TEXT_TEMPLATES[t.template] ?? t.template.replaceAll('_', ' ');
+export function textLine(t: TextItem, timeZone: string, provider = 'doctor'): { tone: 'ok' | 'warn' | 'danger' | 'neutral'; label: string; detail: string } {
+  const what = t.template === 'provider' ? `${provider.charAt(0).toUpperCase()}${provider.slice(1)}'s details` : TEXT_TEMPLATES[t.template] ?? t.template.replaceAll('_', ' ');
   const at = (iso: string | null) => (iso ? ` · ${shortWhen(iso, timeZone)}` : '');
   switch (t.status) {
     case 'delivered': return { tone: 'ok', label: 'Delivered', detail: `${what}${at(t.deliveredAt)}` };
@@ -57,6 +59,7 @@ export function TextStatus({ clinicId, filter, timeZone, empty, last4 = false }:
   clinicId: string; filter: { callId?: string; taskId?: string; patientId?: string }; timeZone: string; empty?: string; last4?: boolean;
 }) {
   const [key, value] = Object.entries(filter).find(([, v]) => !!v) ?? [];
+  const terms = useTerms(clinicId);
   const texts = useQuery({
     queryKey: ['texts', clinicId, key, value],
     queryFn: () => api<TextList>(`/clinics/${clinicId}/texts?${key}=${encodeURIComponent(value ?? '')}`),
@@ -67,7 +70,7 @@ export function TextStatus({ clinicId, filter, timeZone, empty, last4 = false }:
   return (
     <ul className="space-y-1.5" aria-label="Texts">
       {rows.map((t) => {
-        const line = textLine(t, timeZone);
+        const line = textLine(t, timeZone, terms.provider);
         // a text asked for on the call: when the caller said yes, to find it in the transcript
         const yes = t.kind === 'asked' && t.consentAtMs !== null ? ` · asked for at ${Math.floor(t.consentAtMs / 60_000)}:${String(Math.floor((t.consentAtMs % 60_000) / 1000)).padStart(2, '0')} into the call` : '';
         return (

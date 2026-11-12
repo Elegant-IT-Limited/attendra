@@ -11,7 +11,7 @@ export function Alert({ tone = 'info', title, children, className }: { tone?: 'i
       tone === 'danger' && 'border-danger/30 bg-danger-soft', tone === 'warn' && 'border-warning/30 bg-warning-soft',
       tone === 'info' && 'border-border bg-info-soft', tone === 'ok' && 'border-success/30 bg-success-soft', className)}>
       <Icon className={cn('mt-0.5 size-4 shrink-0', tone === 'danger' && 'text-danger', tone === 'warn' && 'text-warning', tone === 'ok' && 'text-success', tone === 'info' && 'text-info')} aria-hidden />
-      <div className="space-y-1">{title && <p className="font-medium">{title}</p>}{children}</div>
+      <div className="min-w-0 space-y-1">{title && <p className="font-medium">{title}</p>}{children}</div>
     </div>
   );
 }

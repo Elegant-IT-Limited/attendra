@@ -136,13 +136,21 @@ export const newProviderId = (name: string) => `prov_${slug(name.replace(/^dr\.?
 // the same name, with or without a title typed before it ("Dr. Jane Example" is "Jane Example")
 const sameName = (a: string, b: string) => bareName(a).toLowerCase().replace(/[^a-z0-9]/g, '') === bareName(b).toLowerCase().replace(/[^a-z0-9]/g, '');
 
+const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
+/** A schema path in the file's own words: "hours.1.0.open" is the mon column, never the stored shape (note 52 C2). */
+function columnWords(path: PropertyKey[]): string {
+  if (path[0] === 'hours') return DAY_COLUMNS.find((d) => DAY_INDEX[d] === String(path[1])) ?? 'hours';
+  if (path[0] === 'ages') return path[1] === 'max' ? 'ages_max' : 'ages_min';
+  return path.length ? String(path[0]).replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`) : 'row';
+}
 function hoursOf(v: string): { open: string; close: string }[] | string {
   const out: { open: string; close: string }[] = [];
   for (const part of split(v)) {
     const m = part.match(/^(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})$/);
-    if (!m) return `"${part}" is not a time range like 08:00-12:00`;
-    const open = `${m[1]!.padStart(2, '0')}:${m[2]}`;
-    const close = `${m[3]!.padStart(2, '0')}:${m[4]}`;
+    const open = m ? `${m[1]!.padStart(2, '0')}:${m[2]}` : '';
+    const close = m ? `${m[3]!.padStart(2, '0')}:${m[4]}` : '';
+    // a time of day, 00:00 to 23:59: "25:00-26:00" was refused later by the schema, as "hours.1.0.open: expected HH:MM"
+    if (!m || !CLOCK.test(open) || !CLOCK.test(close)) return `${part} is not a time like 08:00-12:00`;
     if (open >= close) return `${part} closes before it opens`;
     out.push({ open, close });
   }
@@ -159,6 +167,7 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
   const rows = records(text);
   if (rows.length > MAX_IMPORT_ROWS) return [{ line: 1, name: '', ok: false, message: `at most ${MAX_IMPORT_ROWS} rows per file` }];
   if (rows.length && !rows[0]!.headers.includes('name')) return [{ line: 1, name: '', ok: false, message: 'the first row must be the column names, with a name column; download the template' }];
+  const who = clinic.industry === 'vet' ? 'veterinarian' : 'doctor';
   const seen = new Set<string>();
   const seenPhones = new Set<string>();
   const seenIds = new Set<string>();
@@ -169,7 +178,7 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
     const fail = (message: string) => ({ line: r.line, name, ok: false as const, message });
     if (!name) return fail('name is required');
     const key = name.toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (seen.has(key)) return fail('this doctor is in the file twice');
+    if (seen.has(key)) return fail(`this ${who} is in the file twice`);
     seen.add(key);
     // the row's numbers find the doctor on file before the name does: a number is one doctor's (2026-11-01)
     if ([r.get('phone'), ...split(r.get('other_phones'))].some((x) => x && phoneProblem(x))) return fail(`phone: ${PHONE_NUMBERS_ONLY}`);
@@ -179,7 +188,7 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
     for (const d of rowPhones) seenPhones.add(d);
     const byPhone = rowPhones.length ? clinic.providers.find((p) => providerPhones(p).some((x) => rowPhones.includes(asE164(clinic, x)))) : undefined;
     const existing = (r.get('id') && clinic.providers.find((p) => p.id === r.get('id'))) || byPhone || clinic.providers.find((p) => sameName(p.name, name));
-    if (r.get('id') && !existing) return fail(`no doctor on file has the id ${r.get('id')}; leave id empty to add them`);
+    if (r.get('id') && !existing) return fail(`no ${who} on file has the id ${r.get('id')}; leave id empty to add them`);
     if (existing && seenIds.has(existing.id)) return fail(`${providerName(existing)} is already on another row of the file (the same number or name)`);
     if (existing) seenIds.add(existing.id);
     // the row's own number replaces one the doctor had among their others, so a number is never listed twice
@@ -242,7 +251,7 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
       otherPhones: phones.otherPhones,
       custom: Object.keys(custom.values).length || existing?.custom ? { ...existing?.custom, ...custom.values } : undefined,
     });
-    if (!parsed.success) return fail(parsed.error.issues.map((i) => `${i.path.join('.') || 'row'}: ${i.message}`).join('; '));
+    if (!parsed.success) return fail(parsed.error.issues.map((i) => `${columnWords(i.path)}: ${i.message}`).join('; '));
     return { line: r.line, name, ok: true, value: parsed.data, ...(existing ? { existingId: existing.id } : {}), ...(adds.length ? { note: listNote(adds), adds } : {}) };
   });
 }
@@ -284,8 +293,15 @@ function splitForList(c: Pick<ClinicConfig, 'lists' | 'providers'>, name: ListNa
 /** The clinic's list with the values an import brings that are not on it yet, at its end, while it has room. */
 export function withListValues<C extends Pick<ClinicConfig, 'lists' | 'providers'>>(c: C, name: ListName, values: string[]): C {
   const { added } = splitForList(c, name, values);
-  return added.length ? { ...c, lists: { ...c.lists, [name]: [...managedList(c, name), ...added] } } : c;
+  return added.length ? { ...c, lists: { ...c.lists, [name]: [...managedList(c, name), ...added.map(listItemCase)] } } : c;
 }
+
+/**
+ * A list item as every list shows it: sentence case, like the starter lists ("Dog", "Guinea pig"). An import brought
+ * "rabbit" in beside "Dog" and "Cat" (note 52 C3, the one display rule of note 43 #12); what is typed after the first
+ * letter is kept ("MRI scans" stays as it is).
+ */
+export const listItemCase = (v: string) => v.trim().charAt(0).toLocaleUpperCase() + v.trim().slice(1);
 
 /** The values an import brings that the clinic's list has no room for: withListValues leaves exactly these off. */
 export function leftOffList(c: Pick<ClinicConfig, 'lists' | 'providers'>, name: ListName, values: string[]): string[] {
@@ -316,7 +332,7 @@ export function readPatients(text: string, today: string, northAmerica = true): 
     const fail = (message: string) => ({ line: r.line, name, ok: false as const, message });
     if (!firstName || !lastName) return fail('first_name and last_name are required');
     const dob = parseDob(r.get('date_of_birth'), todayDate, northAmerica ? 'mdy' : 'dmy');
-    if (!dob) return fail(`date_of_birth "${r.get('date_of_birth')}" is not a full date like 1985-03-04 or a date in the future`);
+    if (!dob) return fail(`date_of_birth "${r.get('date_of_birth')}" is not a full date like 1985-03-04, or is in the future`);
     const gender = readGender(r.get('gender'));
     if (!gender) return fail('gender is required: female, male, other or prefer not to say');
     const phone = r.get('phone');
@@ -379,7 +395,7 @@ export function readPets(text: string, today: string, northAmerica = true, speci
     if (!species) return fail('species is required, like dog or cat');
     if (!first) return fail(`${twoColumns ? 'owner_first_name' : 'owner_name'} is required`);
     const dob = parseDob(r.get('birthday'), todayDate, northAmerica ? 'mdy' : 'dmy');
-    if (!dob) return fail(`birthday "${r.get('birthday')}" is not a full date like 2021-05-14 or a date in the future`);
+    if (!dob) return fail(`birthday "${r.get('birthday')}" is not a full date like 2021-05-14, or is in the future`);
     const sex = r.get('sex').toLowerCase();
     const gender: Gender = sex === 'female' || sex === 'f' ? 'female' : sex === 'male' || sex === 'm' ? 'male' : 'undisclosed';
     const phone = r.get('owner_phone');

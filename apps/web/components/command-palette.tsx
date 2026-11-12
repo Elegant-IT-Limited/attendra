@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { CallList, PatientList, TaskList } from '@attendra/api/contracts';
+import { listItemCase } from '@attendra/core';
 import { useQuery } from '@tanstack/react-query';
 import { Command } from 'cmdk';
 import { CalendarPlus, Keyboard, ListChecks, Mic, Monitor, Moon, PawPrint, Phone, Search, Sun, User, Users } from 'lucide-react';
@@ -138,7 +139,7 @@ export function CommandPalette({ clinicId, open, onOpenChange, pages, clinics = 
                     <Command.Item key={p.id} value={`owner-${p.id}`} onSelect={() => go(`/c/${clinicId}/patients/${p.id}`)} className={item}>
                       <Users aria-hidden />
                       <span className="flex-1 truncate"><Highlight text={p.guardianName} query={query} /></span>
-                      <span className={muted}>{p.name}{p.species ? `, ${p.species}` : ''}</span>
+                      <span className={muted}>{p.name}{p.species ? `, ${listItemCase(p.species)}` : ''}</span>
                     </Command.Item>
                   ))}
                 </Command.Group>

@@ -107,7 +107,7 @@ export default function DoctorsPage() {
       <PageHeader title={terms.title('providers')} description={terms.patient === 'pet' ? 'Who can be booked, the animals and services they see, their weekly hours and days off. The assistant uses this list from the next thing a caller asks.' : 'Who can be booked, what they see people for, the ages they see, their weekly hours and days off. The assistant uses this list from the next thing a caller asks.'}
         actions={manager && (
           <>
-            <Link href={`/c/${clinicId}/settings/fields?tab=providers`} className={buttonStyles({ variant: 'ghost' })}><SlidersHorizontal /> Manage fields and lists</Link>
+            <Link href={`/c/${clinicId}/settings/fields?tab=providers`} className={buttonStyles({ variant: 'ghost' })}><SlidersHorizontal /> Fields and lists</Link>
             <Button variant="outline" onClick={() => setImporting(true)}><FileUp /> Import</Button>
             <Button onClick={() => setEditing({ id: null, draft: blank(visitTypes) })}><Plus /> Add {terms.provider}</Button>
           </>
@@ -205,8 +205,8 @@ export default function DoctorsPage() {
         <DoctorPanel clinicId={clinicId} editing={editing} visitTypes={visitTypes} clinicHours={clinicHours} languages={config.data?.languages ?? ['en']} today={today}
           onClose={() => setEditing(null)} onSaved={refresh} />
       )}
-      <ImportPanel open={importing} onOpenChange={setImporting} title="Import doctors" what="doctors" endpoint={`/clinics/${clinicId}/doctors/import`}
-        template={{ name: 'attendra-doctors-template.csv', csv: doctorTemplate(config.data ?? { visitTypes }) }} guide={doctorGuide(config.data ?? { visitTypes })} onImported={refresh} />
+      <ImportPanel open={importing} onOpenChange={setImporting} title={`Import ${terms.providers}`} what={terms.providers} endpoint={`/clinics/${clinicId}/doctors/import`}
+        template={{ name: `attendra-${terms.providers}-template.csv`, csv: doctorTemplate(config.data ?? { visitTypes }) }} guide={doctorGuide(config.data ?? { visitTypes })} onImported={refresh} />
     </>
   );
 }

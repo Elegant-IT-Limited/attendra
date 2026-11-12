@@ -20,6 +20,11 @@ test('a manager uploads a document, sees it indexed, and asks a question with a 
   await expect(page.getByRole('dialog', { name: 'Not uploaded' }).getByText('The file is empty. Choose one with the text in it.')).toBeVisible();
   await page.getByRole('dialog').getByRole('button', { name: 'OK' }).click();
 
+  // a Word file is refused when it is chosen, with the way through (note 52 C15)
+  await page.getByLabel('File').setInputFiles({ name: 'price-list.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from('PK') });
+  await expect(page.getByRole('dialog', { name: 'Not uploaded' }).getByText('Upload a PDF, a text file or a markdown file. A Word file? Save it as PDF from Word, then upload it.')).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: 'OK' }).click();
+
   await page.getByLabel('Title').fill('Late arrivals');
   await page.getByLabel('File').setInputFiles({
     name: 'late-arrivals.txt', mimeType: 'text/plain',
