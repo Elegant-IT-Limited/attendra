@@ -52,7 +52,7 @@ export const Me = z.object({
   testCalls: z.boolean(),
   /** Whether it can play a simulated call, with no audio, to show a live call. The local demo only. */
   simulatedCalls: z.boolean(),
-  /** Where a login can open a clinic of its own (the hosted service's page, which asks for an invite code); null where the deployment has none. */
+  /** Where a login can open a clinic of its own (the hosted service's page); null where the deployment has none. */
   newClinicUrl: z.string().nullable(),
   /** Every role: its name, a one-line summary, and what it can and cannot do, generated from the permission table. One source for every screen. */
   roles: z.array(z.object({ id: Role, label: z.string(), summary: z.string(), can: z.array(z.string()), limits: z.array(z.string()) })),

@@ -513,11 +513,10 @@ Left for a later batch, each with what it needs:
 ## Cloud, not changed here
 
 The hosting layer's sign-up page (`attendra-cloud`, `src/app/signup/form.tsx`) and setup wizard
-(`src/app/setup/[clinicId]/wizard.tsx`). As read on 2026-11-08:
+(`src/app/setup/[clinicId]/wizard.tsx`). As read on 2026-11-08 (the invite code field was removed on 2026-11-12, when sign-up opened):
 
 | Page | Field | Browser rule as read | Note |
 | --- | --- | --- | --- |
-| Sign-up | Invite code | max 40, autoComplete off | |
 | Sign-up | Clinic name | max 100, autoComplete organization | the engine's rename caps at 60 (`ClinicName`) |
 | Sign-up | Your name | max 100, autoComplete name | the engine's profile name is 80 |
 | Sign-up | Work email | type email, max 254, autoComplete email | |

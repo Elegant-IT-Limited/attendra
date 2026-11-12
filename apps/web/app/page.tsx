@@ -53,7 +53,7 @@ export default function Home() {
 
 /**
  * A login with no clinic: the invitations waiting for it, to accept here; with none, a way
- * to open a clinic of its own (the hosted service asks for an invite code) and what to ask a
+ * to open a clinic of its own (on the hosted service, with its free trial) and what to ask a
  * practice owner for. Never only "you have no clinic".
  */
 function NoClinicYet({ newClinicUrl }: { newClinicUrl: string | null }) {
@@ -78,7 +78,7 @@ function NoClinicYet({ newClinicUrl }: { newClinicUrl: string | null }) {
             {signOut}
           </div>}>
           {newClinicUrl
-            ? 'Joining a clinic\'s team? Ask its owner or practice manager to invite this email address: the invitation shows up here. Starting your own? Open a new clinic with your invite code.'
+            ? 'Joining a clinic\'s team? Ask its owner or practice manager to invite this email address: the invitation shows up here. Starting your own? Open a new clinic: it starts with a free trial.'
             : 'Ask the clinic\'s owner or practice manager to invite this email address. The invitation shows up here, and in your email.'}
         </Empty>
       )}
