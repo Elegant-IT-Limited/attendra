@@ -180,8 +180,8 @@ export default function DoctorsPage() {
         <DoctorPanel clinicId={clinicId} editing={editing} visitTypes={visitTypes} clinicHours={clinicHours} languages={config.data?.languages ?? ['en']} today={today}
           onClose={() => setEditing(null)} onSaved={refresh} />
       )}
-      <ImportPanel open={importing} onOpenChange={setImporting} title="Import doctors" what="doctors" endpoint={`/clinics/${clinicId}/doctors/import`}
-        template={{ name: 'attendra-doctors-template.csv', csv: doctorTemplate(config.data ?? { visitTypes }) }} guide={doctorGuide(config.data ?? { visitTypes })} onImported={refresh} />
+      <ImportPanel open={importing} onOpenChange={setImporting} title={`Import ${terms.providers}`} what={terms.providers} endpoint={`/clinics/${clinicId}/doctors/import`}
+        template={{ name: `attendra-${terms.providers}-template.csv`, csv: doctorTemplate(config.data ?? { visitTypes }) }} guide={doctorGuide(config.data ?? { visitTypes })} onImported={refresh} />
     </>
   );
 }

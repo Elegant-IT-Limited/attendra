@@ -262,7 +262,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
         <ul className="space-y-2">
           {SHORTCUTS.filter((s) => (!s.page || pages.some((p) => p.shortcut === s.page)) && (!s.permission || can(s.permission))).map((s) => (
             <li key={s.label} className="flex items-center justify-between gap-4 text-base">
-              <span>{s.label}</span><span className="flex gap-1">{s.keys.map((k) => <Kbd key={k}>{k}</Kbd>)}</span>
+              <span>{s.page ? `Go to ${pages.find((p) => p.shortcut === s.page)?.label ?? s.label.slice(6)}` : s.label}</span><span className="flex gap-1">{s.keys.map((k) => <Kbd key={k}>{k}</Kbd>)}</span>
             </li>
           ))}
         </ul>
