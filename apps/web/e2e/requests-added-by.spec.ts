@@ -74,9 +74,10 @@ test('New request shows an example per kind; the list never cuts who added it; t
     await kinds.getByRole('button', { name: new RegExp(`^${kind}`) }).click();
     await expect(reason).toHaveAttribute('placeholder', example);
   }
-  // a refill, written down as it comes: not urgent, no due day
-  await kinds.getByRole('button', { name: /^Prescription refill/ }).click();
-  const words = `Needs a refill before Friday ${Date.now()}`;
+  // a callback, written down as it comes: not urgent, no due day (a callback, so the refill specs after this one still
+  // find the assistant's refills first)
+  await kinds.getByRole('button', { name: /^Callback/ }).click();
+  const words = `Wants a call about the lab results ${Date.now()}`;
   await reason.fill(words);
   await form.getByRole('button', { name: 'Add request' }).click();
   const note = page.getByTestId('toasts').getByText('Request added. It is in the queue for the team.');
@@ -103,7 +104,7 @@ test('New request shows an example per kind; the list never cuts who added it; t
   const number = (await row.getByTestId('request-number').textContent())!.trim();
   await page.goto(`/c/${clinic}/audit`);
   const rows = page.locator('tbody tr').filter({ hasText: `Request ${number}` });
-  await expect(rows.filter({ hasText: 'Took a refill request' })).toHaveCount(1);
+  await expect(rows.filter({ hasText: 'Took a callback request' })).toHaveCount(1);
   await expect(rows.filter({ hasText: 'Changed a request\'s urgency or due day' })).toHaveCount(0);
   // every row about one request names it by number, never a bare "Request"
   await expect(page.locator('tbody tr td').filter({ hasText: /^Request$/ })).toHaveCount(0);

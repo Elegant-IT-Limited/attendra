@@ -71,6 +71,7 @@ test('a holiday over booked visits asks "move or keep" first: Go back saves noth
   await page.getByRole('link', { name: 'Settings' }).click();
   await page.getByRole('button', { name: `Remove ${day}` }).click();
   await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.locator('[aria-live=polite]').getByText('Saved. The next call uses these settings.')).toBeVisible();
+  // the newest note: the one from the save before may still be showing (notes no longer cover the Save button)
+  await expect(page.locator('[aria-live=polite]').getByText('Saved. The next call uses these settings.').last()).toBeVisible();
   expect(await settingsHolidays()).not.toContain(day);
 });
