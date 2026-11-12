@@ -56,7 +56,7 @@ Real calls on production phone numbers through an Elastic SIP trunk, a backup ro
 
 ## v1.0: the first clinics (next)
 
-The first clinics in the private beta on their own lines, texting approved by the carriers, and fixes from their calls.
+The first clinics in the alpha on their own lines, texting approved by the carriers, and fixes from their calls.
 
 ## Revenue features
 
