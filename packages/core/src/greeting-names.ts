@@ -39,10 +39,22 @@ export function greetingFollowingNames(greeting: string, before: GreetingNames, 
  * Where the suggested greeting says the two names, per language: "Thanks for calling <clinic>. I'm <assistant>, the
  * clinic's AI assistant" and its Spanish twin. A greeting written in that shape tells which names it still says.
  */
+// the clinic's name ends at a full stop, at the end of a line, or at a comma right before "I'm" ("Thanks for calling
+// Maple Vet Clinic, I'm Juniper"); a comma with more words after it ("Maple Vet Clinic, Denver. I'm ...") stays in it
 const SHAPES: Record<Language, RegExp> = {
-  en: /^\s*Thanks for calling (?<clinic>[^.!?]{1,100}?)[.!]\s+I'?m (?:(?<assistant>[\p{L}\p{M}'-]{2,24}),\s+the|the)\b/u,
-  es: /^\s*Gracias por llamar a (?<clinic>[^.!?]{1,100}?)[.!]\s+Soy (?:(?<assistant>[\p{L}\p{M}'-]{2,24}),\s+la|la)\b/u,
+  en: /^\s*Thanks for calling (?<clinic>[^.!?\n]{1,100}?)(?:[.!]\s+|[ \t]*\n\s*|,[ \t]+(?=I'?m\b))I'?m (?:(?<assistant>[\p{L}\p{M}'-]{2,24}),\s+the|the)\b/iu,
+  es: /^\s*Gracias por llamar a (?<clinic>[^.!?\n]{1,100}?)(?:[.!]\s+|[ \t]*\n\s*|,[ \t]+(?=soy\b))Soy (?:(?<assistant>[\p{L}\p{M}'-]{2,24}),\s+la|la)\b/iu,
 };
+
+/**
+ * The clinic's name now, then a comma and more words ("Maple Vet Clinic, Denver", "Maple Vet Clinic, where pets come
+ * first"): the greeting says the name, with something of its own after it. A test clinic renamed to "Maple Vet Clinic"
+ * was told its greeting "still says" that, in English and Spanish (2026-11-16).
+ */
+function saysNameFirst(said: string, name: string): boolean {
+  const n = name.trim();
+  return said.length > n.length && said.slice(0, n.length).localeCompare(n, undefined, { sensitivity: 'base' }) === 0 && /^\s*,/.test(said.slice(n.length));
+}
 
 export interface StaleName { kind: 'clinic' | 'assistant'; said: string; now: string | null }
 
@@ -57,7 +69,7 @@ export function staleGreetingNames(greeting: string, language: Language, names: 
   const same = (a: string, b: string) => a.trim().localeCompare(b.trim(), undefined, { sensitivity: 'base' }) === 0;
   const out: StaleName[] = [];
   const clinic = m.groups.clinic?.trim();
-  if (clinic && names.clinicName.trim() && !same(clinic, names.clinicName)) out.push({ kind: 'clinic', said: clinic, now: names.clinicName.trim() });
+  if (clinic && names.clinicName.trim() && !same(clinic, names.clinicName) && !saysNameFirst(clinic, names.clinicName)) out.push({ kind: 'clinic', said: clinic, now: names.clinicName.trim() });
   const assistant = m.groups.assistant?.trim();
   const current = names.assistantName?.trim() || null;
   if (assistant && (!current || !same(assistant, current))) out.push({ kind: 'assistant', said: assistant, now: current });

@@ -235,7 +235,8 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const { livePlanner } = opts;
   const scheduler = new BuiltinScheduler(db, 'voice-agent', cipher);
   const sms: string[] = [];
-  const messenger: Messenger = { async sendTemplate(_c, m) { sms.push(m.template); return { status: 'sent', messageId: `sms-${sms.length}` }; } };
+  const smsVars: Record<string, string>[] = [];
+  const messenger: Messenger = { async sendTemplate(_c, m) { sms.push(m.template); smsVars.push(m.vars); return { status: 'sent', messageId: `sms-${sms.length}` }; } };
   // the demo clinic's documents, with local embeddings: fixed, so every run finds the same passages
   const knowledge = new HybridKnowledgeBase(new KnowledgeRepository(db), new LocalEmbedder());
   const backend = { patients: new PostgresPatientDirectory(db, cipher), scheduler, tasks: new PostgresTaskQueue(db, cipher), audit: new PostgresAuditLog(db), messenger, knowledge };
@@ -440,6 +441,10 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   }
   check(sms.length === e.sms_sent, `${sms.length} texts sent, expected ${e.sms_sent}`);
   if (e.sms_templates.length) check(JSON.stringify(sms) === JSON.stringify(e.sms_templates), `texts ${JSON.stringify(sms)}, expected ${JSON.stringify(e.sms_templates)}`);
+  for (const [i, want] of e.sms_vars.entries()) {
+    const got = smsVars[i] ?? {};
+    check(Object.entries(want).every(([k, v]) => got[k] === v), `text ${i + 1} says ${JSON.stringify(got)}, expected ${JSON.stringify(want)} in it`);
+  }
   check((transfer && transfer.type === 'transfer' ? transfer.uri : null) === e.transfer_to, `transfer to ${transfer && transfer.type === 'transfer' ? transfer.uri : 'nobody'}, expected ${e.transfer_to ?? 'nobody'}`);
   // the emergency script is an instruction the backend hands the voice; the abuse lines are instructions too, but not emergencies
   const emergencyScript = outbound.some((o) => o.type === 'instructions' && state.emergency !== null);
@@ -464,6 +469,13 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     check(early.length === 0, `offered ${early.length} time(s) before ${e.offered_from_time}`);
   }
   // the demo plays each call on its own day, so a date that follows from "today" is checked only on the eval's day
+  if (e.bookings && !opts.now) {
+    const made = [...createdRows].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime()).map((a) => {
+      const local = localParts(a.startsAt, clinic.timezone);
+      return { on: local.date, at: `${String(Math.floor(local.minutes / 60)).padStart(2, '0')}:${String(local.minutes % 60).padStart(2, '0')}`, visit: a.visitTypeId };
+    });
+    check(JSON.stringify(made) === JSON.stringify(e.bookings), `bookings ${JSON.stringify(made)}, expected ${JSON.stringify(e.bookings)}`);
+  }
   if (e.booked_on && !opts.now) check(createdRows.every((a) => localDateOf(a.startsAt, clinic.timezone) === e.booked_on), `booked on ${JSON.stringify(createdRows.map((a) => localDateOf(a.startsAt, clinic.timezone)))}, expected ${e.booked_on}`);
   // the note for the team on the appointments the call made ("booked by caller: Alex"), stored encrypted like a staff note
   if (e.appointment_note_contains.length) {

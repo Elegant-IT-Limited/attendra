@@ -124,8 +124,9 @@ export class CallMemory {
       }
     }
     if (name === 'find_slots') {
+      // only a visit the clinic has: one it does not offer (grooming, not_offered) is never filled into the next search
       const visit = text('visit_type_id');
-      if (visit) this.set('visitType', visit, 'tool', atTurn);
+      if (visit && clinic.visitTypes.some((v) => v.id === visit)) this.set('visitType', visit, 'tool', atTurn);
       const vet = text('provider_id');
       if (vet) this.set('vet', vet, 'tool', atTurn);
       const day = text('from_date');

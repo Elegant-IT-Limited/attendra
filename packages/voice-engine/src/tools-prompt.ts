@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ClinicConfig, greetingFor, industryPack, localDateOf, openingWords, PACKS } from '@attendra/core';
+import { VISIT_TYPES_RULE } from '@attendra/agent';
 import { LISTENING, talkLines } from './prompt';
 
 /**
@@ -43,6 +44,7 @@ export function toolWork(clinic: ClinicConfig): string[] {
     'Speech that is not said to you (someone in the room) or in a language you do not speak here is never translated, repeated or answered: say once that you can help in the clinic\'s languages, then wait.',
         'Call one tool at a time and wait for its result, unless the second does not depend on the first.',
     'When the caller is done (they said no to "anything else?" or goodbye), say a short goodbye and call end_call.',
+    VISIT_TYPES_RULE,
   ];
 }
 

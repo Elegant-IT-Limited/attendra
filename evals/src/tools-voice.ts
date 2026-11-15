@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { afterTool, type CallState, callStateNote, type FlowMemory, flowStage, nextStep, type Planner, type PlannerInput, type PlannerOutput, type PlannerTiming, shapeForVoice, speculativeLookup, type ToolResult, visitTypeChoices, voiceToolDefinitions } from '@attendra/agent';
+import { afterTool, type CallState, callStateNote, type FlowMemory, flowStage, nextStep, type Planner, type PlannerInput, type PlannerOutput, type PlannerTiming, shapeForVoice, speculativeLookup, type ToolResult, voiceToolDefinitions } from '@attendra/agent';
 import { addDays, clinicNow, clinicNowLine, type ClinicConfig, localDateOf, type ToolName, weekdayOf } from '@attendra/core';
 import { callFacts, realtimeTools, toolQuestion, toolRefusalLine, toolReplyInstructions, toolsBackendInstructions, toolsVoiceStaticPrompt, TOOLS_TRUNCATION, TURN_NOTE } from '@attendra/voice-engine';
 import type OpenAI from 'openai';
@@ -58,7 +58,7 @@ export class ToolsPathPlanner implements Planner {
         const r = await execute(name as ToolName, args);
         afterTool(s.flow, name, r.ok && !r.data.error, state.turns.length);
         const stage = flowStage(state, s.flow);
-        return JSON.stringify(shapeForVoice(name, r, stage, nextStep(stage, state, clinic, input.callerNumber ?? null), { visitTypes: visitTypeChoices(clinic) }));
+        return JSON.stringify(shapeForVoice(name, r, stage, nextStep(stage, state, clinic, input.callerNumber ?? null)));
       } finally {
         toolMs += performance.now() - t0;
       }

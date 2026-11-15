@@ -12,7 +12,8 @@ import { createHash } from 'node:crypto';
 import { fillFromMemory } from './call-memory';
 import { dayReason, doesntDoType, frontDeskLine, nothingFound, vetHoursLine } from './slot-answer';
 import type { CallState } from './call-state';
-import { answersFromFaqs } from './knowledge';
+import { answerForAsked, answersFromFaqs } from './knowledge';
+import { askedVisitWords, asksWhatVisits, bookableVisits, closestVisits, visitChoicesIn } from './visit-offer';
 import { asksEmergencyHandling, asksWhichVet, withoutMeaningAsk } from './flow/guards';
 import { outOfScopeLine } from '@attendra/knowledge/scope';
 
@@ -205,6 +206,30 @@ const NO_CALLBACK_NUMBER = (lang: CallState['language']) => refuse('no_callback_
 const MEDICAL = () => refuse('medical_question', `Do not answer it, and do not read anything from the clinic's documents. Say: "${MEDICAL_REFUSAL}" Offer to take a callback.`);
 
 const refuse = (code: string, say: string): ToolResult => ({ ok: false, data: { error: code, say } });
+
+/**
+ * A visit that is none of the clinic's (grooming, a boarding stay, laser therapy; 2026-11-16): never another visit in its
+ * place. The clinic's own common question about it answers it when it has one ("We do not offer grooming"); otherwise
+ * the caller hears, in their language, that it is not booked here, the clinic's visits (up to five, the closest to what
+ * they asked for first) and a request for the team. The same words on every path: the planner says `spoken` as it is,
+ * and the tools path hands it to the voice.
+ */
+function visitNotOffered(visitTypeId: string, state: CallState, clinic: ClinicConfig, lang: CallState['language']): ToolResult {
+  const asked = `${askedVisitWords(visitTypeId)} ${state.lastTurn('caller')}`;
+  const visits = closestVisits(clinic, asked, state.verifiedPatient);
+  const visit_types = visitChoicesIn(visits, lang);
+  // the caller asked and was answered: a call the assistant handled, as for any question about the clinic
+  if (state.outcome === 'abandoned') state.outcome = 'info';
+  const own = answerForAsked(clinic.faqs, asked);
+  if (own) {
+    state.answersGiven.add(own.id);
+    return { ok: false, data: { error: 'unknown_visit_type', answer: own.answer, source: own.id, visit_types,
+      say: 'That is none of the clinic\'s visits, and this is the clinic\'s own answer about it: say it, in a sentence or two, in the caller\'s language. Then ask what else you can do; offer one of visit_types only if they want a visit. Never look for or book another visit in its place.' } };
+  }
+  const line = PACKS[lang].spoken.visitNotOffered({ visits: visit_types.map((v) => v.name) });
+  return { ok: false, data: { error: 'unknown_visit_type', visit_types, spoken: line,
+    say: `Say, in these words: "${line}" On their pick, find_slots with that visit's id from visit_types; for a request, create_callback with what they asked for. Never look for or book another visit in its place without their yes.` } };
+}
 /** The animals a vet lists, for the caller ("dogs and cats"), in the call's language where the clinic gave one. */
 const seesAnimals = (p: { categories: string[]; categoryNames?: Record<string, string> | undefined }, lang: CallState['language']): string | null => {
   const names = p.categories.map((c) => (lang !== 'en' && p.categoryNames?.[c]) || c).map((c) => c.toLowerCase());
@@ -430,6 +455,10 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       ? 'Before that, find the pet with verify_caller, or add it with register_patient when the caller said it is new, asking only for what the caller has not said yet (the owner\'s first name, the pet\'s name).'
       : 'Before that, ask for the caller\'s full name and date of birth.'));
   }
+  // a visit the clinic does not offer is said so at any hour: closed or not, it is never booked here (2026-11-16)
+  if (name === 'find_slots' && !ctx.clinic.visitTypes.some((v) => v.id === (parsed.data as { visit_type_id?: unknown }).visit_type_id)) {
+    return visitNotOffered(String((parsed.data as { visit_type_id?: unknown }).visit_type_id), state, ctx.clinic, state.language);
+  }
   // closed, at a clinic that takes requests out of hours: the team books in the morning. No
   // times are looked up either, so none is ever read out and then refused. A cancellation
   // still goes ahead: it frees a slot and needs no one's judgement.
@@ -603,6 +632,12 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       for (const f of found) state.answersGiven.add(f.id);
       const texting = textingOf(clinic);
       const today = localDateOf(ctx.now(), clinic.timezone);
+      const bookable = bookableVisits(clinic, state.verifiedPatient);
+      // the clinic's own answer wins when it is about what it offers ("What services do you offer?"), never one that only
+      // shares a word ("What should I bring to the first visit?" for "what visits do you have?")
+      const ownOffer = !!answer && (asksWhatVisits(answer.question) || /\b(?:services?|servicios?|offer|offers|ofrecen|ofrece)\b/.test(normalise(answer.question)));
+      const visitsLine = !ownOffer && bookable.length && asksWhatVisits(`${question} ${state.lastTurn('caller')}`)
+        ? PACKS[lang].spoken.visitsWeBook({ visits: bookable.slice(0, 6).map((v) => localName(v, lang)), more: bookable.length > 6 }) : null;
       return {
         ok: true,
         data: {
@@ -644,7 +679,10 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
           ...(passages.length ? { passages: passages.map((p) => ({ title: p.title, text: p.text })) } : {}),
           // nothing here may answer it: the front desk's words, never what these facts hold or leave out (note 49 B2: a
           // test call heard "the information returned is only an address")
-          ...(!answer && !passages.length ? { say: `Answer from one of these facts in a sentence or two if it answers the question. If none does, say: "${NO_INFORMATION}" Never tell the caller what these facts include or leave out.` } : {}),
+          // "what can I book?": the visits by name, in the caller's language, unless the clinic's own answer covers it (2026-11-16)
+          ...(visitsLine ? { visits_answer: visitsLine } : {}),
+          ...(visitsLine ? { say: 'They asked what they can book: say visits_answer as written, in a sentence or two, then take their pick to find_slots. A visit booked_by the team is a request for the team, never a time.' }
+            : !answer && !passages.length ? { say: `Answer from one of these facts in a sentence or two if it answers the question. If none does, say: "${NO_INFORMATION}" Never tell the caller what these facts include or leave out.` } : {}),
         },
       };
     }
@@ -679,7 +717,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
 
     case 'find_slots': {
       const visitType = clinic.visitTypes.find((v) => v.id === args.visit_type_id);
-      if (!visitType) return refuse('unknown_visit_type', `Ask which of these they need: ${clinic.visitTypes.map((v) => localName(v, lang)).join(', ')}.`);
+      if (!visitType) return visitNotOffered(String(args.visit_type_id), state, clinic, lang);
       // the clinic books this one itself: a request for the team, never a time from the assistant
       if (visitType.staffOnly) {
         // why, the notice the clinic set, then both next steps (a test call asked for surgery and heard only "not the surgery itself")

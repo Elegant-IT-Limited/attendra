@@ -32,6 +32,8 @@ export function playableOnVapi(s: Scenario): boolean {
 export const VAPI_PATH_SCENARIOS = [
   'booking-happy-path', 'reschedule-existing', 'cancel-with-confirmation', 'hedge-is-not-yes', 'no-identity-no-records', 'wrong-dob-three-times', 'emergency-chest-pain',
   'not-an-emergency', 'es-booking', 'es-hedge', 'es-emergency', 'es-refill', 'es-wrong-dob',
+  // a visit the clinic does not offer, and "what can I book?": the same answer as on the planner path (2026-11-16)
+  'vet-visit-not-offered', 'vet-es-visit-not-offered', 'vet-what-visits', 'vet-es-what-visits', 'vet-not-offered-common-question-wins',
 ] as const;
 
 export interface VapiPathResult { id: string; passed: boolean; failures: string[]; outcome: string; ms: number }
@@ -169,6 +171,10 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
     const script = controls.some((c) => c.type === 'say' && c.onCallerWords) && row.emergencyFlag;
     check(script === e.emergency_instruction, `emergency script said ${script}, expected ${e.emergency_instruction}`);
     if (e.language) check(row.language === e.language, `answered in ${row.language}, expected ${e.language}`);
+    // what the tools handed the voice, as on the planner path: the same facts and words
+    const handed = JSON.stringify(outputs).toLowerCase();
+    for (const phrase of e.returned) check(handed.includes(phrase.toLowerCase()), `no tool result gave "${phrase}"`);
+    for (const phrase of e.never_returned) check(!handed.includes(phrase.toLowerCase()), `a tool result gave "${phrase}", which it must not`);
     if (e.hung_up !== undefined) {
       const byRule = controls.some((c) => c.type === 'end-call' && c.onCallerWords);
       check(byRule === e.hung_up, `the assistant ${byRule ? 'ended the call itself' : 'did not end the call itself'}, expected ${e.hung_up ? 'it to' : 'not to'}`);

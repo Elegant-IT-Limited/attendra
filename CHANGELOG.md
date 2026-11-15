@@ -4,6 +4,13 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (visit types and Settings, 2026-11-16)
+
+- **A visit the clinic does not offer is said plainly, never booked as another.** Asked to book grooming, a boarding stay or laser therapy, the assistant says the clinic doesn't book that, names the visits it does (up to five, the closest to what was asked first, in the caller's language) and offers a request for the team. When one of the clinic's common questions covers it ("We do not offer grooming"), that answer wins. `find_slots` carries the answer itself, so the planner path and the tools path (`not_offered` in its visit list) say the same thing, at any hour.
+- **"What can I book?" is answered with the clinic's visits by name**, unless the clinic's own answer about its services covers it. A caller who describes a problem still gets the most likely visit.
+- **Settings > Website** keeps "https://" while it is typed and accepts a website without it: it is saved with https://.
+- **Settings no longer says the greeting "still says" the clinic's name** when the name is followed by a comma ("Maple Vet Clinic, Denver."), in English or Spanish; a greeting with the old name before a comma or a line break is now pointed at.
+
 ### Changed (Vapi voice, 2026-11-11)
 
 - **A location on Vapi speaks with an ElevenLabs voice** (eleven_flash_v2_5, which speaks Spanish too) of the same kind as the clinic's own voice, never Vapi's own default. Settings > Voice on such a location offers the ElevenLabs voices, with ElevenLabs' own sample on Listen; the clinic's OpenAI voice is kept for when it moves back.

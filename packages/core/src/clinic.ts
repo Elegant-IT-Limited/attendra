@@ -354,12 +354,26 @@ export const MAX_RETENTION_DAYS = 1095;
 /** What a clinic can choose in Settings, Call records. */
 export const RETENTION_CHOICES = [90, 180, 365, 730, 1095] as const;
 
+/**
+ * A website as the clinic types it, with or without its scheme ("maplevet.example", "https://maplevet.example"): kept
+ * with https:// when it has none, and the scheme in small letters. Empty, or the scheme alone, is no website. Settings
+ * took "https://" off as it was typed and then refused the website for lacking it, so none could be saved (2026-11-16):
+ * this is the one rule, for the field and for the save.
+ */
+export function websiteWithScheme(typed: string): string | undefined {
+  const t = typed.trim();
+  if (!t || /^(?:https?:?\/{0,2})$/i.test(t)) return undefined;
+  const scheme = /^(https?):\/\//i.exec(t);
+  return scheme ? `${scheme[1]!.toLowerCase()}://${t.slice(scheme[0].length)}` : `https://${t.replace(/^\/+/, '')}`;
+}
+
 const ClinicConfigShape = z.object({
   id: z.string(),
   name: z.string(),
   // where the clinic is and its website: the assistant gives them to a caller who asks
   address: z.string().trim().max(200).optional(),
-  website: z.string().trim().max(200).regex(/^https?:\/\//, 'a website starts with https://').optional(),
+  // typed with or without https:// (Settings, 2026-11-16): kept with it (websiteWithScheme)
+  website: z.preprocess((v) => (typeof v === 'string' ? websiteWithScheme(v) : v), z.string().max(200).regex(/^https?:\/\/\S/, 'a website starts with https://').optional()),
   // the trade the assistant works in: what things are called and the prompt lines that depend on it
   industry: z.enum(INDUSTRIES).default('clinic'),
   timezone: z.string().refine((tz) => {

@@ -35,6 +35,8 @@ const horas = (day: OfferDay) => {
 
 /** "a, b y c". */
 const yList = (items: string[]) => (items.length > 1 ? `${items.slice(0, -1).join(', ')} y ${items.at(-1)}` : items[0] ?? '');
+/** "a, b o c" ("u" before a word that starts with an o sound: "u otra"). */
+const oList = (items: string[]) => (items.length > 1 ? `${items.slice(0, -1).join(', ')} ${/^h?o/i.test(items.at(-1)!) ? 'u' : 'o'} ${items.at(-1)}` : items[0] ?? '');
 /** "9", "9:30", como se dice una hora al hablar de horarios ("de 9 a 1"). */
 const horaCorta = (t: Clock) => { const c = clock12(t.hour, t.minute); return t.minute ? `${c.hour}:${c.minutes}` : String(c.hour); };
 /** "a las 9", "a la 1". */
@@ -242,6 +244,8 @@ export const es: LanguagePack = {
     textSent: 'Listo, se lo acabo de enviar. ¿Hay algo más en lo que le pueda ayudar?',
     reminders: ({ agreed }) => `${agreed ? 'Perfecto, recibirá un recordatorio por mensaje de texto el día antes de la cita.' : 'De acuerdo, sin recordatorios por mensaje de texto.'} ¿Hay algo más en lo que le pueda ayudar?`,
     noVetForAnimal: ({ vet, animals, pet }) => `${vet && animals ? `${vet} solo atiende ${animals}` : 'Ninguno de nuestros veterinarios atiende ese tipo de animal'}, así que no puedo agendar eso aquí. ¿Quiere que deje una solicitud para que el equipo agende a ${pet}?`,
+    visitNotOffered: ({ visits }) => `Eso no lo agendamos aquí.${visits.length ? ` Puedo agendarle: ${oList(visits.map((v) => v.toLowerCase()))}. ¿Quiere una de esas, o prefiere que deje una solicitud para el equipo?` : ' ¿Quiere que deje una solicitud para el equipo?'}`,
+    visitsWeBook: ({ visits, more }) => `Podemos agendarle: ${yList(visits.map((v) => v.toLowerCase()))}${more ? ', entre otras' : ''}. ¿Cuál le gustaría?`,
     noTransfer: 'Ahora mismo no puedo pasarle con nadie, pero pediré que el equipo le llame. ¿De qué se trata?',
     lookingUp: ({ kind, day, pet }) => kind === 'times_on' && day ? `Déjeme revisar ${day === 'hoy' || day === 'mañana' ? day : `el ${day}`}.`
       : kind === 'times' ? 'Un momento, reviso los horarios.'

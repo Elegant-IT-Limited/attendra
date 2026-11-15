@@ -4,6 +4,7 @@ import { toolDefinitions } from '../planner';
 import type { ToolResult } from '../tools';
 import type { FlowStage } from './booking';
 import type { CallState } from '../call-state';
+import { NOT_OFFERED_VISIT } from '../visit-offer';
 
 /** The clinic's clock: a tool of its own, the one source for the time, the day and whether the clinic is open (V-3). */
 export const CLINIC_NOW = {
@@ -34,7 +35,7 @@ export function voiceToolDefinitions(clinic: ClinicConfig) {
     const params = t.parameters as { properties: Record<string, Record<string, unknown>> };
     return {
       ...t,
-      parameters: { ...params, properties: { ...params.properties, visit_type_id: { type: 'string', enum: choices.map((c) => c.id), description: `The visit, one of: ${choices.map((c) => `${c.id} (${c.name})`).join(', ')}. Take it from what the caller asked for; when they did not say, the most likely one for what they described.` } } },
+      parameters: { ...params, properties: { ...params.properties, visit_type_id: { type: 'string', enum: [...choices.map((c) => c.id), NOT_OFFERED_VISIT], description: `The visit, one of: ${choices.map((c) => `${c.id} (${c.name})`).join(', ')}. Take it from what the caller asked for; when they did not say, the most likely one for what they described. ${NOT_OFFERED_VISIT} when they asked for something that is none of these (grooming, a boarding stay): the result says what to answer; never another visit in its place.` } } },
     };
   }), CLINIC_NOW];
 }
@@ -51,12 +52,13 @@ export interface VoiceToolOutput {
   ok: boolean; outcome: string; spoken?: string; say?: string; data: Record<string, unknown>; stage: FlowStage; next?: string;
 }
 
-/** The tool result shaped for the voice. */
-export function shapeForVoice(name: string, result: ToolResult, stage: FlowStage, next: string | null, extras?: { visitTypes?: { id: string; name: string }[] }): VoiceToolOutput {
+/**
+ * The tool result shaped for the voice. A visit type the clinic does not have comes back with the ones it does, with
+ * their ids, from find_slots itself (visit_types, in the caller's language), as on the planner path.
+ */
+export function shapeForVoice(name: string, result: ToolResult, stage: FlowStage, next: string | null): VoiceToolOutput {
   // find_slots words its answer as say_as (the exact words) and note (how to use them): the same two parts as spoken and say
   const { error, say, spoken, say_as: sayAs, note, ...data } = result.data as Record<string, unknown> & { error?: unknown; say?: unknown; spoken?: unknown; say_as?: unknown; note?: unknown };
-  // a visit type the clinic does not have: the ones it does, with their ids, so the next call names a real one
-  if (error === 'unknown_visit_type' && extras?.visitTypes) data.visit_types = extras.visitTypes;
   const out: VoiceToolOutput = {
     ok: result.ok,
     outcome: typeof error === 'string' ? error : result.ok ? okOutcome(name, data) : 'refused',

@@ -78,6 +78,33 @@ test.describe.serial('languages and a second clinic', () => {
     await expect(greeting).toHaveValue(/Thanks for calling Maple Street Family Medicine\./);
   });
 
+  // 2026-11-16: the clinic's name followed by a comma was pointed at as an old name, in English and in Spanish
+  test('a greeting that says the clinic\'s name now is never pointed at, whatever follows it: a comma, a full stop or the end of a line', async () => {
+    const page = manager;
+    await page.goto('/c/clinic_demo_maple/settings');
+    const greeting = page.getByLabel('Greeting');
+    await expect(greeting).toHaveValue(/I'm Maya/);
+    for (const text of [
+      "Thanks for calling Maple Street Family Medicine, Denver. I'm Maya, the clinic's AI assistant. How can I help you today?",
+      "Thanks for calling Maple Street Family Medicine, I'm Maya, the clinic's AI assistant. How can I help you today?",
+      "Thanks for calling Maple Street Family Medicine. I'm Maya, the clinic's AI assistant. How can I help you today?",
+      "Thanks for calling Maple Street Family Medicine\nI'm Maya, the clinic's AI assistant. How can I help you today?",
+    ]) {
+      await greeting.fill(text);
+      await expect(greeting).toHaveValue(text);
+      await expect(page.getByTestId('greeting-stale-en')).toHaveCount(0);
+    }
+    // the Spanish greeting, with a comma after the name
+    const spanish = page.getByTestId('greeting-preview-es').getByRole('textbox');
+    await spanish.fill('Gracias por llamar a Maple Street Family Medicine, en Denver. Soy Maya, la asistente virtual con inteligencia artificial de la clínica. ¿En qué le puedo ayudar?');
+    await expect(page.getByTestId('greeting-stale-es')).toHaveCount(0);
+    // an old name with a comma after it is still pointed at, as the name alone
+    await greeting.fill("Thanks for calling Riverside Pet Care, I'm Maya, the clinic's AI assistant. How can I help you today?");
+    await expect(page.getByTestId('greeting-stale-en')).toContainText('Your English greeting still says "Riverside Pet Care".');
+    await page.getByRole('button', { name: 'Discard' }).click();
+    await expect(greeting).toHaveValue(/Thanks for calling Maple Street Family Medicine\./);
+  });
+
   // last, since it ends the stored Cedar Park session, which no spec after this one uses
   test('signing out clears the screen', async ({ browser }) => {
     const page = await openAs(browser, 'cedarpark');

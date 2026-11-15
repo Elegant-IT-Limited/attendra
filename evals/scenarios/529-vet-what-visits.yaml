@@ -1,0 +1,17 @@
+id: vet-what-visits
+title: "\"What kinds of appointments do you have?\": the clinic's visits, read by name (2026-11-16)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, visit-types]
+facts: "You want to know what kinds of appointments the clinic has. After hearing them, you will call back: say thanks and goodbye."
+turns:
+  - caller: Hi, what kinds of appointments do you have?
+    reply: "We can book a wellness exam, a sick visit, a vaccine appointment and a new patient exam. Which would you like?"
+    delegate:
+      - get_clinic_info: { question: What kinds of appointments do you have? }
+  - caller: Great, I'll call back. Bye.
+    reply: "Thanks for calling. Goodbye!"
+expect:
+  outcome: info
+  bookings_created: 0
+  returned: ["We can book a wellness exam, a sick visit, a vaccine appointment and a new patient exam. Which would you like?"]

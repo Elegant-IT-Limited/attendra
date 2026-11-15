@@ -61,6 +61,8 @@ export const Scenario = z.object({
     urgent_requests: z.number().int().optional(),
     sms_sent: z.number().int().default(0),
     sms_templates: z.array(z.string()).default([]), // the texts' templates, in order, when the scenario names them
+    // what each text says, in order: every key and value given is in that text's details ({ pet: Biscuit, visit: dental check-up })
+    sms_vars: z.array(z.record(z.string(), z.string())).default([]),
     transfer_to: z.string().nullable().default(null),
     emergency_instruction: z.boolean().default(false),
     // how the call's emergency ended, as the Calls page shows it ('cleared' is "Emergency cleared"; note 49 B1)
@@ -76,6 +78,8 @@ export const Scenario = z.object({
     not_offered_on: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).default([]), // the clinic's local dates no offered time may fall on
     offered_from_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(), // every offered time is at or after this local time of day
     booked_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), // every booking made on the call is on this local date
+    // every booking made on the call, in time order: its local date and time and its visit type (two visits for one pet, 2026-11-16)
+    bookings: z.array(z.object({ on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), at: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), visit: z.string() })).optional(),
     hung_up: z.boolean().optional(),
     // the team's note on the appointments made on the call (decrypted), each phrase in one of them ("booked by caller: Alex"),
     // or no note on any of them

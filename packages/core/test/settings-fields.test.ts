@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ClinicConfig, RIVERBEND_CLINIC, realDate, settingsFieldProblems } from '../src';
+import { ClinicConfig, RIVERBEND_CLINIC, realDate, settingsFieldProblems, websiteWithScheme } from '../src';
 
 describe('the Settings field standard, on save', () => {
   it('passes a clinic as it is set up', () => {
@@ -29,5 +29,25 @@ describe('the Settings field standard, on save', () => {
     const c = ClinicConfig.parse({ ...RIVERBEND_CLINIC, greeting: '  ' + RIVERBEND_CLINIC.greeting + '  ', faqs: [{ id: 'faq_park', question: ' Where do I park? ', answer: ' Behind the clinic. ' }],
       visitTypes: [{ ...RIVERBEND_CLINIC.visitTypes[0]!, name: ' check-up ' }, ...RIVERBEND_CLINIC.visitTypes.slice(1)], recording: { enabled: true, notice: ' This call is recorded. ' } });
     expect([c.greeting, c.faqs[0]!.question, c.faqs[0]!.answer, c.visitTypes[0]!.name, c.recording.notice]).toEqual([RIVERBEND_CLINIC.greeting.trim(), 'Where do I park?', 'Behind the clinic.', 'check-up', 'This call is recorded.']);
+  });
+});
+
+// 2026-11-16: Settings took "https://" off while it was typed, then refused the website for lacking it
+describe('the website, typed with or without https://', () => {
+  it('is kept with https:// when typed without it, and as typed when it has one', () => {
+    expect(websiteWithScheme('maplevet.example')).toBe('https://maplevet.example');
+    expect(websiteWithScheme('  www.maplevet.example/hours ')).toBe('https://www.maplevet.example/hours');
+    expect(websiteWithScheme('https://maplevet.example')).toBe('https://maplevet.example');
+    expect(websiteWithScheme('HTTPS://maplevet.example')).toBe('https://maplevet.example');
+    expect(websiteWithScheme('http://maplevet.example')).toBe('http://maplevet.example');
+    // empty, or only the scheme (the placeholder, or half typed): no website
+    for (const typed of ['', '   ', 'https://', 'http://', 'https:', 'https']) expect(websiteWithScheme(typed), typed).toBeUndefined();
+  });
+  it('saves either way, stored with https://', () => {
+    expect(ClinicConfig.parse({ ...RIVERBEND_CLINIC, website: 'maplevet.example' }).website).toBe('https://maplevet.example');
+    expect(ClinicConfig.parse({ ...RIVERBEND_CLINIC, website: 'https://maplevet.example' }).website).toBe('https://maplevet.example');
+    expect(ClinicConfig.parse({ ...RIVERBEND_CLINIC, website: 'https://' }).website).toBeUndefined();
+    expect(ClinicConfig.parse({ ...RIVERBEND_CLINIC, website: undefined }).website).toBeUndefined();
+    expect(ClinicConfig.safeParse({ ...RIVERBEND_CLINIC, website: 'x'.repeat(201) }).success).toBe(false);
   });
 });

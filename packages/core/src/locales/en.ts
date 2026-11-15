@@ -223,6 +223,8 @@ export const en: LanguagePack = {
     textSent: 'Done, I\'ve just sent it. Is there anything else I can help you with?',
     reminders: ({ agreed }) => `${agreed ? 'Great, you\'ll get a reminder text the day before the visit.' : 'No problem, no reminder texts.'} Is there anything else I can help you with?`,
     noVetForAnimal: ({ vet, animals, pet }) => `${vet && animals ? `${vet} sees ${animals} only` : 'None of our vets is listed for that kind of animal'}, so I can't book that here myself. Shall I take a request so the team can book ${pet}?`,
+    visitNotOffered: ({ visits }) => `That isn't something we book here.${visits.length ? ` I can book ${orList(visits.map((v) => withArticle(v.toLowerCase())))}. Would you like one of those, or shall I take a request for the team?` : ' Shall I take a request for the team?'}`,
+    visitsWeBook: ({ visits, more }) => `We can book ${andList(visits.map((v) => withArticle(v.toLowerCase())))}${more ? ', among others' : ''}. Which would you like?`,
     noTransfer: 'I can\'t put you through right now, but I\'ll have the team call you back. What\'s it about?',
     lookingUp: ({ kind, day, pet }) => kind === 'times_on' && day ? `Let me check ${day}${/\d$/.test(day) ? ',' : ''} for you.`
       : kind === 'times' ? 'One moment, I\'ll look at the times.'

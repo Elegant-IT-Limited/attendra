@@ -1,0 +1,55 @@
+id: vet-es-same-pet-two-visits-two-days
+title: "In Spanish: one pet, a chequeo general on Thursday and a revisión dental on Friday; both booked, each read back and texted in Spanish (2026-11-16)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, number-first, two-bookings, visit-types, es]
+settings:
+  providers:
+    - { id: prov_ruiz, name: Dr. Elena Ruiz, gender: female, specialty: General practice, categories: [Dogs, Cats, Dentistry], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new, vt_dental] }
+    - { id: prov_bell, name: Dr. Marcus Bell, gender: male, specialty: General practice, categories: [Dogs, Cats, Senior pets], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new, vt_dental] }
+    - { id: prov_sato, name: Dr. Hana Sato, gender: female, specialty: Exotic pets, categories: [Rabbits, Birds, Reptiles, Small mammals], visitTypeIds: [vt_wellness, vt_sick, vt_new], hours: { "2": [{ open: "08:00", close: "18:00" }], "4": [{ open: "08:00", close: "18:00" }] } }
+  visitTypes:
+    - { id: vt_wellness, name: wellness exam, names: { es: chequeo general }, minutes: 30, audience: existing }
+    - { id: vt_sick, name: sick visit, names: { es: consulta por enfermedad }, minutes: 20 }
+    - { id: vt_vaccines, name: vaccine appointment, names: { es: cita de vacunas }, minutes: 15 }
+    - { id: vt_new, name: new patient exam, names: { es: primera consulta }, minutes: 40, audience: new }
+    - { id: vt_dental, name: dental check-up, names: { es: revisión dental }, minutes: 30 }
+turns:
+  - caller: Hola, quiero un chequeo general para Biscuit el jueves en la mañana.
+    reply: "¿El perfil de su mascota está con el número desde el que llama, que termina en 0172?"
+  - caller: Sí, es mi número.
+    reply: "Encontré a Biscuit, su perro. Para el chequeo general del jueves tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: null }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-10-01", part_of_day: morning }
+  - caller: La primera.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, Biscuit tiene cita {booked}. ¿Algo más?"
+    delegate:
+      - commit_pending: {}
+  - caller: Sí, también necesita una revisión dental. ¿Tiene el viernes a las 9?
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - find_slots: { visit_type_id: vt_dental, provider_id: null, from_date: "2026-10-02", part_of_day: any, from_time: "09:00", time_mode: at }
+  - caller: Sí, por favor.
+    reply: "Listo, Biscuit también tiene cita {booked}. ¿Algo más?"
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  bookings_created: 2
+  bookings:
+    - { on: "2026-10-01", at: "08:00", visit: vt_wellness }
+    - { on: "2026-10-02", at: "09:00", visit: vt_dental }
+  sms_sent: 2
+  sms_templates: [booking_confirmed, booking_confirmed]
+  sms_vars:
+    - { pet: Biscuit, visit: chequeo general }
+    - { pet: Biscuit, visit: revisión dental }
+  returned: ["chequeo general", "revisión dental"]
+  never_returned: ["for a dental check-up"]
