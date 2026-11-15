@@ -21,7 +21,7 @@ import { PhoneInput } from '@/components/ui/phone-input';
 import { Panel } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { ago, clinicTime, dayTitle, dob, personName, personWithRole, phone, requestCreator, requestExample, requestNumber, TASK_HISTORY, TASK_KIND_ORDER, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, telHref, zoneLabel } from '@/lib/format';
+import { ago, clinicTime, dayTitle, dob, personName, personWithRole, phone, requestCreator, requestExample, requestKind, requestNumber, TASK_HISTORY, TASK_KIND_ORDER, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, telHref, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { Avatar, RelativeTime } from '@/components/ui/bits';
 import { Segmented } from '@/components/ui/tabs';
@@ -29,8 +29,8 @@ import { cn } from '@/lib/utils';
 import { SAFETY_POLL_MS, SAFETY_POLL_WORDS } from '@/lib/changes';
 import { patchRequestElsewhere } from '@/lib/optimistic';
 
+// the clinic's own kind (`topic`) is the request's label, in its title: not listed again among the details
 const DETAIL_LABELS: Record<string, string> = {
-  topic: 'Topic',
   name: 'Name', medication: 'Medication', pharmacy: 'Pharmacy', callback_number: 'Call back on', reason: 'What it is about',
   first_name: 'First name', last_name: 'Last name', date_of_birth: 'Date of birth', gender: 'Gender', phone: 'Phone', guardian_name: 'Parent or guardian', possible_duplicate: 'Worth a look',
   suggested: 'Suggested next step',
@@ -176,7 +176,9 @@ function Requests() {
   // the clinic's own field, filtered here: the values are already on the cards
   const shown = (tasks.data?.tasks ?? []).filter((t) => (!filterField || !fieldFilter.value
     || (filterField.kind === 'multi' ? multiValues(t.custom[filterField.id]).includes(fieldFilter.value) : t.custom[filterField.id] === fieldFilter.value))
-    && (!topic || t.details.topic === topic));
+    && (!topic || t.details.topic === topic)
+    // "Callback" is the built-in kind: a request of one of the clinic's own kinds is stored as a callback, and listed under its own name
+    && (type !== 'callback' || !t.details.topic));
   // the open request: from the list while it is there, else as last seen, with its row kept at the end of the list
   const inList = shown.find((x) => x.id === openId);
   const open = inList ?? (openId ? held : null);
@@ -283,7 +285,7 @@ function Requests() {
         const siblings = t?.callId ? shown.filter((x) => x.callId === t.callId && x.id !== t.id) : [];
         return (
           <Panel open={!!t} onOpenChange={(o) => { if (!o) closeTask(); }} side="right" className="max-w-xl"
-            title={t ? `${requestNumber(t.number)} · ${taskType(t.type, terms.patient)}` : 'Request'} description={t ? nameOf(t, terms.patient) : undefined}>
+            title={t ? `${requestNumber(t.number)} · ${requestKind(t, terms.patient)}` : 'Request'} description={t ? nameOf(t, terms.patient) : undefined}>
             {t && (
               <div className="space-y-4">
                 <RequestCard bare fields={requestFields} task={t} patientWord={terms.patient} clinicId={clinicId} tz={tz} today={localDateOf(new Date(), tz)} meId={me?.user.id} busy={act.isPending} teammates={teammates}
@@ -299,7 +301,7 @@ function Requests() {
                           <li key={x.id}>
                             <button type="button" className="focus-ring flex w-full items-center gap-3 rounded-md border border-dashed border-border-strong px-3 py-2 text-left text-sm hover:bg-surface-sunken" onClick={() => openTask(x.id)}>
                               <Icon className="size-4 shrink-0 text-primary" aria-hidden />
-                              <span className="min-w-0 flex-1"><span className="font-medium">{taskType(x.type, terms.patient)}</span> <span className="text-text-muted">{needOf(x, terms.patient).main}</span></span>
+                              <span className="min-w-0 flex-1"><span className="font-medium">{requestKind(x, terms.patient)}</span> <span className="text-text-muted">{needOf(x, terms.patient).main}</span></span>
                               <ChevronRight className="size-4 text-text-muted" aria-hidden />
                             </button>
                           </li>
@@ -331,7 +333,8 @@ const madeBy = (t: Task) => `Added by ${requestCreator(t)}`;
 function needOf(t: Task, patientWord: string): { main: string; sub: string } {
   const d = t.details;
   const callBack = d.callback_number ? `Call back on ${phone(d.callback_number)}` : null;
-  const main = d.medication ?? d.topic ?? d.reason ?? (t.type === 'follow_up' ? d.suggested ?? t.followUp : null) ?? (t.type === 'review' ? 'Check the details the assistant took' : null) ?? taskType(t.type);
+  // what it is about; the kind (the clinic's own one too) is the row's label, not its summary
+  const main = d.medication ?? d.reason ?? (t.type === 'follow_up' ? d.suggested ?? t.followUp : null) ?? (t.type === 'review' ? 'Check the details the assistant took' : null) ?? requestKind(t, patientWord);
   const next = t.type === 'follow_up' ? d.suggested ?? t.followUp : null;
   const sub = [d.pharmacy, d.owner_name && d.owner_name !== nameOf(t, patientWord) ? `Owner ${d.owner_name}` : null, next ? `Suggested: ${next}` : null, callBack, d.possible_duplicate ? 'Worth a look: maybe already on file' : null]
     .filter((x): x is string => !!x && x !== main).join(' · ');
@@ -380,7 +383,7 @@ function RequestRow({ task: t, patientWord, tz, today, meId, selected, onOpen }:
       <span className="flex size-9 items-center justify-center rounded-full bg-primary-soft text-primary md:order-1"><Icon className="size-4" aria-hidden /></span>
       <span className="min-w-0 md:order-2">
         <span className="block truncate font-medium">{nameOf(t, patientWord)}</span>
-        <span className="block truncate text-xs text-text-muted"><span className="font-medium tabular-nums text-text" data-testid="request-number">{requestNumber(t.number)}</span> · {taskType(t.type, patientWord)}</span>
+        <span className="block truncate text-xs text-text-muted"><span className="font-medium tabular-nums text-text" data-testid="request-number">{requestNumber(t.number)}</span> · <span data-testid="request-kind">{requestKind(t, patientWord)}</span></span>
       </span>
       <span className="flex flex-wrap justify-end gap-1.5 md:order-5" data-testid="row-status">
         {open && t.urgent && <Badge tone="danger"><AlertTriangle /> {t.origin === 'emergency' ? 'Emergency' : 'Urgent'}</Badge>}
@@ -413,7 +416,9 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
   const [note, setNote] = useState('');
   const [closing, setClosing] = useState(false);
   const [editingFields, setEditingFields] = useState(false);
-  const [outcome, setOutcome] = useState(t.type === 'refill' && canApprove ? 'refill_sent' : t.type === 'review' ? 'details_confirmed' : 'called_back');
+  // one of the clinic's own kinds is done when it is done ("Done", no outcome); a call back or a message is still offered
+  const ownKind = !!t.details.topic;
+  const [outcome, setOutcome] = useState(t.type === 'refill' && canApprove ? 'refill_sent' : t.type === 'review' ? 'details_confirmed' : ownKind ? '' : 'called_back');
   const Icon = ICONS[t.type] ?? Phone;
   const mine = t.assigneeUserId === meId;
   const heldByOther = !!t.assigneeUserId && !mine;
@@ -428,7 +433,7 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
             {t.patientName && t.patientId && canOpenPatient
               ? <Link href={`/c/${clinicId}/patients/${t.patientId}`} className="block truncate font-medium hover:underline">{t.patientName}</Link>
               : <p className="truncate font-medium">{nameOf(t, patientWord)}</p>}
-            <p className="text-xs text-text-muted">{taskType(t.type, patientWord)}, {open ? <>came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} /></> : `closed ${clinicTime(t.doneAt ?? t.createdAt, tz)}${t.doneByName === null ? '' : ` by ${personName(t.doneByName)}`}`}</p>
+            <p className="text-xs text-text-muted">{requestKind(t, patientWord)}, {open ? <>came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} /></> : `closed ${clinicTime(t.doneAt ?? t.createdAt, tz)}${t.doneByName === null ? '' : ` by ${personName(t.doneByName)}`}`}</p>
           </div>
         </div>
         <div className="flex flex-wrap justify-end gap-1.5">
@@ -439,7 +444,7 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
         </div>
       </div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-5 py-4 text-sm">
-        {Object.entries(t.details).map(([k, v]) => (
+        {Object.entries(t.details).filter(([k]) => k !== 'topic').map(([k, v]) => (
           <div key={k} className="contents">
             <dt className="text-text-muted">{DETAIL_LABELS[k] ?? k}</dt>
             <dd>{shownDetail(k, v)}</dd>
@@ -507,6 +512,7 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
             <>
               <Label htmlFor={`outcome-${t.id}`} className="sr-only">Outcome</Label>
               <Select id={`outcome-${t.id}`} className="h-8 flex-1" value={outcome} onChange={(e) => setOutcome(e.target.value)} aria-label="Outcome">
+                {ownKind && <option value="">Done</option>}
                 {Object.entries(TASK_OUTCOMES).filter(([k]) => (!k.startsWith('refill_') || t.type === 'refill') && (k !== 'details_confirmed' || t.type === 'review'))
                   .map(([k, v]) => <option key={k} value={k} disabled={DECISIONS.has(k) && !canApprove}>{v}</option>)}
               </Select>
@@ -514,7 +520,7 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
                 <p className="w-full text-xs text-text-muted">A {patientWord === 'pet' ? 'veterinarian' : 'prescriber'} marked as approving refills decides this one (sent, ready or not approved); you can add a note or call the {patientWord === 'pet' ? 'owner' : 'patient'}.</p>
               )}
               <Button size="sm" variant="ghost" onClick={() => setClosing(false)}>Back</Button>
-              <Button size="sm" disabled={busy} onClick={() => { onAct('done', { outcome }); setClosing(false); }}>Mark done</Button>
+              <Button size="sm" disabled={busy} onClick={() => { onAct('done', outcome ? { outcome } : {}); setClosing(false); }}>Mark done</Button>
             </>
           ) : (
             <>
@@ -578,7 +584,7 @@ function RequestHistory({ clinicId, task: t, tz }: { clinicId: string; task: Tas
             <ol className="space-y-1.5">
               {history.data.events.map((e, i) => (
                 <li key={i} className="flex flex-wrap gap-x-2">
-                  <span className="font-medium">{TASK_HISTORY[e.action] ?? 'Changed'}</span>
+                  <span className="font-medium">{e.action === 'task.created.topic' ? `Took a request: ${requestKind(t)}` : TASK_HISTORY[e.action] ?? 'Changed'}</span>
                   <span className="text-text-muted">{whoDid(e.by)}, {clinicTime(e.at, tz)}</span>
                 </li>
               ))}
@@ -601,6 +607,8 @@ function NewRequest({ clinicId, open, onOpenChange, topics, fields, patientWord 
   // the record the request is about, picked from the records, or none yet (a caller nobody has on file)
   const [picked, setPicked] = useState<{ id: string; name: string } | null>(null);
   const [picking, setPicking] = useState(false);
+  // the number put in "Call back on" from the record picked, so picking another record replaces it, never one typed
+  const [prefilled, setPrefilled] = useState('');
   const [draft, setDraft] = useState(blank);
   const [custom, setCustom] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -625,7 +633,7 @@ function NewRequest({ clinicId, open, onOpenChange, topics, fields, patientWord 
       toast(r.fieldsFailed
         ? { tone: 'error', message: 'The request is added, but not its details. Open it and use Edit details.' }
         : { tone: 'success', message: 'Request added. It is in the queue for the team.' });
-      setDraft(blank); setCustom({}); setPicked(null); setPicking(false); setError(null); onOpenChange(false);
+      setDraft(blank); setCustom({}); setPicked(null); setPicking(false); setPrefilled(''); setError(null); onOpenChange(false);
       void queries.invalidateQueries({ queryKey: ['tasks', clinicId] });
     },
     onError: (e) => setError(e instanceof ApiFailure && e.body.issues?.length ? e.body.issues[0]!.message : 'That did not save. Try again.'),
@@ -676,7 +684,13 @@ function NewRequest({ clinicId, open, onOpenChange, topics, fields, patientWord 
             </div>
           ) : picking ? (
             <div className="space-y-2 rounded-lg border border-border p-3">
-              <PatientPicker clinicId={clinicId} canAdd={false} onPick={(p) => { setPicked({ id: p.id, name: p.name }); setPicking(false); setDraft((d) => ({ ...d, name: '' })); }} />
+              {/* the number on file goes in "Call back on" (note 2026-11-16 R1), editable, unless someone typed another */}
+              <PatientPicker clinicId={clinicId} canAdd={false} onPick={(p) => {
+                setPicked({ id: p.id, name: p.name }); setPicking(false);
+                const onFile = p.phone ? phone(p.phone) : '';
+                setDraft((d) => ({ ...d, name: '', callbackNumber: !d.callbackNumber.trim() || d.callbackNumber === prefilled ? onFile : d.callbackNumber }));
+                setPrefilled(onFile);
+              }} />
               <Button size="sm" variant="ghost" onClick={() => setPicking(false)}>No {patientWord} yet</Button>
             </div>
           ) : (

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { applyListChange, ClinicConfig, SETTINGS_LIMITS, EmergencyDraft, emergencyFormFor, emergencyFormView, emergencyNumberProblem, phoneTypingIssues, settingsFieldProblems, inClinicCountry, LANGUAGES, LIST_NAMES, listedVapiVoice, type ListName, PACKS, PREVIEW_VOICES, VAPI_VOICE_MODEL, type VapiVoiceChoice, viewerConfig, voiceLabel, withPhonesAsE164 } from '@attendra/core';
+import { applyListChange, carriedRenames, ClinicConfig, SETTINGS_LIMITS, EmergencyDraft, emergencyFormFor, emergencyFormView, emergencyNumberProblem, phoneTypingIssues, settingsFieldProblems, inClinicCountry, LANGUAGES, LIST_NAMES, listedVapiVoice, type ListName, PACKS, PREVIEW_VOICES, VAPI_VOICE_MODEL, type VapiVoiceChoice, viewerConfig, voiceLabel, withPhonesAsE164, withRenamedChoices } from '@attendra/core';
 import { can } from '../access';
 import { type Database, type FrontDeskRepository, PostgresAuditLog, type ScheduleRepository, schema, staffNames } from '@attendra/db';
 import { and, eq } from 'drizzle-orm';
@@ -10,7 +10,7 @@ import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
 import { API_OPTIONS, type ApiOptions, CLOCK, DB, FRONT_DESK, SCHEDULE } from '../http/tokens';
 import { issuesOf, ZodPipe } from '../http/zod.pipe';
-import { AssistantChoices, AssistantChoicesQuery, KeepStrandedQuery, ListChange } from '../contracts';
+import { AssistantChoices, AssistantChoicesQuery, FieldsChange, KeepStrandedQuery, ListChange } from '../contracts';
 import { keeps, strandedBy, strandedConflict } from '../schedule/stranded';
 import type { z } from 'zod';
 
@@ -127,6 +127,43 @@ export class SettingsController {
     const out = await this.desk.updateSettings<ClinicConfig | { issues: { path: string; message: string }[] }>(clinicId, staff.userId, `clinic.list.updated.${list}`, clinicId, (stored) => {
       const next = ClinicConfig.safeParse(applyListChange(ClinicConfig.parse(stored), list as ListName, body.values, body.renamed));
       if (!next.success) return { result: { issues: issuesOf(next.error) } };
+      return { save: next.data, result: next.data };
+    });
+    if (!out) throw new NotFoundException({ error: 'not_found' });
+    if ('issues' in out) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: out.issues });
+    return out;
+  }
+
+  /**
+   * Settings, Fields and lists: the clinic's own fields and kinds of request, saved together over the newest settings
+   * (row-locked, so nobody's save is undone), with renamed dropdown choices carried to every record that has them: each
+   * pet's or patient's details, each request's and each doctor's, in the same change (note 2026-11-16 F1). A removed
+   * choice is not renamed: records keep what they had, as before.
+   */
+  @Put('fields')
+  @Requires('settings:write')
+  @ApiOperation({ summary: 'Save the clinic\'s own fields (pets or patients, doctors, requests) and kinds of request, with renamed dropdown choices carried to every record. Audited.' })
+  @ApiBody({ schema: schemaOf(FieldsChange) })
+  @ApiOkResponse({ schema: schemaOf(ClinicConfig) })
+  async fields(@Param('clinicId') clinicId: string, @Body(new ZodPipe(FieldsChange)) body: z.infer<typeof FieldsChange>, @CurrentStaff() staff: Staff): Promise<ClinicConfig> {
+    const { renamed, ...lists } = body;
+    const out = await this.desk.updateSettings<ClinicConfig | { issues: { path: string; message: string }[] }>(clinicId, staff.userId, 'clinic.fields.updated', clinicId, async (stored, tx) => {
+      const current = ClinicConfig.parse(stored);
+      const carried = {
+        customFields: carriedRenames(lists.customFields, renamed.customFields ?? {}),
+        providerFields: carriedRenames(lists.providerFields, renamed.providerFields ?? {}),
+        requestFields: carriedRenames(lists.requestFields, renamed.requestFields ?? {}),
+      };
+      // a doctor's own details are in the settings: renamed with them
+      const providers = current.providers.map((p) => {
+        const custom = p.custom && withRenamedChoices(lists.providerFields, p.custom, carried.providerFields);
+        return custom ? { ...p, custom } : p;
+      });
+      const next = ClinicConfig.safeParse({ ...current, ...lists, providers });
+      if (!next.success) return { result: { issues: issuesOf(next.error) } };
+      const problems = settingsFieldProblems(next.data);
+      if (problems.length) return { result: { issues: problems } };
+      await this.desk.renameChoiceValues(tx, clinicId, { customFields: lists.customFields, requestFields: lists.requestFields }, carried);
       return { save: next.data, result: next.data };
     });
     if (!out) throw new NotFoundException({ error: 'not_found' });

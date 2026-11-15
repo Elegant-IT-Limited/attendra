@@ -47,6 +47,16 @@ describe('request numbers', () => {
     expect(audit).toEqual([{ counts: { number: 13 } }]);
   });
 
+  // note 2026-11-16 R2: a request of the clinic's own kind is stored as a callback with its topic; the audit log said
+  // "Took a callback request". It is audited as one of the clinic's own kinds, as the assistant and the team take it
+  it('audits a request of one of the clinic\'s own kinds as that, from the assistant and from the team alike', async () => {
+    const byAssistant = await queue().create(V, { type: 'callback', callId: null, patientId: null, idempotencyKey: 'topic-a', details: { topic: 'Boarding booking', reason: 'Three nights from Friday' } });
+    const byTeam = await new PostgresTaskQueue(t.db, cipher, 'user:u_num').create(V, { type: 'callback', callId: null, patientId: null, idempotencyKey: 'topic-b', details: { topic: 'Boarding booking', reason: 'Two nights' } });
+    const actions = async (id: string) => ((await t.owner.execute(sql`select action, actor from audit_logs where clinic_id = ${V} and entity_id = ${id}`)).rows as { action: string; actor: string }[]);
+    expect(await actions(byAssistant.id)).toEqual([{ action: 'task.created.topic', actor: 'voice-agent' }]);
+    expect(await actions(byTeam.id)).toEqual([{ action: 'task.created.topic', actor: 'user:u_num' }]);
+  });
+
   it('belongs to the household: the record it is about, or the number the call came from when a record is on it', async () => {
     const dir = new PostgresPatientDirectory(t.db, cipher);
     const mochi = await dir.findPet(V, 'Mochi', '+17205550172');

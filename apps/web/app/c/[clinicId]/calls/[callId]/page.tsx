@@ -15,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
 import { testCallBadge } from '@/lib/call-as';
-import { requestNumber, clinicTime, clock, closeReasonLabel, duration, EMERGENCY_RESULTS, phone, REFUSALS, shortWhen, taskType, telHref, TOOLS, waitWords } from '@/lib/format';
+import { requestKind, requestNumber, clinicTime, clock, closeReasonLabel, duration, EMERGENCY_RESULTS, phone, REFUSALS, shortWhen, telHref, TOOLS, waitWords } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 import { SAFETY_POLL_MS } from '@/lib/changes';
@@ -218,7 +218,7 @@ export default function CallPage() {
               <CardContent className="space-y-2">
                 {c.tasks.map((t) => (
                   <Link key={t.id} href={`/c/${clinicId}/requests${t.status === 'open' ? '' : '?status=done'}`} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm hover:bg-surface-sunken">
-                    <span><span className="font-medium tabular-nums">{requestNumber(t.number)}</span> · {taskType(t.type, terms.patient)}</span>
+                    <span><span className="font-medium tabular-nums">{requestNumber(t.number)}</span> · {requestKind(t, terms.patient)}</span>
                     <Badge tone={t.status === 'open' ? 'warn' : 'ok'}>{t.status === 'open' ? 'Open' : 'Done'}</Badge>
                   </Link>
                 ))}

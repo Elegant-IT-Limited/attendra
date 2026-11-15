@@ -65,3 +65,47 @@ export function readCustomValues(fields: CustomField[], values: Record<string, s
   }
   return { ok: true, values: out };
 }
+
+/** Renamed choices of the clinic's own dropdowns, by field id: { insurer: { "Old name": "New name" } }. */
+export type ChoiceRenames = Record<string, Record<string, string>>;
+
+/**
+ * One record's own details with renamed dropdown choices carried over (Settings, Fields and lists): a value that was
+ * a renamed choice, whatever its case, becomes the new name; a multi-choice value is renamed choice by choice and
+ * kept in the order the clinic lists them. Any other value is left as it is, so a removed choice stays on the record as
+ * it did before. Null when nothing changes.
+ */
+export function withRenamedChoices(fields: CustomField[], values: Record<string, string>, renamed: ChoiceRenames): Record<string, string> | null {
+  let changed = false;
+  const out = { ...values };
+  for (const f of fields) {
+    const map = renamed[f.id];
+    const v = values[f.id];
+    if (!map || !v || (f.kind !== 'choice' && f.kind !== 'multi')) continue;
+    const to = (x: string) => map[x] ?? Object.entries(map).find(([from]) => from.toLowerCase() === x.toLowerCase())?.[1] ?? x;
+    const parts = f.kind === 'choice' ? [v.trim()] : multiValues(v);
+    if (parts.every((x) => to(x) === x)) continue;
+    const picked = new Set(parts.map(to));
+    // in the order the clinic lists its choices, then any it no longer lists, as they were
+    out[f.id] = f.kind === 'choice' ? [...picked][0]! : [...(f.options ?? []).filter((o) => picked.has(o)), ...[...picked].filter((x) => !(f.options ?? []).includes(x))].join(MULTI_SEPARATOR);
+    changed = true;
+  }
+  return changed ? out : null;
+}
+
+/**
+ * The renames that can be carried: only to a choice the field still lists (as it lists it), and only for a dropdown.
+ * A rename to nothing, to a choice no longer listed, or of a field the clinic no longer has is dropped.
+ */
+export function carriedRenames(fields: CustomField[], renamed: ChoiceRenames): ChoiceRenames {
+  const out: ChoiceRenames = {};
+  for (const f of fields) {
+    if ((f.kind !== 'choice' && f.kind !== 'multi') || !renamed[f.id]) continue;
+    const pairs = Object.entries(renamed[f.id]!).flatMap(([from, to]) => {
+      const listed = (f.options ?? []).find((o) => o.toLowerCase() === to.trim().toLowerCase());
+      return listed && from.trim() && from !== listed ? [[from.trim(), listed] as const] : [];
+    });
+    if (pairs.length) out[f.id] = Object.fromEntries(pairs);
+  }
+  return out;
+}

@@ -68,7 +68,8 @@ export class PostgresTaskQueue implements TaskQueue {
         ...(this.actor.startsWith('user:') ? { createdByUserId: this.actor.slice(5) } : {}),
       }).onConflictDoNothing().returning({ id: tasks.id });
       if (row) {
-        await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: `task.created.${input.type}`, entity: 'task', entityId: row.id, counts: { number }, ...(input.callId ? { callId: input.callId } : {}) });
+        // a request of one of the clinic's own kinds (its topic) is audited as that, not as the callback it is stored as
+        await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: input.details.topic ? 'task.created.topic' : `task.created.${input.type}`, entity: 'task', entityId: row.id, counts: { number }, ...(input.callId ? { callId: input.callId } : {}) });
         return { id: row.id, number, created: true };
       }
       // the same key landed a moment before this one: theirs is the request (the number taken here stays unused)

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { API_SCOPES, bareName, CALL_OUTCOMES, DESK_STATUSES, EMERGENCY_RESULTS, Gender, HAS_NAME, PHONE_NUMBERS_ONLY, PHONE_TYPED, Provider, SEARCH_MAX, VISIT_STATUSES, VisitType } from '@attendra/core';
+import { API_SCOPES, bareName, CALL_OUTCOMES, CustomField, DESK_STATUSES, EMERGENCY_RESULTS, Gender, HAS_NAME, PHONE_NUMBERS_ONLY, PHONE_TYPED, Provider, RequestTopic, SEARCH_MAX, VISIT_STATUSES, VisitType } from '@attendra/core';
 import { z } from 'zod';
 
 // The dashboard's HTTP contract. Request schemas are enforced by the API; response
@@ -172,7 +172,8 @@ export const CallDetail = CallSummary.omit({ tools: true, verified: true, patien
   })),
   transcript: z.array(z.object({ speaker: z.enum(['caller', 'agent']), text: z.string(), startMs: z.number(), endMs: z.number() })),
   actions: z.array(z.object({ tool: z.string(), argumentNames: z.array(z.string()), result: z.record(z.string(), z.unknown()), revision: z.number(), at: z.iso.datetime() })),
-  tasks: z.array(z.object({ id: z.string(), number: z.number().int(), type: z.string(), status: z.string() })),
+  /** `kind`: one of the clinic's own kinds of request, by name, when the request is one; null for a built-in kind. */
+  tasks: z.array(z.object({ id: z.string(), number: z.number().int(), type: z.string(), status: z.string(), kind: z.string().nullable() })),
   summary: CallSummaryCard.nullable(),
   /** While there is no summary: whether the worker is on it, or gave up. */
   summaryJob: z.object({ state: z.string(), failure: z.string().nullable() }).nullable(),
@@ -687,6 +688,20 @@ export const PatientFilter = z.object({
 export const CustomFieldValues = z.object({ values: z.record(z.string().max(40), z.string().max(400)) });
 /** A managed list saved whole, in order; renamed: { old value: new value }, carried to every doctor. */
 export const ListChange = z.object({ values: z.array(z.string().trim().min(1).max(40)).max(60), renamed: z.record(z.string().max(40), z.string().max(40)).default({}) });
+/** Renamed dropdown choices of one kind of record's fields: { field id: { old choice: new choice } }. */
+const ChoiceRenames = z.record(z.string().max(40), z.record(z.string().max(40), z.string().max(40)));
+/**
+ * Settings, Fields and lists saved together: the clinic's own fields on pets or patients, on doctors or vets and on
+ * requests, and its own kinds of request. `renamed`: the dropdown choices renamed on the page, carried to every record
+ * that has them. A choice removed is not renamed: records keep what they had.
+ */
+export const FieldsChange = z.object({
+  customFields: z.array(CustomField).max(20),
+  providerFields: z.array(CustomField).max(20),
+  requestFields: z.array(CustomField).max(20),
+  requestTopics: z.array(RequestTopic).max(20),
+  renamed: z.object({ customFields: ChoiceRenames.optional(), providerFields: ChoiceRenames.optional(), requestFields: ChoiceRenames.optional() }).default({}),
+});
 
 export const PatientProfile = PatientCard.extend({
   /** The call the assistant added them on, for a patient it added. */
