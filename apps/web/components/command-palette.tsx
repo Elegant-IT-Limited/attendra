@@ -14,7 +14,7 @@ import { Kbd } from '@/components/ui/bits';
 import { Highlight } from '@/components/ui/highlight';
 import { api, useClinic } from '@/lib/api';
 import { usePets } from '@/lib/terms';
-import { clinicTime, dob, EMERGENCY_RESULTS, OUTCOMES, phone, taskType } from '@/lib/format';
+import { clinicTime, dob, EMERGENCY_RESULTS, OUTCOMES, phone, requestKind } from '@/lib/format';
 import type { NavItem } from '@/lib/nav';
 import { useTheme } from '@/lib/theme';
 
@@ -150,7 +150,7 @@ export function CommandPalette({ clinicId, open, onOpenChange, pages, clinics = 
                     <Command.Item key={t.id} value={`request-${t.id}`} onSelect={() => go(`/c/${clinicId}/requests?open=${t.id}${t.status === 'done' ? '&status=done' : ''}`)} className={item}>
                       <ListChecks aria-hidden />
                       <span className="flex-1 truncate">
-                        <Highlight text={`R-${t.number}`} query={query} /> · {taskType(t.type, patientWord)} · <Highlight text={requestWho(t, patientWord)} query={query} />
+                        <Highlight text={`R-${t.number}`} query={query} /> · {requestKind(t, patientWord)} · <Highlight text={requestWho(t, patientWord)} query={query} />
                       </span>
                       {t.status === 'done' && <span className={muted}>Done</span>}
                     </Command.Item>

@@ -16,7 +16,7 @@ export function PatientPicker({ clinicId, onPick, canAdd, exclude }: { clinicId:
   const [adding, setAdding] = useState(false);
   const pets = usePets(clinicId);
   const recent = useQuery({ queryKey: ['patient', clinicId, 'recent'], queryFn: () => api<PatientList>(`/clinics/${clinicId}/patients/recent`) });
-  const pick = (p: { id: string; name: string }) => onPick({ id: p.id, name: p.name });
+  const pick = (p: { id: string; name: string; phone?: string | null }) => onPick({ id: p.id, name: p.name, phone: p.phone ?? null });
   // the record a merge keeps is never offered as the one to merge away (note 52 C5)
   const recentOthers = recent.data?.patients.filter((p) => p.id !== exclude) ?? [];
 
@@ -25,7 +25,7 @@ export function PatientPicker({ clinicId, onPick, canAdd, exclude }: { clinicId:
       <div className="space-y-3">
         <p className="text-sm font-medium">{pets ? 'New pet' : 'New patient'}</p>
         <PatientForm clinicId={clinicId} submitLabel="Add and continue" onCancel={() => setAdding(false)}
-          onSaved={(id, input) => pick({ id, name: `${input.firstName} ${input.lastName}`.trim() })} />
+          onSaved={(id, input) => pick({ id, name: `${input.firstName} ${input.lastName}`.trim(), phone: input.phone })} />
       </div>
     );
   }

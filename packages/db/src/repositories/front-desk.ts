@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { HOLDS_TIME, normalizeName } from '@attendra/core';
+import { type ChoiceRenames, type CustomField, HOLDS_TIME, normalizeName, withRenamedChoices } from '@attendra/core';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL, sql } from 'drizzle-orm';
 import { clinicAccess, clinicMemberships, memberships } from '../auth-schema';
 import { type Database, type Tx, withClinic } from '../client';
@@ -339,7 +339,7 @@ export class FrontDeskRepository {
       if (!call) return null;
       const segments = await tx.select().from(callSegments).where(eq(callSegments.callId, callId)).orderBy(callSegments.startMs, callSegments.id);
       const actions = await tx.select().from(callActions).where(eq(callActions.callId, callId)).orderBy(callActions.id);
-      const callTasks = await tx.select({ id: tasks.id, number: tasks.number, type: tasks.type, status: tasks.status }).from(tasks).where(eq(tasks.callId, callId));
+      const callTasks = await tx.select({ id: tasks.id, number: tasks.number, type: tasks.type, status: tasks.status, detailsEnc: tasks.detailsEnc }).from(tasks).where(eq(tasks.callId, callId));
       const [summary] = await tx.select().from(callSummaries).where(and(eq(callSummaries.clinicId, clinicId), eq(callSummaries.callId, callId)));
       // what the call booked or cancelled, so the call page can link to it on the schedule
       const changed = await tx.select({ id: appointments.id, startsAt: appointments.startsAt, providerId: appointments.providerId, visitTypeId: appointments.visitTypeId,
@@ -365,7 +365,9 @@ export class FrontDeskRepository {
         } : null,
         transcript: segments.map((s) => ({ speaker: s.speaker, text: this.cipher.decrypt(s.textEnc, ctx), startMs: s.startMs, endMs: s.endMs })),
         actions: actions.map((a) => ({ tool: a.tool, argumentNames: a.argsRedacted as string[], result: a.result as Record<string, unknown>, revision: a.taskRevision, at: a.createdAt })),
-        tasks: callTasks,
+        // each request with the clinic's own kind when it is one (its topic), read in this same audited view: the call
+        // page labels it by that name, as the Requests page does
+        tasks: callTasks.map(({ detailsEnc, ...t }) => ({ ...t, kind: (JSON.parse(this.cipher.decrypt(detailsEnc, phiContext(clinicId, 'tasks.details'))) as Record<string, string>).topic ?? null })),
         // read in the same audited view as the transcript it summarises
         summary: summary ? decryptSummary(this.cipher, clinicId, summary) : null,
         appointments: changed.map((a) => ({
@@ -501,6 +503,39 @@ export class FrontDeskRepository {
       await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'task.fields.updated', entity: 'task', entityId: taskId, callId: row.callId });
       return 'saved';
     });
+  }
+
+  /**
+   * Renamed dropdown choices carried to every record that has them (Settings, Fields and lists): each pet's or
+   * patient's own details and each request's, read, renamed and written back, inside the settings save's
+   * transaction so a rename is never saved without them. Records without a renamed choice are not written.
+   * Returns how many of each changed.
+   */
+  async renameChoiceValues(tx: Tx, clinicId: string, fields: { customFields: CustomField[]; requestFields: CustomField[] },
+    renamed: { customFields?: ChoiceRenames; requestFields?: ChoiceRenames }): Promise<{ patients: number; requests: number }> {
+    const out = { patients: 0, requests: 0 };
+    if (Object.keys(renamed.customFields ?? {}).length) {
+      const ctx = phiContext(clinicId, 'patients.custom');
+      const rows = await tx.select({ id: patients.id, customEnc: patients.customEnc }).from(patients)
+        .where(and(eq(patients.clinicId, clinicId), isNull(patients.deletedAt), isNotNull(patients.customEnc)));
+      for (const r of rows) {
+        const next = withRenamedChoices(fields.customFields, JSON.parse(this.cipher.decrypt(r.customEnc!, ctx)) as Record<string, string>, renamed.customFields!);
+        if (!next) continue;
+        await tx.update(patients).set({ customEnc: this.cipher.encrypt(JSON.stringify(next), ctx) }).where(and(eq(patients.clinicId, clinicId), eq(patients.id, r.id)));
+        out.patients++;
+      }
+    }
+    if (Object.keys(renamed.requestFields ?? {}).length) {
+      const ctx = phiContext(clinicId, 'tasks.custom');
+      const rows = await tx.select({ id: tasks.id, customEnc: tasks.customEnc }).from(tasks).where(and(eq(tasks.clinicId, clinicId), isNotNull(tasks.customEnc)));
+      for (const r of rows) {
+        const next = withRenamedChoices(fields.requestFields, JSON.parse(this.cipher.decrypt(r.customEnc!, ctx)) as Record<string, string>, renamed.requestFields!);
+        if (!next) continue;
+        await tx.update(tasks).set({ customEnc: this.cipher.encrypt(JSON.stringify(next), ctx) }).where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, r.id)));
+        out.requests++;
+      }
+    }
+    return out;
   }
 
   /** Adds an internal note to a request. Notes are never edited or removed. */

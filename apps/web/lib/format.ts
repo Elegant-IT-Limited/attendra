@@ -158,6 +158,13 @@ export const TASK_KIND_ORDER = ['callback', 'refill', 'voicemail', 'review', 'fo
 /** A request type in the clinic's words: a vet clinic checks a new pet, not a new patient. */
 export const taskType = (type: string, patient = 'patient') => (type === 'review' ? `New ${patient} to check` : TASK_TYPES[type] ?? type);
 /**
+ * What a request is, as every list and panel labels it: one of the clinic's own kinds by its name ("Boarding booking",
+ * Settings, Fields and lists), whether the team or the assistant took it; any other by its type. Note 2026-11-16 R2: a
+ * request of the clinic's own kind was labelled "Callback", the type it is stored as.
+ */
+export const requestKind = (t: { type: string; details?: Record<string, string> | null; kind?: string | null }, patient = 'patient') =>
+  t.kind?.trim() || t.details?.topic?.trim() || taskType(t.type, patient);
+/**
  * The example under "What it is about" in New request, one per kind of request: what someone at the desk would write
  * for that kind ("Needs a refill of the heart pill before Friday" for a refill). The clinic's own kinds get a general one.
  */
@@ -326,6 +333,7 @@ export const TASK_HISTORY: Record<string, string> = {
   'task.created.voicemail': 'Took a voicemail',
   'task.created.review': 'Added a new patient for the front desk to check',
   'task.created.follow_up': 'Opened a follow-up request for a call left unfinished',
+  'task.created.topic': 'Took a request of one of the clinic\'s own kinds',
   'task.claimed': 'Claimed a request',
   'task.released': 'Released a request',
   'task.released.override': 'Released someone else\'s request',

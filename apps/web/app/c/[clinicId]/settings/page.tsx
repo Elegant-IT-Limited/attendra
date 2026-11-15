@@ -417,7 +417,11 @@ export default function Settings() {
         <Section id="visits" title="Visit types" description="What callers can book. The assistant offers these by name and books the minutes you set."
           action={<Button type="button" size="sm" variant="outline" onClick={() => addOrFocus(c.visitTypes, BLANK.named, (v) => `item-${v.id}`, () => { const id = newId('vt', 'visit'); set({ visitTypes: [{ id, name: '', minutes: 20, audience: 'all' }, ...c.visitTypes] }); setAdded(`item-${id}`); })}><Plus /> Visit type</Button>}>
           <Sortable items={c.visitTypes} keyOf={(v) => v.id} label={(v) => v.name} disabled={!writable || save.isPending} onMove={(f, t) => set({ visitTypes: moved(c.visitTypes, f, t) })} className="space-y-5">
-          {(v, i, handle) => (
+          {(v, i, handle) => {
+            // the same words the server sends with the list of vets: a visit type nobody does can't be booked. On its own
+            // card, as it is typed (note 2026-11-16 V2: under the whole list, a new type at the top showed nothing)
+            const nobody = noProviderWarnings(c).find((w) => w.visitTypeId === v.id);
+            return (
             <Item handle={handle} id={`item-${v.id}`} removeLabel={`Remove ${v.name || 'this visit type'}`} onRemove={() => set({
               visitTypes: c.visitTypes.filter((_, j) => j !== i),
               // taken off every provider who offered it, on the server too
@@ -434,12 +438,12 @@ export default function Settings() {
                     onChange={(e) => visit(i, { description: e.target.value || undefined })} />
                 </Field>
                 <VisitMoreOptions v={v} pet={pet} onChange={(patch) => visit(i, patch)} disabled={!writable || save.isPending} />
+                {nobody && <Alert tone="warn">{nobody.message}. Choose who does it on the {terms.title('providers')} page.</Alert>}
               </div>
             </Item>
-          )}
+            );
+          }}
           </Sortable>
-          {/* the same words the server sends with the list of vets: a visit type nobody does can't be booked */}
-          {noProviderWarnings(c).map((w) => <Alert key={w.visitTypeId} tone="warn">{w.message}</Alert>)}
           <p className="text-sm text-text-muted">
             {terms.title('providers')} have a page of their own, where you add them, set their hours and days off, and choose which visits each one does.{' '}
             <Link className="font-medium text-primary hover:underline" href={`/c/${clinicId}/doctors`}>Open {terms.title('providers')}</Link>

@@ -9,12 +9,16 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/controls';
 import { Input, Select } from '@/components/ui/input';
 import { moved, Sortable } from '@/components/ui/sortable';
+import { type EditedField, savedFields } from '@/lib/choice-renames';
+
+export { choiceRenames, type EditedField, savedFields } from '@/lib/choice-renames';
 
 export const KIND_LABELS: Record<CustomField['kind'], string> = {
   text: 'Text', number: 'Number', yesno: 'Yes or no', date: 'Date', choice: 'Dropdown (pick one)', multi: 'Dropdown (pick several)',
 };
 const dropdown = (k: CustomField['kind']) => k === 'choice' || k === 'multi';
 const newFieldId = () => `field_${Math.random().toString(36).slice(2, 8)}`;
+
 
 /**
  * The clinic's own fields on one kind of record: a label, a kind (dropdowns with their
@@ -24,7 +28,7 @@ const newFieldId = () => `field_${Math.random().toString(36).slice(2, 8)}`;
  * Dropdowns and yes-or-no fields become filters on the list.
  */
 export function FieldsEditor({ id, title, description, fields, onChange, disabled, placeholder, builtIn, footer, columnLabel, tellsCallers, teamOnly }: {
-  id: string; title: string; description: string; fields: CustomField[]; onChange: (fields: CustomField[]) => void; disabled: boolean; placeholder: string;
+  id: string; title: string; description: string; fields: EditedField[]; onChange: (fields: EditedField[]) => void; disabled: boolean; placeholder: string;
   /** What "show it" means on this kind of record ("Show on the Pets list"); left out where every field always shows. */
   columnLabel?: string;
   /** Each field has "The assistant may tell callers", on unless the clinic keeps it for the team: a doctor's or vet's fields only. */
@@ -44,7 +48,7 @@ export function FieldsEditor({ id, title, description, fields, onChange, disable
     el?.querySelector<HTMLInputElement>('input')?.focus({ preventScroll: true });
     setFocus(null);
   }, [focus, fields]);
-  const upd = (i: number, patch: Partial<CustomField>) => onChange(fields.map((f, j) => (j === i ? { ...f, ...patch } : f)));
+  const upd = (i: number, patch: Partial<EditedField>) => onChange(fields.map((f, j) => (j === i ? { ...f, ...patch } : f)));
   const add = () => {
     const empty = fields.find((f) => !f.label.trim());
     if (empty) { setFocus(`${id}-${empty.id}`); return; }
@@ -67,7 +71,8 @@ export function FieldsEditor({ id, title, description, fields, onChange, disable
             <Field label="Kind">
               <Select value={f.kind} disabled={disabled} onChange={(e) => {
                 const kind = e.target.value as CustomField['kind'];
-                upd(i, { kind, options: dropdown(kind) ? (f.options?.length ? f.options : ['', '']) : undefined });
+                // a field that becomes a dropdown starts with two new rows; one that stops being one has no choices to rename
+                upd(i, dropdown(kind) ? (f.options?.length ? { kind } : { kind, options: ['', ''], was: [null, null] }) : { kind, options: undefined, was: undefined });
               }}>
                 {CUSTOM_FIELD_KINDS.map((k) => <option key={k} value={k}>{KIND_LABELS[k]}</option>)}
               </Select>
@@ -75,7 +80,7 @@ export function FieldsEditor({ id, title, description, fields, onChange, disable
             {dropdown(f.kind) && (
               <div className="space-y-1.5 sm:col-span-2">
                 <p className="text-sm font-medium">Choices</p>
-                <Choices field={f.label} options={f.options ?? []} disabled={disabled} onChange={(options) => upd(i, { options })} />
+                <Choices field={f.label} options={f.options ?? []} was={f.was ?? f.options ?? []} disabled={disabled} onChange={(options, was) => upd(i, { options, was })} />
                 <p className="text-xs text-text-muted">At least two, in the order shown. + adds a row below, − removes one, drag to reorder. Enter adds the next row.</p>
               </div>
             )}
@@ -94,16 +99,17 @@ export function FieldsEditor({ id, title, description, fields, onChange, disable
 }
 
 /** The fields without rows left empty, and dropdown choices without blank lines. */
-export const cleanFields = (fields: CustomField[]) => fields
+export const cleanFields = (fields: EditedField[]) => savedFields(fields)
   .filter((f) => f.label.trim())
   .map((f) => (dropdown(f.kind) ? { ...f, options: (f.options ?? []).map((x) => x.trim()).filter(Boolean) } : f));
 
 /**
  * A dropdown's choices, one row each, like a spreadsheet's rows: type in the row, + adds
  * an empty row under it, − removes it, and the handle drags it into place. Empty rows are
- * dropped on save; a choice typed twice is marked on its row.
+ * dropped on save; a choice typed twice is marked on its row. Each row keeps what it was called when the page opened
+ * (`was`, null for a new row) through typing, adding, removing and dragging, so a renamed choice reaches every record.
  */
-function Choices({ field, options, disabled, onChange }: { field: string; options: string[]; disabled: boolean; onChange: (options: string[]) => void }) {
+function Choices({ field, options, was, disabled, onChange }: { field: string; options: string[]; was: (string | null)[]; disabled: boolean; onChange: (options: string[], was: (string | null)[]) => void }) {
   // a steady id per row, so typing in a row or dragging it keeps the cursor where it is
   const ids = useRef<string[]>([]);
   const nextId = useRef(0);
@@ -118,23 +124,24 @@ function Choices({ field, options, disabled, onChange }: { field: string; option
   }, [focus, options]);
 
   const rows = options.length ? options : [''];
+  const wasRows = rows.map((_, i) => (options.length ? was[i] ?? null : null));
   const seen = rows.map((o, i) => !!o.trim() && rows.findIndex((x) => x.trim().toLowerCase() === o.trim().toLowerCase()) !== i);
-  const set = (i: number, v: string) => onChange(rows.map((x, j) => (j === i ? v.replace(/\|/g, '/') : x)));
+  const set = (i: number, v: string) => onChange(rows.map((x, j) => (j === i ? v.replace(/\|/g, '/') : x)), wasRows);
   const addBelow = (i: number) => {
     if (rows.length >= 30) return;
     ids.current.splice(i + 1, 0, `choice-${++nextId.current}`);
-    onChange([...rows.slice(0, i + 1), '', ...rows.slice(i + 1)]);
+    onChange([...rows.slice(0, i + 1), '', ...rows.slice(i + 1)], [...wasRows.slice(0, i + 1), null, ...wasRows.slice(i + 1)]);
     setFocus(i + 1);
   };
   const remove = (i: number) => {
     ids.current.splice(i, 1);
-    onChange(rows.length > 1 ? rows.filter((_, j) => j !== i) : ['']);
+    onChange(rows.length > 1 ? rows.filter((_, j) => j !== i) : [''], rows.length > 1 ? wasRows.filter((_, j) => j !== i) : [null]);
     setFocus(Math.max(0, i - 1));
   };
   return (
     <div ref={list}>
       <Sortable items={rows} keyOf={(_o, i) => ids.current[i] ?? `choice-row-${i}`} label={(o) => o || 'this choice'} disabled={disabled}
-        onMove={(from, to) => { ids.current = moved(ids.current, from, to); onChange(moved(rows, from, to)); }} className="space-y-2" itemClassName="flex items-center gap-2">
+        onMove={(from, to) => { ids.current = moved(ids.current, from, to); onChange(moved(rows, from, to), moved(wasRows, from, to)); }} className="space-y-2" itemClassName="flex items-center gap-2">
         {(o, i, handle) => (
           <>
             {handle ?? <span className="size-8 shrink-0" aria-hidden />}

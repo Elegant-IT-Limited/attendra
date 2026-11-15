@@ -16,7 +16,8 @@ import { vetChoices } from '@/lib/booking';
 import { dayTitle, timeOf, visitTypeName } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
-export interface PatientChoice { id: string; name: string; detail?: string }
+/** A record picked: `phone`, the number on file (the household's), when the picker knows it. */
+export interface PatientChoice { id: string; name: string; detail?: string; phone?: string | null }
 
 const STEPS = (pets: boolean) => [pets ? 'Pet' : 'Patient', 'Time', 'Note', 'Confirm'];
 

@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { requestNumber, age, clinicTime, dayTitle, dob, duration, personName, phone, sexLabel, taskType, telHref, timeOf, visitTypeName, zoneLabel } from '@/lib/format';
+import { requestKind, requestNumber, age, clinicTime, dayTitle, dob, duration, personName, phone, sexLabel, telHref, timeOf, visitTypeName, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 
@@ -182,8 +182,8 @@ export default function PatientPage() {
                 {p.requests.map((r) => (
                   <li key={r.id} className="flex flex-wrap items-start gap-3 px-5 py-3 text-sm">
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium"><span className="tabular-nums">{requestNumber(r.number)}</span> · {taskType(r.type, terms.patient)}{r.patientId && r.patientId !== p.id && <span className="font-normal text-text-muted"> · {p.household.find((h) => h.id === r.patientId)?.name ?? 'another on this number'}</span>}</p>
-                      <p className="text-text-muted">{Object.entries(r.details).filter(([k]) => k !== 'callback_number').map(([, v]) => v).join(', ') || 'No details'}</p>
+                      <p className="font-medium"><span className="tabular-nums">{requestNumber(r.number)}</span> · {requestKind(r, terms.patient)}{r.patientId && r.patientId !== p.id && <span className="font-normal text-text-muted"> · {p.household.find((h) => h.id === r.patientId)?.name ?? 'another on this number'}</span>}</p>
+                      <p className="text-text-muted">{Object.entries(r.details).filter(([k]) => k !== 'callback_number' && k !== 'topic').map(([k, v]) => (k === 'phone' ? phone(v) : v)).join(', ') || 'No details'}</p>
                       <p className="text-xs text-text-muted">{clinicTime(r.createdAt, tz)}</p>
                     </div>
                     <Badge tone={r.status === 'open' ? 'warn' : 'ok'}>{r.status === 'open' ? 'Open' : 'Done'}</Badge>

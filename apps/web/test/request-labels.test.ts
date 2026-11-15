@@ -1,6 +1,7 @@
 import { ROLES } from '@attendra/core';
 import { describe, expect, it } from 'vitest';
-import { personWithRole, requestCreator, requestExample, TASK_HISTORY, TASK_KIND_ORDER } from '../lib/format';
+import { choiceRenames } from '../lib/choice-renames';
+import { personWithRole, requestCreator, requestExample, requestKind, TASK_HISTORY, TASK_KIND_ORDER } from '../lib/format';
 
 // REQ-1 and REQ-3 (batch 4b): who added a request, with their role, and the words of its history.
 describe('who added a request', () => {
@@ -41,5 +42,36 @@ describe('the example under "What it is about" in New request', () => {
     expect(requestExample('topic:Billing', false)).toBe('e.g. Wants a check-up next month');
     // a human clinic's examples name no pet
     for (const k of kinds) expect(requestExample(k, false)).not.toContain('Bella');
+  });
+});
+
+// note 2026-11-16 R2: a request of the clinic's own kind ("Boarding booking") was labelled "Callback", the type it is
+// stored as, on the list, its panel, the pet's Requests tab and the audit log, whoever took it
+describe('what a request is called', () => {
+  it('is the clinic\'s own kind by its name, from the team or the assistant alike, and the built-in type otherwise', () => {
+    const own = { type: 'callback', details: { topic: 'Boarding booking', reason: 'Three nights from Friday' } };
+    expect(requestKind(own, 'pet')).toBe('Boarding booking');
+    expect(requestKind({ type: 'callback', details: { reason: 'Results' } }, 'pet')).toBe('Callback');
+    expect(requestKind({ type: 'review', details: {} }, 'pet')).toBe('New pet to check');
+    // the call page's requests carry the kind on its own, without their details
+    expect(requestKind({ type: 'callback', kind: 'Boarding booking' })).toBe('Boarding booking');
+    expect(requestKind({ type: 'callback', kind: null })).toBe('Callback');
+  });
+
+  it('has words for a request of the clinic\'s own kind in the audit log', () => {
+    expect(TASK_HISTORY['task.created.topic']).toBe('Took a request of one of the clinic\'s own kinds');
+  });
+});
+
+// note 2026-11-16 F1: a renamed dropdown choice is carried to the records; a removed one is not a rename
+describe('renamed dropdown choices on Fields and lists', () => {
+  it('pairs each row with what it was called when the page opened, and skips new, removed and unchanged rows', () => {
+    expect(choiceRenames([
+      { id: 'insurer', label: 'Pet insurance', kind: 'choice', options: ['Acme Pet Cover Plus', 'Northwind Pet Plan', 'Lakeside'], was: ['Acme Pet Cover', 'Northwind Pet Plan', null] },
+      { id: 'extras', label: 'Extras', kind: 'multi', options: ['Bath'], was: ['Shampoo'] },
+      { id: 'note', label: 'Note', kind: 'text', was: ['x'] },
+      { id: 'untouched', label: 'Untouched', kind: 'choice', options: ['A', 'B'] },
+      { id: 'blank', label: 'Blank', kind: 'choice', options: ['', 'B'], was: ['A', 'B'] },
+    ])).toEqual({ insurer: { 'Acme Pet Cover': 'Acme Pet Cover Plus' }, extras: { Shampoo: 'Bath' } });
   });
 });
