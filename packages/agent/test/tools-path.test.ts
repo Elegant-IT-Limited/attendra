@@ -199,10 +199,10 @@ describe('the call cache (the preload)', () => {
 });
 
 describe('round 2: the visit type from the clinic, and the lookup run ahead', () => {
-  it('find_slots takes only the clinic\'s own visit type ids on the tools path', () => {
+  it('find_slots takes only the clinic\'s own visit type ids on the tools path, or not_offered for a visit it does not have', () => {
     const find = voiceToolDefinitions(clinic).find((t) => t.name === 'find_slots')!;
     const visit = (find.parameters as { properties: { visit_type_id: { enum: string[]; description: string } } }).properties.visit_type_id;
-    expect(visit.enum).toEqual(clinic.visitTypes.map((v) => v.id));
+    expect(visit.enum).toEqual([...clinic.visitTypes.map((v) => v.id), 'not_offered']);
     expect(visit.description).toContain('vt_wellness (wellness exam)');
   });
 

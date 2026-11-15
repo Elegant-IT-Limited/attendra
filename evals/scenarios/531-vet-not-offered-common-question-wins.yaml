@@ -1,0 +1,17 @@
+id: vet-not-offered-common-question-wins
+title: "Grooming asked for as a booking at a clinic whose common questions say it has none: the clinic's own answer, never another visit (2026-11-16)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, visit-types, common-questions]
+turns:
+  - caller: Can I book a grooming appointment for Biscuit?
+    reply: "We don't offer boarding or grooming, but the front desk can suggest places nearby. Is there anything else I can help you with?"
+    delegate:
+      - find_slots: { visit_type_id: not_offered, provider_id: null, from_date: null, part_of_day: any }
+expect:
+  outcome: info
+  refusals: [unknown_visit_type]
+  bookings_created: 0
+  answered_from: faq_boarding
+  returned: ["We do not offer boarding or grooming."]
+  never_returned: ["That isn't something we book here"]

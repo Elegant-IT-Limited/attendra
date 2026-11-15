@@ -1,11 +1,11 @@
-import { type ActionRecorder, CallAgent, CallState, ScriptedPlanner, shapeForVoice } from '@attendra/agent';
+import { type ActionRecorder, CallAgent, CallState, ScriptedPlanner, shapeForVoice, systemPrompt, VISIT_TYPES_RULE } from '@attendra/agent';
 import { DEMO_CLINIC, localDateOf, PACKS, RIVERBEND_CLINIC, zonedInstant } from '@attendra/core';
 import { createLogger } from '@attendra/observability';
 import { Writable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import {
   CallRunner, fromDelegatedResponse, GO_WAIT_MS, GptLiveEngine, RealtimeEngine, realtimeTools, type RealtimeSocket, type Sideband, type SidebandEvent,
-  type SidebandSocket, toolsBackendInstructions, toolsLivePrompt, toolsVoicePrompt, toolsVoiceStaticPrompt, callFacts, compactSchema, TOOLS_TRUNCATION, type VoiceEngine, TURN_NOTE, sayToolQuestion, toolQuestion, sayToolLine, toolRefusalLine,
+  type SidebandSocket, toolsBackendInstructions, toolsLivePrompt, toolsVapiPrompt, toolsVoicePrompt, toolsVoiceStaticPrompt, callFacts, compactSchema, TOOLS_TRUNCATION, type VoiceEngine, TURN_NOTE, sayToolQuestion, toolQuestion, sayToolLine, toolRefusalLine,
   PATH_A_CUTS, PATH_A_DROPS, conversationPrompt,
 } from '../src';
 
@@ -34,6 +34,12 @@ describe('the tools-path prompts', () => {
     expect(live).not.toContain('Call clinic_now');
     expect(toolsBackendInstructions(vet)).toContain('Call clinic_now');
     expect(toolsBackendInstructions(vet)).toMatch(/Never mention a tool, a backend/);
+  });
+
+  // 2026-11-16: a visit the clinic does not offer, and "what can I book?", the same rule as the planner's on every voice
+  it('carry the planner\'s rule for a visit the clinic does not offer, word for word, on every voice that calls the tools', () => {
+    for (const prompt of [toolsVoicePrompt(vet), toolsVoiceStaticPrompt(vet), toolsVapiPrompt(vet), toolsBackendInstructions(vet)]) expect(prompt).toContain(VISIT_TYPES_RULE);
+    expect(systemPrompt(vet, 'Today is Monday.')).toContain(VISIT_TYPES_RULE);
   });
 
   // batch 1e: path A leaves out what code enforces on every call; the other voices keep the full lines

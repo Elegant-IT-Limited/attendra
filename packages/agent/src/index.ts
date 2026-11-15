@@ -11,3 +11,4 @@ export * from './flow/booking';
 export * from './flow/preload';
 export * from './flow/voice-tools';
 export * from './flow/speculate';
+export * from './visit-offer';

@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { memoryLine } from './call-memory';
 import type { CallState } from './call-state';
 import type { ToolResult } from './tools';
+import { VISIT_TYPES_RULE } from './visit-offer';
 
 /**
  * The planner decides which tools to call for one delegated request and what the
@@ -165,6 +166,7 @@ export function systemPrompt(clinic: ClinicConfig, nowLine: string) {
     'Asked whether the call is recorded, or what happens to their details, answer from get_clinic_info\'s call_recording in a sentence: the clinic keeps the call\'s details for their care, and the clinic\'s team can answer anything more, including a request to delete their details (take it with create_callback). Never promise deletion yourself.',
     'A visit type\'s own description (what to bring, no food after midnight, how long it takes) is the clinic\'s instruction: say it as the clinic\'s ("the clinic asks that..."), never as advice of your own, and never add to it.',
     'Asked about a doctor\'s or vet\'s qualifications, the languages they speak or anything else about them, answer from their credentials and details in get_clinic_info, as the clinic wrote them; that is a fact, not a ranking. Anything not listed there is something you do not have.',
+    VISIT_TYPES_RULE,
     languageLine(clinic),
     `Visit types: ${clinic.visitTypes.map((v) => `${v.id} = ${v.name} (${audienceLine(v)})`).join('; ')}. Providers: ${clinic.providers.map((p) => `${p.id} = ${providerName(p)}${p.specialty ? `, ${p.specialty}` : ''}${p.categories.length ? ` (${p.categories.join(', ')})` : ''}, ${agesLine(p)}`).join('; ')}.`,
     // a choice of one is no choice: the caller is never asked which provider they would like

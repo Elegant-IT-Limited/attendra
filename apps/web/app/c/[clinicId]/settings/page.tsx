@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { asE164, localDateOf, providerName, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, listedVapiVoice, PREVIEW_VOICES, type TalkStyle, VAPI_VOICE_MODEL, VAPI_VOICES, vapiVoiceOf, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel, DEFAULT_RECORDING_NOTICE, noticeIsSentence, openingWords, noProviderWarnings, SETTINGS_LIMITS, greetingFollowingNames, type Language } from '@attendra/core';
+import { asE164, localDateOf, providerName, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, listedVapiVoice, PREVIEW_VOICES, type TalkStyle, VAPI_VOICE_MODEL, VAPI_VOICES, vapiVoiceOf, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel, DEFAULT_RECORDING_NOTICE, noticeIsSentence, openingWords, noProviderWarnings, SETTINGS_LIMITS, greetingFollowingNames, type Language, websiteWithScheme } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
@@ -102,6 +102,7 @@ function withoutBlankRows(c: ClinicConfig): ClinicConfig {
     customFields: c.customFields?.filter((f) => f.label.trim()),
     menuLinks: c.menuLinks?.filter((l) => l.label.trim() || !/^(https?:\/\/)?$/.test(l.url.trim())),
     phoneNumbers: c.phoneNumbers.filter((n) => n.trim()),
+    website: c.website === undefined ? undefined : websiteWithScheme(c.website),
   };
 }
 
@@ -261,7 +262,8 @@ export default function Settings() {
           <Field label="Clinic name" htmlFor="name"><Input id="name" required maxLength={100} autoComplete="off" value={c.name} onChange={(e) => rename({ name: e.target.value })} /></Field>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Address" htmlFor="address" hint="Given to callers who ask where you are."><Input id="address" maxLength={200} autoComplete="off" value={c.address ?? ''} placeholder="e.g. 400 Main Street, Denver" onChange={(e) => set({ address: e.target.value || undefined })} /></Field>
-            <Field label="Website" htmlFor="website" hint="Optional."><Input id="website" type="url" maxLength={200} autoComplete="off" value={c.website ?? ''} placeholder="https://" onChange={(e) => set({ website: e.target.value && e.target.value !== 'https://' ? e.target.value : undefined })} /></Field>
+            {/* kept as typed, with or without https:// (it was taken off while typing, then demanded: 2026-11-16); the scheme is added when the field is left and on save */}
+            <Field label="Website" htmlFor="website" hint="Optional. With or without https://."><Input id="website" type="url" inputMode="url" maxLength={200} autoComplete="off" value={c.website ?? ''} placeholder="https://" onChange={(e) => set({ website: e.target.value || undefined })} onBlur={(e) => { const kept = websiteWithScheme(e.target.value); if (kept !== c.website) set({ website: kept }); }} /></Field>
           </div>
           <Field label="Greeting" htmlFor="greeting" hint={`${c.greeting.length}/400. Mention "AI assistant", "virtual receptionist" or similar.`}>
             <Textarea id="greeting" value={c.greeting} maxLength={SETTINGS_LIMITS.greeting} onChange={(e) => set({ greeting: e.target.value })} />

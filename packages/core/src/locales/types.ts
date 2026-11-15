@@ -221,6 +221,13 @@ export interface LanguagePack {
     reminders: (v: { agreed: boolean }) => string;
     /** No vet here sees this kind of animal: the one vet's limit when there is one, then the request offered. */
     noVetForAnimal: (v: { vet: string | null; animals: string | null; pet: string }) => string;
+    /**
+     * A visit the caller asked for that the clinic does not book (grooming, a boarding stay): said plainly, then the
+     * visits it does book (up to five, the closest first, in this language) and a request for the team offered (2026-11-16).
+     */
+    visitNotOffered: (v: { visits: string[] }) => string;
+    /** "What can I book?": the clinic's visits by name, `more` when it has more than are said. */
+    visitsWeBook: (v: { visits: string[]; more: boolean }) => string;
     /** A person was asked for and no line takes transfers now: said so once, and the message offered at once. */
     noTransfer: string;
     /**

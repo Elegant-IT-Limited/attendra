@@ -1,0 +1,21 @@
+id: vet-es-visit-not-offered
+title: "In Spanish: a visit the clinic does not offer (terapia láser) is said plainly, with the clinic's visits by their Spanish names, and nothing booked (2026-11-16)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, visit-types, es]
+facts: "You speak only Spanish. You want laser therapy (terapia láser) for your dog Biscuit. If the clinic does not do it, you do not want anything else today: say no gracias and adiós."
+turns:
+  - caller: Hola, ¿puedo agendar una terapia láser para mi perro Biscuit?
+    reply: "Eso no lo agendamos aquí. Puedo agendarle: chequeo general, consulta por enfermedad, cita de vacunas o primera consulta. ¿Quiere una de esas, o prefiere que deje una solicitud para el equipo?"
+    delegate:
+      - find_slots: { visit_type_id: vt_terapia_laser, provider_id: null, from_date: null, part_of_day: any }
+  - caller: No, gracias. Adiós.
+    reply: "Con gusto. ¡Adiós!"
+expect:
+  outcome: info
+  refusals: [unknown_visit_type]
+  bookings_created: 0
+  sms_sent: 0
+  language: es
+  returned: ["Eso no lo agendamos aquí. Puedo agendarle: chequeo general, consulta por enfermedad, cita de vacunas o primera consulta."]
+  never_returned: ["wellness exam"]

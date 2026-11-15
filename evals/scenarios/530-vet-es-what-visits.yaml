@@ -1,0 +1,18 @@
+id: vet-es-what-visits
+title: "In Spanish: \"¿Qué tipo de citas tienen?\": the clinic's visits, read by their Spanish names (2026-11-16)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, visit-types, es]
+facts: "You speak only Spanish. You want to know what kinds of appointments the clinic has. After hearing them, you will call back: say gracias and adiós."
+turns:
+  - caller: Hola, ¿qué tipo de citas tienen?
+    reply: "Podemos agendarle: chequeo general, consulta por enfermedad, cita de vacunas y primera consulta. ¿Cuál le gustaría?"
+    delegate:
+      - get_clinic_info: { question: What kinds of visits do you have? }
+  - caller: Muy bien, vuelvo a llamar. Adiós.
+    reply: "Gracias por llamar. ¡Adiós!"
+expect:
+  outcome: info
+  bookings_created: 0
+  language: es
+  returned: ["Podemos agendarle: chequeo general, consulta por enfermedad, cita de vacunas y primera consulta."]

@@ -10,7 +10,7 @@ import { excerptFor, handoffFor, type HandoffEvent, lastSteps, noteNames, reason
 import { answerTo, BORDERLINE, confirmsCleared, type EmergencyCase, lastQuestionIsOurs, MILD, pastAndFineNow, SEVERE, saysSevere, staffNote } from './flow/emergency';
 import { askedAboutRecording, askedIfHuman, askedWhy, claimsIn, DISPUTE_NOTE, disputes, humanLine, notInTheClinicsLanguages, recordingLine, sideTalkLine, WHY } from './flow/guards';
 import { outOfScopeLine } from '@attendra/knowledge/scope';
-import { isVoiceTool, shapeForVoice, visitTypeChoices, type VoiceToolOutput } from './flow/voice-tools';
+import { isVoiceTool, shapeForVoice, type VoiceToolOutput } from './flow/voice-tools';
 import { type Backend, type CallContext, runTool, type ToolResult } from './tools';
 
 
@@ -1081,7 +1081,7 @@ export class CallAgent {
       try { this.onPatientFound?.(s.verifiedPatient.id); } catch { /* the preload is a speed-up, never a reason to fail */ }
     }
     const stage = flowStage(s, this.flow);
-    const output = shapeForVoice(name, result, stage, nextStep(stage, s, clinic, this.ctx.callerNumber), { visitTypes: visitTypeChoices(clinic) });
+    const output = shapeForVoice(name, result, stage, nextStep(stage, s, clinic, this.ctx.callerNumber));
     this.log.info({ call_id: this.ctx.callId, tool: name, ms: Date.now() - started, outcome: output.outcome, stage }, 'tool answered');
     this.doing = s.pending ? 'waiting for a yes' : null;
     this.emitState();

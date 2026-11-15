@@ -68,3 +68,36 @@ export function answersFromFaqs<T extends { id: string; question: string; answer
 export function answerFromFaqs<T extends { id: string; question: string; answer: string }>(faqs: T[], question: string): T | null {
   return answersFromFaqs(faqs, question)[0] ?? null;
 }
+
+/**
+ * The words that ask for a visit, never say what it is for ("book", "appointment", "cita"): a visit the clinic does not
+ * offer is matched to its common questions and its own visits by the rest ("grooming", "laser therapy").
+ */
+const ASKING = new Set([
+  'book', 'booking', 'appointment', 'appointments', 'visit', 'visits', 'schedule', 'make', 'need', 'needs', 'want', 'wants', 'like', 'would', 'could',
+  'please', 'get', 'see', 'come', 'bring', 'him', 'her', 'his', 'them', 'they', 'she', 'he', 'have', 'has', 'also', 'too', 'another', 'one', 'some',
+  'hola', 'cita', 'citas', 'visita', 'visitas', 'reservar', 'agendar', 'programar', 'hacer', 'quiero', 'quisiera', 'necesito', 'necesita', 'puedo', 'tambien', 'otra', 'otro',
+].map(normalise).map(stem));
+
+/** What the caller asked for without the words that only ask for a visit, as they said it ("grooming for Biscuit"). */
+const withoutAsking = (text: string) => normalise(text).replace(/[^\p{L}\p{M}\p{N}\s]/gu, ' ').split(/\s+/).filter((w) => w && !ASKING.has(stem(w))).join(' ');
+
+/** The words of what the caller asked for, as the clinic's common questions and visit names are read: no stop words, no "book" or "appointment". */
+export const askedTopicWords = (text: string) => words(withoutAsking(text));
+
+/** The words of a visit's name or description, for how close it is to what the caller asked for. */
+export const nameWords = (text: string) => words(text);
+
+/**
+ * The clinic's own answer for something the caller asked to book that is none of its visits ("Can I book grooming for
+ * Biscuit?" with a common question about grooming): the best common question that shares a word about the thing itself,
+ * never only "services" or "appointment". Null when none does: then the clinic's visits are offered instead (2026-11-16).
+ */
+export function answerForAsked<T extends { id: string; question: string; answer: string }>(faqs: T[], asked: string): T | null {
+  const topic = askedTopicWords(asked);
+  if (!topic.length) return null;
+  const best = answersFromFaqs(faqs, withoutAsking(asked))[0];
+  if (!best) return null;
+  const own = new Set(words(best.question));
+  return topic.some((w) => own.has(w) && !GENERIC.has(w)) ? best : null;
+}

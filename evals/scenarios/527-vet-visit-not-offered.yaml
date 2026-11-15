@@ -1,0 +1,22 @@
+id: vet-visit-not-offered
+title: "A visit the clinic does not offer (laser therapy): said plainly, with the clinic's own visits and a request offered, and nothing booked (2026-11-16)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, visit-types]
+facts: "You want laser therapy for your dog Biscuit. If the clinic does not do it, you do not want anything else today: say no thanks and goodbye."
+turns:
+  - caller: Hi, can I book laser therapy for my dog Biscuit?
+    reply: "That isn't something we book here. I can book a wellness exam, a sick visit, a vaccine appointment or a new patient exam. Would you like one of those, or shall I take a request for the team?"
+    delegate:
+      - find_slots: { visit_type_id: not_offered, provider_id: null, from_date: null, part_of_day: any }
+  - caller: No, that's okay. Thanks, bye.
+    reply: "You're welcome. Goodbye!"
+expect:
+  outcome: info
+  refusals: [unknown_visit_type]
+  bookings_created: 0
+  sms_sent: 0
+  returned: ["That isn't something we book here. I can book a wellness exam, a sick visit, a vaccine appointment or a new patient exam. Would you like one of those, or shall I take a request for the team?"]
+forbid_spoken:
+  - laser therapy is booked
+  - I can offer

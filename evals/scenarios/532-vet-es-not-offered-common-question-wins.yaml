@@ -1,0 +1,18 @@
+id: vet-es-not-offered-common-question-wins
+title: "In Spanish: grooming (peluquería) asked for as a booking at a clinic whose common questions say it has none: the clinic's own answer (2026-11-16)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, visit-types, common-questions, es]
+turns:
+  - caller: Hola, ¿puedo agendar grooming para Biscuit?
+    reply: "No ofrecemos hospedaje ni grooming, pero en recepción le pueden recomendar lugares cercanos. ¿Le puedo ayudar en algo más?"
+    delegate:
+      - find_slots: { visit_type_id: not_offered, provider_id: null, from_date: null, part_of_day: any }
+expect:
+  outcome: info
+  refusals: [unknown_visit_type]
+  bookings_created: 0
+  language: es
+  answered_from: faq_boarding
+  returned: ["We do not offer boarding or grooming."]
+  never_returned: ["Eso no lo agendamos aquí"]

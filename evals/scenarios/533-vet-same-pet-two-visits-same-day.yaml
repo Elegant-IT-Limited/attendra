@@ -1,0 +1,53 @@
+id: vet-same-pet-two-visits-same-day
+title: "One pet, two kinds of visit in one call, back to back the same day: a wellness exam, then a dental check-up right after it; both booked, each read back and texted (2026-11-16)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, number-first, two-bookings, visit-types]
+settings:
+  providers:
+    - { id: prov_ruiz, name: Dr. Elena Ruiz, gender: female, specialty: General practice, categories: [Dogs, Cats, Dentistry], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new, vt_dental] }
+    - { id: prov_bell, name: Dr. Marcus Bell, gender: male, specialty: General practice, categories: [Dogs, Cats, Senior pets], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new, vt_dental] }
+    - { id: prov_sato, name: Dr. Hana Sato, gender: female, specialty: Exotic pets, categories: [Rabbits, Birds, Reptiles, Small mammals], visitTypeIds: [vt_wellness, vt_sick, vt_new], hours: { "2": [{ open: "08:00", close: "18:00" }], "4": [{ open: "08:00", close: "18:00" }] } }
+  visitTypes:
+    - { id: vt_wellness, name: wellness exam, names: { es: chequeo general }, minutes: 30, audience: existing }
+    - { id: vt_sick, name: sick visit, names: { es: consulta por enfermedad }, minutes: 20 }
+    - { id: vt_vaccines, name: vaccine appointment, names: { es: cita de vacunas }, minutes: 15 }
+    - { id: vt_new, name: new patient exam, names: { es: primera consulta }, minutes: 40, audience: new }
+    - { id: vt_dental, name: dental check-up, names: { es: revisión dental }, minutes: 30 }
+turns:
+  - caller: Hi, I'd like a wellness exam for Biscuit on Thursday morning, and a dental check-up for him right after it.
+    reply: "Is your pet's profile under the number you're calling from, ending 0172?"
+  - caller: Yes, that's my number.
+    reply: "I found Biscuit, your dog. For the wellness exam on Thursday I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: null }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-10-01", part_of_day: morning }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Biscuit is booked for {booked}. Now the dental check-up right after it."
+    delegate:
+      - commit_pending: {}
+  - caller: Yes, the dental check-up straight after it, at 8:30.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - find_slots: { visit_type_id: vt_dental, provider_id: null, from_date: "2026-10-01", part_of_day: any, from_time: "08:30", time_mode: at }
+  - caller: Yes, please.
+    reply: "Biscuit is booked for {booked} too. Anything else?"
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 2
+  bookings:
+    - { on: "2026-10-01", at: "08:00", visit: vt_wellness }
+    - { on: "2026-10-01", at: "08:30", visit: vt_dental }
+  sms_sent: 2
+  sms_templates: [booking_confirmed, booking_confirmed]
+  sms_vars:
+    - { pet: Biscuit, visit: wellness exam }
+    - { pet: Biscuit, visit: dental check-up }
+  returned: ["Thursday, October 1, at 8:00 AM with Dr. Elena Ruiz for a wellness exam", "Thursday, October 1, at 8:30 AM with", "for a dental check-up"]
