@@ -68,11 +68,13 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await page.getByRole('link', { name: /^Requests/ }).click();
     const tasks = page.getByTestId('task-row');
     // 5 from the eval calls, a refill and a callback from this week's, 3 urgent checks for the emergency calls (every emergency
-    // opens one, 2026-10-24), and follow-ups for flagged calls: one to three, because a second call from the same number joins
-    // its open one, and how close those calls fall depends on when the suite runs (11 or 13 in all)
-    await expect.poll(() => tasks.count()).toBeGreaterThanOrEqual(11);
+    // opens one, 2026-10-24), and follow-ups for flagged calls: how many depends on the day the suite runs (a second call from
+    // the same number joins its open one; on a Sunday 15 in all, 2026-11-15). So the list shows exactly the server's count
+    const clinic = new URL(page.url()).pathname.split('/')[2];
+    const { open: server } = (await (await page.request.get(`/api/v1/clinics/${clinic}/tasks/count`)).json()) as { open: number };
+    expect(server).toBeGreaterThanOrEqual(11);
+    await expect.poll(() => tasks.count()).toBe(server);
     const open = await tasks.count();
-    expect(open).toBeLessThanOrEqual(13);
     // his refill card: newest first, so it is no longer at the top, and he has other requests now (an urgent check, a follow-up)
     const row = tasks.filter({ hasText: 'James Whitaker' }).filter({ hasText: 'Prescription refill' });
     await expect(row).toHaveCount(1);
