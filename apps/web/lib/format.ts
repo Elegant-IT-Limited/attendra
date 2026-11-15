@@ -369,12 +369,16 @@ export function dob(date: string) {
   return `${d} ${new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'long' }).format(new Date(Date.UTC(y, m - 1, d)))} ${y}`;
 }
 
-export const CANCEL_REASONS: Record<string, string> = {
-  patient_asked: 'The patient asked',
+/**
+ * Why a visit was cancelled, in the clinic's words: at a vet clinic the owner asks, not the patient (note 2026-11-16 U2).
+ * The stored value stays `patient_asked` either way.
+ */
+export const cancelReasons = (pets: boolean): Record<string, string> => ({
+  patient_asked: pets ? 'The owner asked' : 'The patient asked',
   clinic_asked: 'The clinic needed to move it',
   booked_in_error: 'Booked by mistake',
   other: 'Something else',
-};
+});
 
 /** One colour per visit type, in the order the clinic lists them. Tokens live in globals.css. */
 export const VISIT_TONES = [

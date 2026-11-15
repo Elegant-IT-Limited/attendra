@@ -9,7 +9,7 @@ import { useSettled } from '@/components/patients/patient-search';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
 import { api } from '@/lib/api';
-import { CANCEL_REASONS, clinicTime, dayTitle, timeOf, visitTypeName } from '@/lib/format';
+import { cancelReasons, clinicTime, dayTitle, timeOf, visitTypeName } from '@/lib/format';
 
 const SORTS = {
   'cancelled-newest': { label: 'Cancelled most recently', sort: 'cancelled', order: 'newest' },
@@ -78,7 +78,7 @@ export function CancelledHistory({ clinicId, clinic, providerId, onOpen }: { cli
                         <span className="block text-xs text-text-muted">{visitTypeName(visit(a.visitTypeId))} with {provider(a.providerId)}</span>
                       </span>
                       <span className="min-w-0 flex-1 truncate font-medium">{a.patientName}</span>
-                      <span className="text-text-muted">{a.cancelReason ? CANCEL_REASONS[a.cancelReason] : 'No reason given'}</span>
+                      <span className="text-text-muted">{a.cancelReason ? cancelReasons(clinic.industry === 'vet')[a.cancelReason] : 'No reason given'}</span>
                       <span className="inline-flex items-center gap-1 text-xs text-text-muted">
                         <Icon className="size-3.5" aria-hidden />
                         {a.cancelledBy?.kind === 'assistant' ? 'The assistant' : (a.cancelledBy?.name ?? 'Staff')}, {clinicTime(a.cancelledAt, tz)}

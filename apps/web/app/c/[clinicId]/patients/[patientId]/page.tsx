@@ -199,7 +199,7 @@ export default function PatientPage() {
             <CardContent className="py-5">
               {can('patients:write') ? (
                 <PatientForm key={`${p.firstName}|${p.lastName}|${p.dob}|${p.phone}|${p.guardianName}|${p.gender}|${p.species}`} clinicId={clinicId} patientId={p.id} submitLabel="Save changes"
-                  initial={{ firstName: p.firstName, lastName: p.lastName, dob: p.dob, phone: p.phone ?? '', guardianName: p.guardianName ?? '', gender: p.gender, species: p.species ?? '', textsOk: p.textsOk }} onSaved={() => toast({ tone: 'success', message: 'Saved. The assistant verifies them with these details from the next call on.' })} />
+                  initial={{ firstName: p.firstName, lastName: p.lastName, dob: p.dob, phone: p.phone ? phone(p.phone) : '', guardianName: p.guardianName ?? '', gender: p.gender, species: p.species ?? '', textsOk: p.textsOk }} onSaved={() => toast({ tone: 'success', message: 'Saved. The assistant verifies them with these details from the next call on.' })} />
               ) : <p className="text-sm text-text-muted">You can read this record. The front desk or a manager can change it.</p>}
             </CardContent>
           </Card>
