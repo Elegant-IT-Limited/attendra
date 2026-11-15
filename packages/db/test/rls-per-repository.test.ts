@@ -7,7 +7,7 @@ import {
   ApiKeyRepository, authenticateApiKey, avatarFor, CallRepository, callStats, callTimeline, CallSummaryRepository, cleanTitles, createPhiCipher, type Database,
   FrontDeskRepository, householdOf, inviteToTeam, KnowledgeRepository, listMembers, normalisePhones, PatientRecords, PatientRemoval, phoneUsage, PostgresAuditLog,
   PostgresPatientDirectory, PostgresTaskQueue, qualityRows, saveAvatar, ScheduleRepository, seedCedarPark, seedDemo, seedDemoSchedule, staffNames,
-  teamInvitations, clinicCosts, handoffWeeks, listHandoffs, recordHandoff, setHandoffVerdict, viewHandoff, saveVapiSecret, vapiCallEnded, vapiCallLive, vapiConcurrency, vapiSecretHashOf, vapiSecretOf, visitTypeCoverageReport, WebhookRepository, withClinic, withClinicScope,
+  teamInvitations, clinicCosts, demoClinics, demoState, demoUsage, resetDemoClinic, setDemoBaseline, setDemoSwitch, handoffWeeks, listHandoffs, recordHandoff, setHandoffVerdict, viewHandoff, saveVapiSecret, vapiCallEnded, vapiCallLive, vapiConcurrency, vapiSecretHashOf, vapiSecretOf, visitTypeCoverageReport, WebhookRepository, withClinic, withClinicScope,
 } from '../src';
 import { openTestDatabase, TEST_DATA_KEY } from '../src/testing';
 
@@ -127,6 +127,25 @@ const CASES: Record<string, Case> = {
       expect(await vapiSecretOf(db, cipher, B)).toBeNull();
       expect(await vapiSecretHashOf(db, B)).toBeNull();
       expect((await clinicCosts(db, B, SINCE, UNTIL)).engines).toEqual([]);
+    },
+  },
+  // a demo clinic (2026-11-16): its baseline and reset, its switch and today's use of its line, for its own clinic only
+  'demo-clinic.ts': {
+    tables: ['demo_baselines', 'patients', 'patient_search_keys', 'appointments', 'tasks', 'calls', 'call_actions', 'audit_logs'],
+    own: async () => {
+      expect(await setDemoSwitch(db, A, true, 'backoffice:a@example.com', new Date())).toBe('changed');
+      expect((await setDemoBaseline(db, cipher, A, 'backoffice:a@example.com', new Date())).ok).toBe(true);
+      expect((await demoClinics(db)).map((c) => c.clinicId)).toEqual([A]);
+      expect((await demoUsage(db, cipher, A, MARIA.phone, { start: SINCE, end: UNTIL }, new Date())).callerCalls).toBeGreaterThan(0);
+      expect(await resetDemoClinic(db, cipher, A, 'backoffice:a@example.com', new Date(), { dryRun: true })).toMatchObject({ ok: true });
+      expect(await demoState(db, A)).toMatchObject({ enabled: true, baselineBy: 'backoffice:a@example.com' });
+      expect(await setDemoSwitch(db, A, false, 'backoffice:a@example.com', new Date())).toBe('changed');
+    },
+    other: async () => {
+      expect(await demoState(db, B)).toMatchObject({ enabled: false, baselineAt: null });
+      expect(await setDemoBaseline(db, cipher, B, 'backoffice:a@example.com', new Date())).toEqual({ ok: false, error: 'not_demo' });
+      expect(await resetDemoClinic(db, cipher, B, 'backoffice:a@example.com', new Date())).toEqual({ ok: false, error: 'not_demo' });
+      expect((await demoUsage(db, cipher, B, MARIA.phone, { start: SINCE, end: UNTIL }, new Date())).callerCalls).toBe(0);
     },
   },
   'handoffs.ts': (() => {

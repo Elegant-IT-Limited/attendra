@@ -9,7 +9,9 @@ import { OTHER, PASSWORD, startApi } from './helpers';
 const C = `/api/v1/clinics/${DEMO_CLINIC.id}`;
 const ME = '/api/v1/me/invitations';
 const mails: MailRequest[] = [];
-let now = new Date('2026-11-06T15:00:00Z');
+// the API's clock starts at the real minute: the set-password link an invitation emails expires with the invitation (7 days
+// on this clock), and Better Auth checks that against the real clock. A fixed date failed every run from 7 days after it.
+let now = new Date(Math.floor(Date.now() / 60_000) * 60_000);
 let api: Awaited<ReturnType<typeof startApi>>;
 let owner: string;
 let admin: string;

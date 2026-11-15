@@ -455,3 +455,14 @@ export const vapiConcurrencyDays = pgTable('vapi_concurrency_days', {
   peak: integer('peak').notNull().default(0),
   alertedAt: timestamp('alerted_at', { withTimezone: true }),
 });
+
+/** A demo clinic's baseline (migration 0058): its operational rows as JSON, encrypted, and its last reset's counts. */
+export const demoBaselines = pgTable('demo_baselines', {
+  clinicId: text('clinic_id').primaryKey(),
+  takenAt: timestamp('taken_at', { withTimezone: true }).notNull(),
+  takenBy: text('taken_by').notNull(),
+  dataEnc: text('data_enc').notNull(),
+  counts: jsonb('counts').notNull(),
+  lastResetAt: timestamp('last_reset_at', { withTimezone: true }),
+  lastResetCounts: jsonb('last_reset_counts'),
+});

@@ -28,6 +28,8 @@ export interface EmergencyDestination {
   emergencyNumber: string;
   /** The clinic texts the hospital's details: offer it once, after the script. */
   textOffer?: boolean;
+  /** A demo clinic (core demo-clinic.ts): the demo line instead of a hospital, and nothing offered to text. */
+  demo?: boolean;
 }
 
 /**

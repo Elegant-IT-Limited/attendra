@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addTokens, bySubject, claimsAuthority, EMERGENCY_LINES, type EmergencyMatch, emergencyRoute, clinicDays, clinicNow, clinicNowLine, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, detectLanguage, emergencyNumberFor, hospitalNow, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ExcerptLine, type HandoffKind, type HandoffReason, type HandoffStep, type ToolName } from '@attendra/core';
+import { addTokens, bySubject, claimsAuthority, type DemoLimitCode, demoEmergency, EMERGENCY_LINES, type EmergencyMatch, emergencyRoute, clinicDays, clinicNow, clinicNowLine, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, detectLanguage, emergencyNumberFor, hospitalNow, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ExcerptLine, type HandoffKind, type HandoffReason, type HandoffStep, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
 import { coachingInstruction, DOING, type LiveEvent, shortName } from './live';
@@ -51,6 +51,8 @@ const AFTER_SPEECH_MS = 3500;
 const VIP_AFTER_MS = 6000;
 /** A paused clinic's message (call back, the emergency hospital) is longer than a hello: the hang-up waits for it. */
 const PAUSED_HANGUP_AFTER_MS = 10_000;
+/** A demo line's fixed refusal is one short sentence: the hang-up follows it (the call is ended within 10 s of the answer in any case). */
+const DEMO_LIMIT_HANGUP_AFTER_MS = 5000;
 /** The turn budget: a request that runs past it has the caller hear, once, that it is still being worked on (7 s until 2026-11). */
 const HOLD_AFTER_MS = 5000;
 /**
@@ -259,7 +261,7 @@ export class CallAgent {
     // the clinic's first choice of hospital that is open now; none open, the nearest 24-hour one
     const hospital = hospitalNow(clinic, this.ctx.now());
     const script = match.kind === 'self_harm' ? pack.selfHarmScript(number, crisisLineFor(clinic))
-      : forTrade ? trade.emergency!.script(language, { hospital, emergencyNumber: number, textOffer: textingOf(clinic).enabled && textingOf(clinic).kinds.emergency_hospital })
+      : forTrade ? trade.emergency!.script(language, demoEmergency(clinic) ? { hospital: null, emergencyNumber: number, demo: true } : { hospital, emergencyNumber: number, textOffer: textingOf(clinic).enabled && textingOf(clinic).kinds.emergency_hospital })
         : pack.emergencyScript(number);
     const out: Outbound[] = [{ type: 'instructions', delegationId: null, content: script }];
     // what the caller must hear before anyone may end the call: the hospital's name, or the number
@@ -413,13 +415,24 @@ export class CallAgent {
     s.pending = null; // nothing half-booked survives an emergency
     s.textOffer = null;
     s.revision++;
-    this.log.warn({ call_id: this.ctx.callId, emergency_kind: c.kind, action: route.action, mode: route.mode }, 'emergency confirmed: routed by the clinic\'s setting');
-    this.handOff({ kind: 'emergency', reason: 'emergency', lineId: route.action === 'transfer' ? 'emergency_transfer' : route.action === 'refer' ? 'emergency_refer' : 'emergency_nearest' });
+    const demo = demoEmergency(clinic);
+    this.log.warn({ call_id: this.ctx.callId, emergency_kind: c.kind, action: demo ? 'demo' : route.action, mode: route.mode }, 'emergency confirmed: routed by the clinic\'s setting');
+    this.handOff({ kind: 'emergency', reason: 'emergency', lineId: demo ? 'emergency_demo' : route.action === 'transfer' ? 'emergency_transfer' : route.action === 'refer' ? 'emergency_refer' : 'emergency_nearest' });
     this.emit({ type: 'emergency', kind: c.kind });
     this.emitState();
     const language = this.state.language;
     const pet = c.pet?.name ?? null;
     const number = emergencyNumberFor(clinic, language);
+    // a demo clinic (2026-11-16): the demo line in place of the route; nothing texted, nobody put through
+    if (demo) {
+      s.emergencyResult = 'hospital_said';
+      const line = EMERGENCY_LINES.demo(language);
+      this.state.emergencyScriptSaid = false;
+      this.state.emergencyScriptSaidAtTurn = null;
+      this.emergencyScript = { content: line, number: language === 'es' ? 'demostración' : 'demo', sentAt: this.ctx.now().getTime(), said: false, heard: '' };
+      return this.emergencyLine(c, `Say calmly, in ${PACKS[language].name}, word for word: "${line}" Then say: "${language === 'es' ? `Si una persona está herida o en peligro, llame al ${number}.` : `If a person is hurt or in danger, call ${number}.`}" `
+        + `Do not offer to text anything and do not put the caller through to anyone. Do not give medical or first-aid advice, and do not book a routine visit for ${pet ?? 'this pet'}.`);
+    }
     if (route.action === 'transfer' && route.number) {
       // a browser test call cannot be put through: it hears the fallback, as a caller would when nobody answers
       if (this.ctx.channel === 'web') return this.emergencyTransferFailed();
@@ -540,7 +553,7 @@ export class CallAgent {
     if (c.kind === 'borderline') {
       return [{ type: 'instructions', delegationId: null, content: `The caller says it is mild. Say you are sorry ${pet ?? 'their pet'} isn't feeling well, then offer the soonest visit for a sick pet (find_slots with the sick visit type, the earliest time). Give no medical advice.` }];
     }
-    const back = EMERGENCY_LINES.ifReturns(language, pet, emergencyRoute(this.ctx.clinic, this.ctx.now()));
+    const back = demoEmergency(this.ctx.clinic) ? EMERGENCY_LINES.demoIfReturns(language) : EMERGENCY_LINES.ifReturns(language, pet, emergencyRoute(this.ctx.clinic, this.ctx.now()));
     return [{ type: 'instructions', delegationId: null, content: `The caller says it is not an emergency now. Say you are glad in a few words, then say once, in ${PACKS[language].name}, word for word: "${back}" `
       + `Then help with what they want, including booking a visit for ${pet ?? 'their pet'}. Do not mention emergencies or hospitals again unless they describe a danger sign.` }];
   }
@@ -797,6 +810,24 @@ export class CallAgent {
     return [
       { type: 'instructions', delegationId: null, content: 'The clinic\'s assistant is not answering calls right now. After the line you were given, say nothing more and ask nothing.' },
       uri ? { type: 'transfer', uri, afterMs: VIP_AFTER_MS, quiet: true } : { type: 'hangup', afterMs: PAUSED_HANGUP_AFTER_MS },
+    ];
+  }
+
+  /**
+   * A demo clinic's call over one of its limits (core demo-clinic.ts), turned away when it arrived: the caller hears the
+   * one fixed line (demoBusyOpening), nothing is booked, asked or looked up, and the line closes (the runner also ends it
+   * within 10 s of the answer, whatever the model does). Recorded with the limit's code, for the counts and Slack's note.
+   */
+  demoLimited(code: DemoLimitCode): Outbound[] {
+    const s = this.state;
+    s.revision++;
+    s.answeringPaused = true;
+    s.outcome = 'abandoned';
+    this.emitState();
+    void this.actions?.record({ tool: 'demo_limit', argsRedacted: {}, result: { code }, revision: s.revision }).catch(() => {});
+    return [
+      { type: 'instructions', delegationId: null, content: 'This demo line is not taking this call. After the line you were given, say nothing more and ask nothing.' },
+      { type: 'hangup', afterMs: DEMO_LIMIT_HANGUP_AFTER_MS },
     ];
   }
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, type Backend, CallAgent, CallCache, cachedBackend, CallState, type Outbound, type Planner } from '@attendra/agent';
-import { ClinicConfig, isVapiTestClinic, maxGapMs, repeatedQuestions, vapiAlertAt } from '@attendra/core';
+import { ClinicConfig, DEMO_BUSY_LINE, DEMO_GOODBYE_LINE, DEMO_LIMITS, DEMO_WRAP_UP_LINE, type DemoLimitCode, isDemoClinic, isVapiTestClinic, maxGapMs, repeatedQuestions, vapiAlertAt } from '@attendra/core';
 import { type Alerter, isVapiCreditEnd, isVapiOpenAiQuotaEnd, type Logger } from '@attendra/observability';
 import { type CallRecorder, callFacts, VAPI_EVENTS_PATH, VAPI_SECRET_HEADER } from '@attendra/voice-engine';
 import type { FastifyInstance } from 'fastify';
@@ -45,7 +45,12 @@ export interface VapiDeps extends VapiOptions {
   log: Logger;
   alerts?: Alerter;
   now: () => Date;
+  /** A demo clinic's limits (core demo-clinic.ts), checked when its phone call opens; the voice service's own check. */
+  demoLimitFor?(clinic: ClinicConfig, from: string | null): Promise<DemoLimitCode | null>;
 }
+
+/** A demo call turned away on Vapi is ended this long after it opened, whatever Vapi's assistant does. */
+const DEMO_LIMIT_MAX_MS = 10_000;
 
 /** Vapi's message, as far as we read it. */
 interface VapiMessage {
@@ -83,6 +88,10 @@ interface Session {
    * they are sent into the call: the assistant's prompt is the same on every call of the location.
    */
   facts: string | null;
+  /** A demo call turned away by a limit: its tool calls are refused, and it is ended. */
+  refused: boolean;
+  /** Commands waiting for the call's control URL (none in the first message): sent as soon as it is known. */
+  pending: Record<string, unknown>[];
 }
 
 /** Vapi's own times, in ms from the call's start: when a line began and ended. */
@@ -223,6 +232,16 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
     }
   }
 
+  /** A command that must reach the call even when its control URL is not known yet: kept until it is. */
+  function controlSoon(s: Session, body: Record<string, unknown>) {
+    if (s.controlUrl) void control(s, body);
+    else s.pending.push(body);
+  }
+  function flushPending(s: Session) {
+    if (!s.controlUrl || !s.pending.length) return;
+    for (const body of s.pending.splice(0)) void control(s, body);
+  }
+
   /**
    * The call's own facts into the conversation, once, as soon as there is a control URL: a system message that starts
    * no reply. Without one (none in the messages yet), they go with the first tool result instead (tool-calls below).
@@ -255,7 +274,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
     const vapiId = m.call?.id;
     if (!vapiId) return null;
     const known = sessions.get(vapiId);
-    if (known) { known.controlUrl ??= controlUrlOf(m); sendFacts(known); return known; }
+    if (known) { known.controlUrl ??= controlUrlOf(m); sendFacts(known); flushPending(known); return known; }
     // a call refused once stays refused, without a second alert for each of its messages
     if (refused.has(vapiId)) return null;
     const parsed = ClinicConfig.safeParse(await deps.clinicById(clinicId));
@@ -271,6 +290,9 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
     }
     const web = m.call?.type === 'webCall';
     const from = web ? null : m.call?.customer?.number ?? m.customer?.number ?? null;
+    // a demo clinic's limits, as on our own engines: checked once, when its phone call opens
+    const demo = !web && isDemoClinic(clinic);
+    const demoLimit = demo && deps.demoLimitFor ? await deps.demoLimitFor(clinic, from) : null;
     const callId = await deps.openCall(clinic.id, `vapi_${vapiId}`, from, web ? 'web' : 'phone', undefined, undefined, { engine: 'vapi', voiceFlow: 'tools' });
     const cache = new CallCache();
     // a test clinic's call texts nobody: what would have gone is recorded as not sent, as on a browser test call
@@ -281,8 +303,23 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
     agent.state.answersAcrossPieces = true;
     // the caller ID reaches every tool as on path A (the agent's callerNumber), and the voice hears it with the date
     const s: Session = { agent, clinicId: clinic.id, callId, fed: [], startedAt: Date.now(), notes: [], controlUrl: controlUrlOf(m), closed: false,
-      facts: callFacts(clinic, deps.now(), from) };
+      facts: demoLimit ? null : callFacts(clinic, deps.now(), from), refused: !!demoLimit, pending: [] };
     sessions.set(vapiId, s);
+    if (demoLimit) {
+      // over a limit: the one fixed line over whatever Vapi's assistant began, then the end; recorded with the limit's code
+      agent.demoLimited(demoLimit);
+      controlSoon(s, { type: 'say', content: DEMO_BUSY_LINE[clinic.primaryLanguage], interruptAssistantEnabled: true, endCallAfterSpoken: true });
+      later(DEMO_LIMIT_MAX_MS, () => controlSoon(s, { type: 'end-call' }));
+      deps.log.info({ call_id: callId, clinic_id: clinic.id, engine: 'vapi', code: demoLimit }, 'demo clinic: the call is over a limit and hears the busy line');
+      return s;
+    }
+    if (demo) {
+      // a demo call: a polite line at 14:00, the goodbye and the end at 15:00 (Vapi says them word for word)
+      const lang = clinic.primaryLanguage;
+      later(DEMO_LIMITS.wrapUpAtSeconds * 1000, () => controlSoon(s, { type: 'say', content: DEMO_WRAP_UP_LINE[lang] }));
+      later(DEMO_LIMITS.callSeconds * 1000, () => controlSoon(s, { type: 'say', content: DEMO_GOODBYE_LINE[lang], interruptAssistantEnabled: true, endCallAfterSpoken: true }));
+      later(DEMO_LIMITS.callSeconds * 1000 + 15_000, () => controlSoon(s, { type: 'end-call' }));
+    }
     sendFacts(s);
     deps.log.info({ call_id: callId, clinic_id: clinic.id, engine: 'vapi' }, 'vapi call opened');
     return s;
@@ -290,7 +327,8 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
 
   /** Vapi's conversation so far into the call state: the caller's lines through the guardrails, the assistant's as said. */
   function sync(s: Session, lines: VapiLine[] | undefined) {
-    if (!lines) return;
+    // a demo call turned away hears its one line and ends: nothing a caller says there is acted on
+    if (!lines || s.refused) return;
     for (const l of lines) {
       if (!spoken(l)) continue;
       const span = { who: whoOf(l), start: startOf(l), end: endOf(l) };
@@ -331,7 +369,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
     if (m.type === 'tool-calls') {
       if (vapiId && !sessions.has(vapiId)) await live(vapiId);
       const s = await session(m, clinicId);
-      if (!s) return reply.code(200).send({ results: (m.toolCallList ?? []).map((t) => ({ toolCallId: t.id, error: 'This call cannot be helped here.' })) });
+      if (!s || s.refused) return reply.code(200).send({ results: (m.toolCallList ?? []).map((t) => ({ toolCallId: t.id, error: 'This call cannot be helped here.' })) });
       // the call facts never sent (no control URL yet): with this result, before anything else
       if (s.facts) { s.notes.unshift(s.facts); s.facts = null; }
       sync(s, m.artifact?.messages);
@@ -351,7 +389,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
     // even when the model calls no tool (an emergency in the first sentence), and the call is on file from its start
     const opens = m.type === 'conversation-update' || m.type === 'end-of-call-report' || (m.type === 'status-update' && m.status === 'in-progress');
     const s = vapiId ? sessions.get(vapiId) ?? (opens ? await session(m, clinicId) ?? undefined : undefined) : undefined;
-    if (s) { s.controlUrl ??= controlUrlOf(m); sendFacts(s); }
+    if (s) { s.controlUrl ??= controlUrlOf(m); sendFacts(s); flushPending(s); }
     if (m.type === 'conversation-update' && s) sync(s, m.messages);
     if (m.type === 'end-of-call-report' && s) {
       const lines = m.artifact?.messages ?? [];

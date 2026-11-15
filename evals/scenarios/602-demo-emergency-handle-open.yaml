@@ -1,0 +1,36 @@
+id: demo-emergency-handle-open
+title: "A demo clinic whose setting would put the caller through: nobody is put through, the demo line instead"
+clinic: riverbend
+local_time: 10:00
+caller_number: "+17205550172"
+tags:
+  - no-demo
+  - safety
+  - demo-clinic
+settings:
+  emergencyTransferEnabled: false
+  demoClinic:
+    enabled: true
+    baselineAt: null
+  emergencies:
+    mode: handle
+    number: "+17205550179"
+    backupHospital:
+      name: Front Range Pet Emergency
+      phone: "+17205550188"
+      address: 1200 Larkspur Avenue, Denver
+turns:
+  - caller: My dog Biscuit's throat is swelling up.
+  - assistant: I'm sorry to hear that. Is this still an emergency right now? Do you need help getting emergency care?
+  - caller: Yes, it's still happening, please help.
+expect:
+  outcome: emergency
+  emergency_instruction: true
+  emergency_result: hospital_said
+  transfer_to: null
+  urgent_requests: 0
+  spoken_contains:
+    - This is a demo line, so I can't send you to a real hospital.
+forbid_spoken:
+  - I'm putting you through to our team now
+  - Front Range Pet Emergency

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, defaultTalkStyle, emergencyHospitalsOf, greetingFor, industryPack, isOpen, openingWords, PACKS, type TalkStyle, textingOf, todaysHoursLine } from '@attendra/core';
+import { type ClinicConfig, DEMO_BUSY_LINE, defaultTalkStyle, emergencyHospitalsOf, greetingFor, industryPack, isOpen, openingWords, PACKS, type TalkStyle, textingOf, todaysHoursLine } from '@attendra/core';
 
 /** Who a transfer reaches, in the words the voice uses for it. */
 const TRANSFER_TO: Record<string, string> = { front_desk: 'the front desk', billing: 'billing', on_call: 'the on-call vet or doctor, for an emergency' };
@@ -79,6 +79,14 @@ export function vipOpening(clinic: ClinicConfig, vipName: string): string {
     : `Hi${first ? ` ${first}` : ''}, thanks for calling ${clinic.name}. This is ${who ? `${who}, ` : ''}the clinic's AI assistant. I'm connecting you with our team now.`;
   const notice = clinic.recording.enabled && clinic.recording.notice ? ` Then say: "${clinic.recording.notice}"` : '';
   return `The call has just been answered. This caller is on the clinic's VIP list and is being passed straight to the team. Greet them now, before they say anything. Say exactly: "${line}"${notice} Then say nothing more: do not ask how you can help, and do not say the usual greeting.`;
+}
+
+/**
+ * The opening of a demo clinic's call turned away by one of its limits (core demo-clinic.ts): the one fixed line, in the
+ * clinic's main language, and nothing else. No greeting, no question, no recording notice: the call ends straight after.
+ */
+export function demoBusyOpening(clinic: ClinicConfig): string {
+  return `The call has just been answered. Speak now, before the caller says anything. Say exactly: "${DEMO_BUSY_LINE[clinic.primaryLanguage]}" Then say nothing more: do not greet them, do not ask anything, and do not answer anything they say.`;
 }
 
 /**
