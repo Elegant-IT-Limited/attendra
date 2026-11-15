@@ -9,7 +9,9 @@ import { OTHER, PASSWORD, startApi } from './helpers';
 const C = `/api/v1/clinics/${DEMO_CLINIC.id}`;
 const ME = '/api/v1/me/invitations';
 const mails: MailRequest[] = [];
-let now = new Date('2026-11-06T15:00:00Z');
+// the API's clock starts at the real minute: the set-password link's token is checked by the auth library against the
+// real clock, so a fixed date made the test fail once that date was a week behind (it started failing on 2026-11-13)
+let now = new Date(Math.floor(Date.now() / 60_000) * 60_000);
 let api: Awaited<ReturnType<typeof startApi>>;
 let owner: string;
 let admin: string;

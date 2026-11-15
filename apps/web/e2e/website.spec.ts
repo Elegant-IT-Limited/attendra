@@ -19,7 +19,7 @@ test('a website typed without https:// is saved with it, and https:// typed by h
   // without the scheme: kept as typed while typing, and with https:// once the field is left
   await website.fill('maplestreet.example/hours');
   await expect(website).toHaveValue('maplestreet.example/hours');
-  await page.getByLabel('Address').click();
+  await page.locator('#address').click();
   await expect(website).toHaveValue('https://maplestreet.example/hours');
 
   // and saved, even straight from the keyboard with the scheme left out

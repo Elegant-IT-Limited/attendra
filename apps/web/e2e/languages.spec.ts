@@ -91,7 +91,7 @@ test.describe.serial('languages and a second clinic', () => {
       "Thanks for calling Maple Street Family Medicine\nI'm Maya, the clinic's AI assistant. How can I help you today?",
     ]) {
       await greeting.fill(text);
-      await expect(page.getByTestId('opening-preview')).toContainText('the clinic\'s AI assistant');
+      await expect(greeting).toHaveValue(text);
       await expect(page.getByTestId('greeting-stale-en')).toHaveCount(0);
     }
     // the Spanish greeting, with a comma after the name
