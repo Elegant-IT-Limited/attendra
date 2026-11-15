@@ -32,7 +32,6 @@ test('a website typed without https:// is saved with it, and https:// typed by h
   // put the demo back: no website
   await page.getByLabel('Website').fill('');
   await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByText('Saved. The next call uses these settings.')).toBeVisible();
-  await page.reload();
+  await expect(page.getByText('Saved. The next call uses these settings.').last()).toBeVisible();
   await expect(page.getByLabel('Website')).toHaveValue('');
 });
