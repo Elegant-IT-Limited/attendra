@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { weeklyHoursLine } from '@attendra/core';
-import { age, ago, clinicTime, firstWeekday, firstWeekdayIn, hourMark, localTime, NEW_MEMBER, personName, phone, setClinicCountry, telHref, tenDigitPhones, timeOf, usd, visitTypeName, WEEK_STARTS, weekdayHeads } from '../lib/format';
+import { age, ago, cancelReasons, clinicTime, firstWeekday, firstWeekdayIn, hourMark, localTime, NEW_MEMBER, personName, phone, setClinicCountry, telHref, tenDigitPhones, timeOf, usd, visitTypeName, WEEK_STARTS, weekdayHeads } from '../lib/format';
 
 afterEach(() => setClinicCountry(['+13035550100']));
 
@@ -138,5 +138,15 @@ describe('the first day of the week', () => {
     expect([firstWeekdayIn('US'), firstWeekdayIn('CA'), firstWeekdayIn('GB'), firstWeekdayIn('DE'), firstWeekdayIn('ES'), firstWeekdayIn('IE'), firstWeekdayIn('AE')]).toEqual([0, 0, 1, 1, 1, 1, 1]);
     const mondays = ['GB', 'IE', 'FR', 'DE', 'ES', 'IT', 'NL', 'BE', 'AT', 'CH', 'SE', 'NO', 'DK', 'FI', 'PL', 'CZ', 'GR', 'RO', 'HU', 'AU', 'NZ', 'AE', 'TR', 'RU', 'AR', 'CL', 'NG', 'VN'];
     for (const region of [...Object.keys(WEEK_STARTS), ...mondays]) expect(firstWeekdayIn(region, false), region).toBe(firstWeekdayIn(region));
+  });
+});
+
+// note 2026-11-16 U2: a vet clinic read "The patient asked" as a reason to cancel a visit; at a vet clinic the owner asks
+describe('why a visit was cancelled', () => {
+  it('says the owner asked at a vet clinic and the patient asked elsewhere, for the same stored reason', () => {
+    expect(cancelReasons(true).patient_asked).toBe('The owner asked');
+    expect(cancelReasons(false).patient_asked).toBe('The patient asked');
+    expect(Object.keys(cancelReasons(true))).toEqual(['patient_asked', 'clinic_asked', 'booked_in_error', 'other']);
+    expect(Object.keys(cancelReasons(false))).toEqual(Object.keys(cancelReasons(true)));
   });
 });

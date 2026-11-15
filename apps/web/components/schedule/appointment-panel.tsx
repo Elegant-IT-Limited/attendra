@@ -15,7 +15,7 @@ import { Alert, Skeleton } from '@/components/ui/feedback';
 import { Label, Select } from '@/components/ui/input';
 import { useProblem, useToast } from '@/components/ui/toast';
 import { api, ApiFailure } from '@/lib/api';
-import { CANCEL_REASONS, clinicTime, dayTitle, dob, phone, telHref, timeOf, visitTypeName } from '@/lib/format';
+import { cancelReasons, clinicTime, dayTitle, dob, phone, telHref, timeOf, visitTypeName } from '@/lib/format';
 import { offersChanges } from '@/lib/visit';
 import { patchAppointment } from '@/lib/optimistic';
 
@@ -179,7 +179,7 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
             )}
             {a.status === 'cancelled' && (
               <Alert tone="warn" title="Cancelled">
-                {a.cancelReason ? CANCEL_REASONS[a.cancelReason] : 'No reason given'}{a.cancelledBy ? `, by ${who(a.cancelledBy)}` : ''}.
+                {a.cancelReason ? cancelReasons(clinic.industry === 'vet')[a.cancelReason] : 'No reason given'}{a.cancelledBy ? `, by ${who(a.cancelledBy)}` : ''}.
               </Alert>
             )}
             {mode === 'reschedule' ? (
@@ -191,7 +191,7 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
               <div className="space-y-1.5">
                 <Label htmlFor="cancel-reason">Why is it cancelled?</Label>
                 <Select id="cancel-reason" value={reason} onChange={(e) => setReason(e.target.value)}>
-                  {Object.entries(CANCEL_REASONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  {Object.entries(cancelReasons(clinic.industry === 'vet')).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </Select>
                 <p className="text-xs text-text-muted">The time opens up for booking again straight away.</p>
               </div>

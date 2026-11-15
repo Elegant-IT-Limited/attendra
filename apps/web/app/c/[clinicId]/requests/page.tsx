@@ -522,15 +522,18 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
                 <>
                   {/* who has it now, chosen; any other name gives it to them, Unassigned puts it back in the queue */}
                   <Label htmlFor={`assign-${t.id}`} className="sr-only">Assign to</Label>
-                  {/* who has it, by face as well as by name */}
+                  {/* who has it, by face as well as by name, kept together on one line; the picker is as wide as the longest name it
+                      offers ("Jordan Lee (you), has it" was cut, note 2026-11-16 U1), never past the row */}
+                  <span className="mr-auto flex min-w-0 max-w-full basis-full items-center gap-2 sm:basis-auto">
                   {t.assigneeUserId && <Avatar name={t.assigneeName ?? '?'} src={teammates.find((m) => m.userId === t.assigneeUserId)?.avatarUrl} size="sm" />}
-                  <Select id={`assign-${t.id}`} className="mr-auto h-8 w-44" title="Assign to" value={t.assigneeUserId ?? ''} disabled={busy}
+                  <Select id={`assign-${t.id}`} className="h-8 w-auto min-w-0 flex-1 sm:min-w-44 sm:flex-none" title="Assign to" value={t.assigneeUserId ?? ''} disabled={busy}
                     onChange={(e) => { const to = e.target.value; if (to === (t.assigneeUserId ?? '')) return; if (to) onAct('assign', { userId: to }); else onAct('release'); }}>
                     <option value="">Unassigned</option>
                     {teammates.map((m) => <option key={m.userId} value={m.userId}>{personName(m.name)}{m.you ? ' (you)' : ''}{m.userId === t.assigneeUserId ? ', has it' : ''}</option>)}
                     {/* someone no longer on the list (removed, or now a viewer) still shows as who has it */}
                     {t.assigneeUserId && !teammates.some((m) => m.userId === t.assigneeUserId) && <option value={t.assigneeUserId}>{t.assigneeName === null ? 'Someone' : personName(t.assigneeName)}, has it</option>}
                   </Select>
+                  </span>
                 </>
               )}
               {/* an action, named for what it does; the badge above says what it is now */}

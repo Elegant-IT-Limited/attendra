@@ -105,7 +105,11 @@ export class AppointmentsController {
     if (q.patientId && !fit) throw this.invalid('patientId', 'unknown patient');
     const from = q.from && q.from > today ? q.from : today;
     const range = { from: zonedInstant(from, '00:00', clinic.timezone), to: zonedInstant(addDays(from, q.days), '00:00', clinic.timezone), except: q.excluding };
-    const busy: BusyInterval[] = await this.desk.busy(clinicId, range);
+    // the visit being moved frees its own time, and its own place (the same provider at the same start) is not a new
+    // time to move it to (note 2026-11-16 U3: Reschedule offered the visit's current time)
+    const held = await this.desk.busy(clinicId, { from: range.from, to: range.to });
+    const own = q.excluding ? held.find((v) => v.id === q.excluding) : undefined;
+    const busy: BusyInterval[] = held.filter((v) => v.id !== q.excluding);
     // the patient's own other visits hold those times with every provider: a time offered here is one the booking or the
     // move then accepts (the Move picker offered a time the patient was already booked at with another doctor, and the
     // move was refused as patient_busy)
@@ -114,7 +118,8 @@ export class AppointmentsController {
     }
     // every opening in the days asked for: the picker shows them by day, and a cap would drop the last days
     const slots = openSlots(clinic, busy, { visitTypeId: q.visitTypeId, providerId: q.providerId, from, days: q.days, partOfDay: q.partOfDay, now, limit: 5000,
-      patient: fit ? { age: ageOn(fit.dob, today), isNew: fit.isNew } : undefined });
+      patient: fit ? { age: ageOn(fit.dob, today), isNew: fit.isNew } : undefined })
+      .filter((s) => !own || s.providerId !== own.providerId || s.start.getTime() !== own.start.getTime());
     // the grid and the lead time the times were found with, so the dialog says the same numbers
     return { slots: slots.map((s) => ({ providerId: s.providerId, visitTypeId: s.visitTypeId, startsAt: s.start.toISOString(), endsAt: s.end.toISOString(), ...(s.outsideClinicHours ? { outsideClinicHours: true } : {}) })),
       startEvery: bookingOf(clinic).startEvery, leadMinutes: DESK_LEAD_MINUTES };

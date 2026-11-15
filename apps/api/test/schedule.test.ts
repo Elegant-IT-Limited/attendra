@@ -119,8 +119,12 @@ describe('reading', () => {
     expect(res.body).not.toContain('James');
     const after = (await api.t.owner.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
     expect(after.n).toBe(before.n);
-    const moving = await api.request('GET', `${C}/slots?visitTypeId=vt_sick&providerId=prov_okafor&from=2026-09-29&days=1&excluding=${booked}`, { cookie: as.staff });
-    expect(moving.json().slots.map((s: { startsAt: string }) => s.startsAt)).toContain(at('2026-09-29', '09:00'));
+    // moving it: the time it holds is free for it (a time that overlaps it is offered), but its own place, the same
+    // provider at the same start, is not a new time (note 2026-11-16 U3: Reschedule offered the visit's current time)
+    const moving = (await api.request('GET', `${C}/slots?visitTypeId=vt_sick&providerId=prov_okafor&from=2026-09-29&days=1&excluding=${booked}`, { cookie: as.staff })).json().slots.map((s: { startsAt: string }) => s.startsAt);
+    expect(starts).not.toContain(at('2026-09-29', '09:10'));
+    expect(moving).toContain(at('2026-09-29', '09:10'));
+    expect(moving).not.toContain(at('2026-09-29', '09:00'));
   });
 
   it('with a patient, never offers a time they are already booked at with another provider, except the visit being moved', async () => {
