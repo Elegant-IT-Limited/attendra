@@ -123,6 +123,8 @@ test.describe('dashboard findings, 2026-11-16', () => {
     const item = page.getByRole('listitem').filter({ hasText: `R-${mine.number} ·` });
     await expect(item.getByText(label, { exact: true })).toBeVisible();
     await expect(item).not.toContainText(`, ${mine.details.topic}`);
+    // a number in a request's details reads as the header writes it, never +1…
+    await expect(page.getByRole('list').filter({ has: item })).not.toContainText(/\+\d{11}/);
     // the audit log
     await page.goto(`/c/${C}/audit`);
     await expect(page.getByRole('row', { name: new RegExp(`Took a request of one of the clinic's own kinds Request R-${mine.number}$`) }).first()).toBeVisible();

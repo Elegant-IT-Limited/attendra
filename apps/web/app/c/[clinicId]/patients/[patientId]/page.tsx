@@ -183,7 +183,7 @@ export default function PatientPage() {
                   <li key={r.id} className="flex flex-wrap items-start gap-3 px-5 py-3 text-sm">
                     <div className="min-w-0 flex-1">
                       <p className="font-medium"><span className="tabular-nums">{requestNumber(r.number)}</span> · {requestKind(r, terms.patient)}{r.patientId && r.patientId !== p.id && <span className="font-normal text-text-muted"> · {p.household.find((h) => h.id === r.patientId)?.name ?? 'another on this number'}</span>}</p>
-                      <p className="text-text-muted">{Object.entries(r.details).filter(([k]) => k !== 'callback_number' && k !== 'topic').map(([, v]) => v).join(', ') || 'No details'}</p>
+                      <p className="text-text-muted">{Object.entries(r.details).filter(([k]) => k !== 'callback_number' && k !== 'topic').map(([k, v]) => (k === 'phone' ? phone(v) : v)).join(', ') || 'No details'}</p>
                       <p className="text-xs text-text-muted">{clinicTime(r.createdAt, tz)}</p>
                     </div>
                     <Badge tone={r.status === 'open' ? 'warn' : 'ok'}>{r.status === 'open' ? 'Open' : 'Done'}</Badge>
