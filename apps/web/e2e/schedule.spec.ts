@@ -1,17 +1,41 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAs } from './session';
 import { testDate, testNow } from './clock';
+import { timeOf } from '../lib/format';
 
 const clinicOf = (page: Page) => new URL(page.url()).pathname.split('/')[2];
+
+// the demo clinics' own time zone, not UTC: on a Sunday evening in Denver it is already Monday in UTC
+const DENVER = 'America/Denver';
+const denverDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: DENVER }).format(d);
+const escaped = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** The next visit the assistant booked that is at least two hours ahead (so it can still be changed), from the server. */
+async function nextAssistantBooking(page: Page) {
+  const res = await page.request.get(`/api/v1/clinics/${clinicOf(page)}/appointments?from=${denverDay(testDate())}&days=28`);
+  expect(res.ok()).toBe(true);
+  const { appointments } = (await res.json()) as { appointments: { id: string; startsAt: string; status: string; patientName: string; bookedBy: { kind: string } }[] };
+  const ahead = appointments.filter((a) => a.bookedBy.kind === 'assistant' && a.status === 'booked' && Date.parse(a.startsAt) > testNow() + 2 * 3_600_000)
+    .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
+  if (!ahead[0]) throw new Error('no visit booked by the assistant ahead in the next four weeks');
+  return ahead[0];
+}
 
 /**
  * The week view, moved on a week at a time until a block matching `name` shows. With
  * `upcoming`, it starts next week, where every visit is still ahead and can be changed.
  */
 async function findInWeek(page: Page, name: RegExp, upcoming = false) {
-  // next week in the demo clinics' own time zone, not UTC: on a Sunday evening in Denver it is already Monday in UTC
-  const nextWeek = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(testDate(7 * 86_400_000));
-  await page.goto(`/c/${clinicOf(page)}/schedule?view=week${upcoming ? `&date=${nextWeek}` : ''}`);
+  // upcoming: the week of the next visit the assistant booked that is still ahead, as the server has it, and that very
+  // block. A fixed "a week from now" skipped the coming six days on a Sunday (the US week starts then), where the visits
+  // the earlier tests left were, and a block of this week can be one already past (2026-11-15).
+  let date = '';
+  if (upcoming) {
+    const next = await nextAssistantBooking(page);
+    date = denverDay(new Date(next.startsAt));
+    name = new RegExp(`^${escaped(timeOf(next.startsAt, DENVER))}, ${escaped(next.patientName)},.*booked by the assistant$`);
+  }
+  await page.goto(`/c/${clinicOf(page)}/schedule?view=week${date ? `&date=${date}` : ''}`);
   const block = page.getByTestId('appointment').and(page.getByRole('button', { name }));
   const heading = page.getByRole('heading', { level: 2, name: /^Week of / });
   for (let week = 0; week < 3; week++) {
