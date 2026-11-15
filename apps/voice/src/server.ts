@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, type Backend, CallAgent, CallCache, cachedBackend, CallState, type Planner, warmPatient } from '@attendra/agent';
-import { ClinicConfig, openAiEngineOf, resolveTransfer, VOICE_ENGINES, type VoiceEngineName, type VoiceFlow, vipRoute } from '@attendra/core';
+import { ClinicConfig, clinicDay, DEMO_LIMITS, DEMO_TIME_UP, DEMO_WRAP_UP, type DemoLimitCode, demoLimitHit, isDemoClinic, openAiEngineOf, resolveTransfer, VOICE_ENGINES, type VoiceEngineName, type VoiceFlow, vipRoute } from '@attendra/core';
 import { type Alerter, isOpenAiQuotaError, type Logger } from '@attendra/observability';
 import { callerNumber, dialledCandidates, maskedHeaders, type PhoneCallRef, type PhoneLine, SPEND_ALERT_PATH, spendAlertText, trimEnd, twilioCallSid, twilioSignatureValid, twiml } from '@attendra/telephony';
-import { callerContext, CallMarks, CallRunner, EngineRouter, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine, pausedOpening, vipOpening } from '@attendra/voice-engine';
+import { callerContext, CallMarks, CallRunner, demoBusyOpening, EngineRouter, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine, pausedOpening, vipOpening } from '@attendra/voice-engine';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
@@ -34,6 +34,12 @@ export interface VoiceDeps {
   openCall(clinicId: string, sessionId: string, fromNumber: string | null, channel: 'phone' | 'web', startedBy?: string, calledAsLast4?: string, how?: { engine?: VoiceEngineName; voiceFlow?: VoiceFlow }): Promise<string>;
   /** Where alerts go (Slack): a call turned away or failed. */
   alerts?: Alerter;
+  /**
+   * A demo clinic's use of its line in the clinic's day [start, end) (core demo-clinic.ts): this number's answered calls
+   * (by its keyed hash), the clinic's phone seconds, and today's refusals by limit. Asked when a phone call to a demo
+   * clinic arrives, before any model runs. Without it no limit is checked.
+   */
+  demoUsage?(clinicId: string, from: string | null, day: { start: Date; end: Date }, at: Date): Promise<{ callerCalls: number; clinicSeconds: number; refusedToday: Record<DemoLimitCode, number> }>;
   /** This number's last calls to the clinic, as lines for the backend; null when there are none. */
   historyFor?(clinicId: string, fromNumber: string, callId: string): Promise<string | null>;
   recorderFor(clinicId: string, callId: string): CallRecorder;
@@ -98,6 +104,15 @@ export const TEST_CALL_MINUTE_LEFT = 'This browser test call ends in about one m
 export const TEST_CALL_TIME_UP = 'The browser test call has reached its time limit. Stop the current task. Tell the caller in one short sentence that the test call is ending now because of its time limit, and that they can start another. Then say nothing more.';
 /** How long the goodbye may take before the line is closed. */
 const TEST_CALL_GOODBYE_MS = 8000;
+/** A demo call turned away by a limit is over this long after it was answered, whatever the model does. */
+export const DEMO_LIMIT_MAX_MS = 10_000;
+/** A demo call's goodbye at its time limit: a few seconds, then the line closes. */
+const DEMO_GOODBYE_MS = 6000;
+/** What Slack hears, once a clinic day per limit, when a demo clinic first turns a caller away. Codes and counts only. */
+export const DEMO_LIMIT_NOTE: Record<DemoLimitCode, string> = {
+  demo_caller_calls: `one caller number reached ${DEMO_LIMITS.callsPerCallerPerDay} calls today; its next calls hear the busy line until tomorrow`,
+  demo_clinic_minutes: `the line reached ${DEMO_LIMITS.clinicSecondsPerDay / 60} minutes today; every caller hears the busy line until tomorrow`,
+};
 
 /**
  * `callAs`: the number a browser test call is started as ("Call as"), checked by the API (staff of the
@@ -452,7 +467,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
 
   /** Runs an accepted conversation to the end, whichever way it came in. */
   async function runCall(clinic: ClinicConfig, sessionId: string, callId: string, from: string | null, channel: 'phone' | 'web',
-    opts: { engine?: VoiceEngine; planner?: Planner; onReady?: () => void; maxSeconds?: number; vipUri?: string; paused?: { uri: string | null }; marks?: CallMarks; phone?: PhoneCallRef } = {}) {
+    opts: { engine?: VoiceEngine; planner?: Planner; onReady?: () => void; maxSeconds?: number; vipUri?: string; paused?: { uri: string | null }; demoLimit?: DemoLimitCode; marks?: CallMarks; phone?: PhoneCallRef } = {}) {
     const web = channel === 'web';
     const engine = opts.engine ?? deps.engine;
     const marks = opts.marks ?? new CallMarks();
@@ -481,7 +496,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       // a caller ringing back is helped from where they left off; a failed read never holds up the call, and neither
       // does a slow one: the sideband attaches and the greeting goes out while the records are read. A browser test
       // call has a number only when staff started it as one ("Call as"), and is then read the same way.
-      const historyRead: Promise<string | null> = from && deps.historyFor ? deps.historyFor(clinic.id, from, callId).catch((err: unknown) => {
+      // a demo call turned away reads nothing: it hears one line and ends
+      const historyRead: Promise<string | null> = from && deps.historyFor && !opts.demoLimit ? deps.historyFor(clinic.id, from, callId).catch((err: unknown) => {
         deps.log.warn({ session_id: sessionId, err: { message: (err as Error).message } }, 'could not read the caller\'s earlier calls');
         return null;
       }) : Promise.resolve(null);
@@ -527,13 +543,27 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         // if the session ignores the close, stop listening anyway so the call counts as over
         timers.push(setTimeout(() => sideband.close(), (limit + 30) * 1000));
       }
+      // a demo clinic's phone call (core demo-clinic.ts): turned away by a limit, it is over within 10 s of the answer;
+      // otherwise one polite line at 14:00 and the end at 15:00, so no call runs long on a line strangers can ring
+      if (opts.demoLimit) timers.push(setTimeout(() => { void hangup(); }, DEMO_LIMIT_MAX_MS));
+      else if (!web && !opts.paused && isDemoClinic(clinic)) {
+        timers.push(setTimeout(() => {
+          void runner.act([{ type: 'instructions', delegationId: null, content: DEMO_WRAP_UP }]).catch(() => {});
+        }, DEMO_LIMITS.wrapUpAtSeconds * 1000));
+        timers.push(setTimeout(() => {
+          deps.log.info({ session_id: sessionId, clinic_id: clinic.id }, 'demo call reached its time limit');
+          void runner.act([{ type: 'instructions', delegationId: null, content: DEMO_TIME_UP }, { type: 'hangup', afterMs: DEMO_GOODBYE_MS }]).catch(() => hangup());
+        }, DEMO_LIMITS.callSeconds * 1000));
+        timers.push(setTimeout(() => { void hangup(); }, DEMO_LIMITS.callSeconds * 1000 + DEMO_GOODBYE_MS + 9000));
+      }
       const a = agent;
       // a tools-path call can be answered over HTTP too, with its own token (the tools API's second surface)
       if (tools && deps.internalToken) toolLines.set(callId, { clinicId: clinic.id, runner, token: mintToolToken(deps.internalToken, { callId, clinicId: clinic.id, expiresAt: Date.now() + TOOL_TOKEN_MAX_MS }) });
       // staff watching live see every event; their actions go through the runner like the agent's own
       frontDesk.set(callId, clinic.routing.find((r) => r.target === 'front_desk')?.uri ?? null);
       // a phone caller who never hears the assistant goes to the front desk (or the call ends) instead of waiting in silence
-      runner.silentStartUri = channel === 'phone' ? frontDesk.get(callId) ?? null : null;
+      // (never a demo call turned away by a limit: it hears its one line and ends, and is never put through to anyone)
+      runner.silentStartUri = channel === 'phone' && !opts.demoLimit ? frontDesk.get(callId) ?? null : null;
       live.open(callId, { clinicId: clinic.id, channel, startedAt: now() }, {
         coach: (note, by) => runner.act(a.coach(note, by)),
         takeOver: (uri, by) => runner.act(a.takeOver(uri, by)),
@@ -550,6 +580,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       a.setHistory(history);
       // the clinic's assistant is paused: a short line, then the front desk or the end of the call
       if (opts.paused) await runner.act(a.paused(opts.paused.uri));
+      // a demo clinic's limit: the one line was the opening; nothing more is said or done
+      else if (opts.demoLimit) await runner.act(a.demoLimited(opts.demoLimit));
       // a VIP caller hears their hello, then goes straight to the front desk
       else if (opts.vipUri) await runner.act(a.vip(opts.vipUri));
       // what caller ID would show a front desk: how often this number called, and the one name on file
@@ -573,6 +605,25 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       // phone calls too: the engine and the router keep a little per call until released
       engine.release?.(sessionId);
       if (cacheStats) deps.log.info({ session_id: sessionId, call_id: callId, hits: cacheStats.hits, misses: cacheStats.misses }, 'call cache');
+    }
+  }
+
+  /**
+   * Whether a demo clinic's new phone call is over one of its limits (core demo-clinic.ts), from today's use in the
+   * clinic's day. The first refusal of a limit in a clinic day is said in Slack, with no caller details. A use that
+   * cannot be read lets the call through (the plan's monthly minutes still hold) and is logged.
+   */
+  async function demoLimitFor(clinic: ClinicConfig, from: string | null): Promise<DemoLimitCode | null> {
+    if (!deps.demoUsage) return null;
+    const at = now();
+    try {
+      const usage = await deps.demoUsage(clinic.id, from, clinicDay(clinic.timezone, at), at);
+      const code = demoLimitHit(usage);
+      if (code && !usage.refusedToday[code]) deps.alerts?.note(`Demo clinic ${clinic.name} (${clinic.id}): ${DEMO_LIMIT_NOTE[code]}.`);
+      return code;
+    } catch (err) {
+      deps.log.warn({ clinic_id: clinic.id, err: { message: (err as Error).message } }, 'demo clinic: today\'s use could not be read; the call goes through');
+      return null;
     }
   }
 
@@ -628,8 +679,10 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       // transfers, or tells them when to call back; a VIP is greeted by name and put through
       const front = clinic.answeringPaused ? resolveTransfer(clinic, 'front_desk', now()) : null;
       const paused = front ? { uri: front.ok ? front.uri : null } : undefined;
-      const vip = paused ? null : vipRoute(clinic, from, now());
-      const opening = paused ? pausedOpening(clinic, !!paused.uri) : vip ? vipOpening(clinic, vip.name) : undefined;
+      // a demo clinic's limits, before any model runs: over one, the caller hears one fixed line and the call ends
+      const demoLimit = !paused && isDemoClinic(clinic) ? await demoLimitFor(clinic, from) : null;
+      const vip = paused || demoLimit ? null : vipRoute(clinic, from, now());
+      const opening = paused ? pausedOpening(clinic, !!paused.uri) : demoLimit ? demoBusyOpening(clinic) : vip ? vipOpening(clinic, vip.name) : undefined;
       marks.mark('accept_sent');
       // the caller ID goes in from the start: the voice asks the number question itself, for a visit only (2026-11-14)
       // how its turns are answered is set with the session: the planner, or the tools API (the clinic's switch, batch 1a)
@@ -641,8 +694,9 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       setupCallId = callId;
       marks.mark('call_opened');
       if (paused) deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId, transfer: !!paused.uri }, 'the assistant is paused: the caller goes to the front desk or hears when to call back');
+      else if (demoLimit) deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId, code: demoLimit }, 'demo clinic: the call is over a limit and hears the busy line');
       else if (vip) deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId }, 'VIP caller: transferring to the front desk');
-      await runCall(clinic, sessionId, callId, from, 'phone', { vipUri: vip?.uri, paused, marks, phone: { callSid: twilioCallSid(headers), to: clinic.phoneNumbers.find((n) => dialledCandidates(headers).includes(n)) ?? dialledCandidates(headers)[0] ?? null, from, startedAt: new Date(receivedAt) } });
+      await runCall(clinic, sessionId, callId, from, 'phone', { vipUri: vip?.uri, paused, demoLimit: demoLimit ?? undefined, marks, phone: { callSid: twilioCallSid(headers), to: clinic.phoneNumbers.find((n) => dialledCandidates(headers).includes(n)) ?? dialledCandidates(headers)[0] ?? null, from, startedAt: new Date(receivedAt) } });
     } catch (err) {
       deps.log.error({ session_id: sessionId, err }, 'call setup failed');
       const where = setupClinic ? { clinicId: setupClinic.id, clinicName: setupClinic.name, callId: setupCallId } : undefined;
@@ -654,7 +708,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
   }
 
   if (deps.vapi) {
-    registerVapi(app, { ...deps.vapi, clinicById: deps.clinicById, openCall: deps.openCall, recorderFor: deps.recorderFor, actionsFor: deps.actionsFor, backend: deps.backend, planner: deps.planner, log: deps.log, alerts: deps.alerts, now });
+    registerVapi(app, { ...deps.vapi, clinicById: deps.clinicById, openCall: deps.openCall, recorderFor: deps.recorderFor, actionsFor: deps.actionsFor, backend: deps.backend, planner: deps.planner, log: deps.log, alerts: deps.alerts, now, demoLimitFor });
   }
   // tests read a live tools-path call's token here; nothing else does, and it is never logged
   app.decorate('toolTokenFor', (callId: string) => toolLines.get(callId)?.token ?? null);

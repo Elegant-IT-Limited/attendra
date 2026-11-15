@@ -29,13 +29,14 @@ import { compressReply } from './http/compress';
 import { rateLimitKey } from './http/rate-key';
 import { StaffGuard, toHeaders } from './http/staff.guard';
 import { IdempotencyInterceptor } from './http/idempotency';
-import { API_OPTIONS, type ApiOptions, AUTH, CHANGES, CIPHER, CLOCK, DB, EVENTS, FRONT_DESK, JOBS, KNOWLEDGE, WEBHOOK_GUARD, LOGGER, MAIL, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VAPI, VOICE, VOICE_SAMPLES, type VoiceClient, type VoiceSampler } from './http/tokens';
+import { ALERTS, API_OPTIONS, type ApiOptions, AUTH, CHANGES, CIPHER, CLOCK, DB, EVENTS, FRONT_DESK, JOBS, KNOWLEDGE, WEBHOOK_GUARD, LOGGER, MAIL, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VAPI, VOICE, VOICE_SAMPLES, type VoiceClient, type VoiceSampler } from './http/tokens';
 import { MeController } from './me/me.controller';
 import { UsersController } from './me/users.controller';
 import { OverviewController } from './overview/overview.controller';
 import { PlanController } from './overview/plan.controller';
 import { PatientsController } from './patients/patients.controller';
 import { ProvisioningController } from './provisioning/provisioning.controller';
+import { DemoClinicController } from './provisioning/demo-clinic.controller';
 import { HandoffsController } from './provisioning/handoffs.controller';
 import { type VapiSetup, VapiLocations } from './provisioning/vapi';
 import { QualityController } from './quality/quality.controller';
@@ -109,7 +110,7 @@ class ApiModule {
     if (vapi) onSettingsSaved(desk, (clinicId) => vapi.touched(clinicId));
     return {
       module: ApiModule,
-      controllers: [HealthController, MeController, UsersController, ChangesController, OverviewController, PlanController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, TextsController, AppointmentsController, PatientsController, DoctorsController, TeamController, TeamInvitationsController, MyInvitationsController, SettingsController, VoiceSamplesController, EmergencyReviewController, AuditController, ProvisioningController, HandoffsController],
+      controllers: [HealthController, MeController, UsersController, ChangesController, OverviewController, PlanController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, TextsController, AppointmentsController, PatientsController, DoctorsController, TeamController, TeamInvitationsController, MyInvitationsController, SettingsController, VoiceSamplesController, EmergencyReviewController, AuditController, ProvisioningController, HandoffsController, DemoClinicController],
       providers: [
         { provide: DB, useValue: deps.db },
         { provide: CIPHER, useValue: deps.cipher },
@@ -126,6 +127,7 @@ class ApiModule {
         { provide: MAIL, useValue: deps.mail ?? null },
         { provide: FRONT_DESK, useValue: desk },
         { provide: VAPI, useValue: vapi },
+        { provide: ALERTS, useValue: deps.alerts ?? null },
         { provide: SCHEDULE, useValue: new ScheduleRepository(deps.db, deps.cipher) },
         { provide: PATIENTS, useValue: new PatientRecords(deps.db, deps.cipher, { scanWindow: deps.options.searchScan ? PATIENT_SCAN_LIMIT : undefined }) },
         { provide: STAFF_SCHEDULER, useValue: new StaffScheduler(deps.db, deps.cipher, deps.now) },

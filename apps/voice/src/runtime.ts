@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type PlannerSpeed, ResponsesPlanner } from '@attendra/agent';
 import {
-  CallRepository, CallSummaryRepository, claimDelivery, clinicById, clinicForNumber, type Database, type PhiCipher,
+  CallRepository, CallSummaryRepository, claimDelivery, clinicById, clinicForNumber, type Database, demoUsage, type PhiCipher,
   PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, throttledNotify, vapiCallEnded, vapiCallLive, vapiSecretHashOf, vapiSecretMatches,
   recordHandoff,
 } from '@attendra/db';
@@ -125,6 +125,8 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeMod
       handoff: async (h) => { await recordHandoff(db, cipher, clinicId, callId, h); },
     }),
     alerts: rt.alerts,
+    // a demo clinic's use of its line today, for its limits (core demo-clinic.ts)
+    demoUsage: (clinicId, from, day, at) => demoUsage(db, cipher, clinicId, from, day, at),
     // how a phone call ended, from Twilio's call status (note 48): a caller's hang-up is not a drop
     ...(rt.twilio ? { phoneLine: new TwilioPhoneLine(rt.twilio.accountSid, rt.twilio.authToken) } : {}),
     recorderFor: (clinicId, callId) => ({

@@ -26,6 +26,7 @@ export * from './repositories/quality';
 export * from './repositories/api-keys';
 export * from './repositories/vapi';
 export * from './repositories/handoffs';
+export * from './repositories/demo-clinic';
 export * from './idempotency';
 export * from './demo-schedule';
 export * from './seed';

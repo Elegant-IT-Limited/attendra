@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { INDUSTRIES } from './industries/types';
 import { type Language, LANGUAGES, normalise, PACKS } from './locales';
 import { VOICE_ENGINES } from './call-costs';
+import { DemoClinic } from './demo-clinic';
 import { VapiLink } from './vapi';
 
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'expected HH:MM');
@@ -391,6 +392,9 @@ const ClinicConfigShape = z.object({
   // the handoff review's Level 2 (note 47): a short masked excerpt is kept with each handoff only when this is on: an
   // internal test clinic, or an account whose accepted terms include the review line. Set by provisioning, never in Settings
   handoffExcerpts: z.boolean().optional(),
+  // a demo clinic (2026-11-16): limits on its calls, demo emergency wording and a nightly reset to its baseline. Set by
+  // provisioning (the back office, on an internal test clinic only), never in Settings; absent is an ordinary clinic
+  demoClinic: DemoClinic.optional(),
   // days whose hours differ from the week's: shorter, or closed with a reason
   specialDays: z.array(SpecialDay).max(60).optional(),
   // callers must know they are talking to software; the greeting has to say so (checked below, in the clinic's languages)

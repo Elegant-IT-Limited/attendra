@@ -27,6 +27,8 @@ export const VOICE_SAMPLES = Symbol('voice-samples');
 export const MAIL = Symbol('mail');
 /** A location's Vapi resources (provisioning/vapi.ts, batch 6), and how many Vapi calls the subscription takes at once. */
 export const VAPI = Symbol('vapi');
+/** Where alerts and notes go (Slack). Null when the deployment has none. */
+export const ALERTS = Symbol('alerts');
 export interface VoiceSampler { sample(voice: string, text: string): Promise<Buffer> }
 
 /** Starts and ends browser test calls on the voice service. Null when the deployment has none. */

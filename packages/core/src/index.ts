@@ -14,6 +14,7 @@ export * from './quality';
 export * from './call-health';
 export * from './call-costs';
 export * from './demo';
+export * from './demo-clinic';
 export * from './emergency';
 export * from './handoffs';
 export * from './emergency-review';

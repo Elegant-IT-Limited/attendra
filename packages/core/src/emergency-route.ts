@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ClinicConfig, type EmergencyHospital, emergencyHospitalsOf, type EmergencyMode, type EmergencySettings } from './clinic';
+import { DEMO_EMERGENCY_IF_RETURNS, DEMO_EMERGENCY_LINE, isDemoClinic } from './demo-clinic';
 import { firstOpenHospital, hoursSummary, specialDayOf, windowsOn } from './hours';
 import { emergencyNumberFor, type Language, PACKS } from './locales';
 import { localParts, toMinutes, weekdayOf } from './time';
@@ -41,15 +42,24 @@ export function emergencySettingsOf(clinic: Pick<ClinicConfig, 'emergencies'>): 
   return clinic.emergencies ?? null;
 }
 
-type RouteClinic = Pick<ClinicConfig, 'emergencies' | 'hours' | 'holidays' | 'specialDays' | 'timezone'>;
+type RouteClinic = Pick<ClinicConfig, 'emergencies' | 'hours' | 'holidays' | 'specialDays' | 'timezone'> & Partial<Pick<ClinicConfig, 'demoClinic'>>;
 
 /**
  * The hospital to name now outside the route's own steps (the guardrail's immediate script, a paused assistant, the
  * backup line): the first of the setting's hospitals open at this moment, or null.
  */
-export function hospitalNow(clinic: Pick<ClinicConfig, 'emergencies' | 'timezone'>, at: Date): EmergencyHospital | null {
+export function hospitalNow(clinic: Pick<ClinicConfig, 'emergencies' | 'timezone'> & Partial<Pick<ClinicConfig, 'demoClinic'>>, at: Date): EmergencyHospital | null {
+  // a demo clinic names no real hospital, whatever its setting holds (demoEmergency)
+  if (isDemoClinic(clinic)) return null;
   return firstOpenHospital(emergencyHospitalsOf(clinic.emergencies), clinic.timezone, at);
 }
+
+/**
+ * A demo clinic's emergencies (2026-11-16, core demo-clinic.ts): the flow runs as usual, so prospects hear it, but the
+ * route is the demo line (DEMO_EMERGENCY_LINE): no hospital is named or texted and nobody is put through, whatever the
+ * clinic's emergency setting holds. Every other clinic: false, and its route is its setting's.
+ */
+export const demoEmergency = (clinic: Partial<Pick<ClinicConfig, 'demoClinic'>>): boolean => isDemoClinic(clinic);
 
 /**
  * Whether the team takes emergencies now, in `hours` mode: its emergency hours (the opening hours unless set), with
@@ -77,6 +87,8 @@ export function routeWhen(clinic: RouteClinic, open: boolean, at: Date, closesAt
 
 /** Where an animal's emergency goes right now. */
 export function emergencyRoute(clinic: RouteClinic, now: Date): EmergencyRoute {
+  // a demo clinic routes nowhere real: no hospital, no transfer (the agent says the demo line)
+  if (demoEmergency(clinic)) return { mode: null, open: false, action: 'none', hospital: null, number: null, backup: null, closesAt: null };
   const e = emergencySettingsOf(clinic);
   const hours = e?.mode === 'hours' ? emergencyHoursOpen(clinic, e.hours, now) : { open: false, closesAt: null };
   return routeWhen(clinic, hours.open, now, hours.closesAt);
@@ -113,6 +125,10 @@ export const EMERGENCY_LINES = {
     if (language === 'es') return h ? `Por favor lleve a ${who} ahora mismo a ${h.name}, en ${h.address}. Su número es ${PACKS.es.speakPhone(h.phone)}.` : `Por favor lleve a ${who} ahora mismo al hospital veterinario de emergencias de 24 horas más cercano.`;
     return h ? `Please take ${who} to ${h.name} at ${h.address} right away. Their number is ${PACKS.en.speakPhone(h.phone)}.` : `Please take ${who} to the nearest 24-hour emergency vet right away.`;
   },
+  /** A yes (or "not sure") at a demo clinic: the demo line in place of the route (nothing texted, nobody put through). */
+  demo: (language: Language) => DEMO_EMERGENCY_LINE[language],
+  /** A clear no at a demo clinic: what to do if it comes back, with no hospital named. */
+  demoIfReturns: (language: Language) => DEMO_EMERGENCY_IF_RETURNS[language],
   /** A yes (or "not sure"), routed to the team. */
   transfer: (language: Language) => (language === 'es' ? 'Le comunico con nuestro equipo ahora mismo. Por favor no cuelgue.' : 'I\'m putting you through to our team now. Please stay on the line.'),
   /** The transfer did not go through: an urgent request instead, and the team's emergency line. */
@@ -155,6 +171,7 @@ export type CallLinePlace = keyof typeof NO_SETTING_NEXT;
  * Riverside Emergency Vet after." `place` changes only where a clinic with no setting is pointed to.
  */
 export function emergencyCallLine(clinic: RouteClinic & Pick<ClinicConfig, 'phoneNumbers'>, now: Date, place: CallLinePlace = 'elsewhere'): string {
+  if (demoEmergency(clinic)) return 'Emergency calls here: this is a demo clinic, so callers hear the demo line ("This is a demo line, so I can\'t send you to a real hospital..."). Nothing is texted and nobody is put through.';
   const r = emergencyRoute(clinic, now);
   const twelve = (clinic.phoneNumbers[0] ?? '').startsWith('+1');
   const after = r.backup?.name ?? 'the hospital';
@@ -191,6 +208,7 @@ export function emergencyHandlingSummary(clinic: RouteClinic & Pick<ClinicConfig
   const say = (n: string) => PACKS[language].speakPhone(n);
   const person = es ? `Si una persona está herida o en peligro, llame al ${emergencyNumberFor(clinic, language)}.` : `If a person is hurt or in danger, call ${emergencyNumberFor(clinic, language)}.`;
   const at24 = (h: EmergencyHospital) => (es ? `${h.name}, en ${h.address}. Su número es ${say(h.phone)}.` : `${h.name} at ${h.address}. Their number is ${say(h.phone)}.`);
+  if (demoEmergency(clinic)) return `${DEMO_EMERGENCY_LINE[language]} ${person}`;
   if (!e) return `${es ? 'Para una emergencia, lleve a su mascota al hospital veterinario de emergencias de 24 horas más cercano.' : 'For an emergency, please take your pet to the nearest 24-hour emergency vet.'} ${person}`;
   if (e.mode === 'refer') {
     const h = routeWhen(clinic, false, at).hospital ?? e.hospital;

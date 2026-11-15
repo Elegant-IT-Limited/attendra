@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { callUsNumber, ClinicConfig, dailyDigest, localName, localParts, speakSlot, textingOf, toMinutes } from '@attendra/core';
+import { callUsNumber, ClinicConfig, dailyDigest, demoResetDue, localName, localParts, speakSlot, textingOf, toMinutes } from '@attendra/core';
 import type { EventSink } from '@attendra/core';
-import { activeNumbers, allClinics, CallSummaryRepository, callFacts, callsForDigest, configName, type Database, ensureWorkerJobsView, KnowledgeRepository, lapseInvitations, type PhiCipher, phiContext, PostgresTaskQueue, purgeCallRecords, purgeWebhookRecords, schema, WebhookRepository, withClinic } from '@attendra/db';
+import { activeNumbers, allClinics, CallSummaryRepository, callFacts, callsForDigest, configName, DEMO_NIGHTLY_ACTOR, demoClinics, type Database, ensureWorkerJobsView, KnowledgeRepository, lapseInvitations, type PhiCipher, phiContext, PostgresTaskQueue, purgeCallRecords, purgeWebhookRecords, demoResetLine, resetDemoClinic, schema, WebhookRepository, withClinic } from '@attendra/db';
 import { type Embedder, indexDocument, LocalEmbedder, OpenAIEmbedder } from '@attendra/knowledge';
 import type { Alerter, Logger } from '@attendra/observability';
 import { deliver, type GuardOptions, payloadOf, type Resolver } from '@attendra/webhooks';
@@ -189,6 +189,30 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
      * The last day's calls in one Slack message, every morning: how many, how soon callers heard the assistant, and
      * the empty lines, stalls, answers past the limit and drops, with the clinics they happened at. Counts and ids only.
      */
+    /**
+     * The demo clinics' nightly reset (2026-11-16): each one whose 03:30 (its own clock) has come since its last reset
+     * (or its baseline) is put back to its baseline, and Slack hears it with counts only. One with a call going is left
+     * for the next run, ten minutes later; one with no baseline yet is skipped. Never touches a clinic that is not one.
+     */
+    async demoReset(): Promise<{ clinicId: string; result: string }[]> {
+      const at = now();
+      const out: { clinicId: string; result: string }[] = [];
+      for (const c of await demoClinics(d.db)) {
+        if (!c.hasBaseline) { out.push({ clinicId: c.clinicId, result: 'no_baseline' }); continue; }
+        if (c.lastResetAt && c.lastResetAt.getTime() >= demoResetDue(c.timezone, at).getTime()) { out.push({ clinicId: c.clinicId, result: 'not_due' }); continue; }
+        const r = await resetDemoClinic(d.db, d.cipher, c.clinicId, DEMO_NIGHTLY_ACTOR, at);
+        if (!r.ok) {
+          d.log.info({ clinic_id: c.clinicId, result: r.error }, 'demo clinic reset waits');
+          out.push({ clinicId: c.clinicId, result: r.error });
+          continue;
+        }
+        d.log.info({ clinic_id: c.clinicId, counts: r.counts }, 'demo clinic reset');
+        d.alerts?.note(`Demo clinic reset (nightly), clinic ${c.clinicId}: ${demoResetLine(r.counts)}.`);
+        out.push({ clinicId: c.clinicId, result: 'reset' });
+      }
+      return out;
+    },
+
     async dailyDigest() {
       // the clinics by name, as the team knows them; the id when a clinic has none
       const names = new Map((await allClinics(d.db)).flatMap((c) => { const n = configName(c.config); return n ? [[c.id, n] as const] : []; }));
@@ -494,6 +518,7 @@ export async function startWorker(d: WorkerDeps) {
   await d.boss.work(QUEUES.dailyDigest, each(async () => { await h.dailyDigest(); }));
   await d.boss.work(QUEUES.moneyCheck, each(async () => { await h.moneyCheck(); }));
   await d.boss.work(QUEUES.fallbackSync, each(async () => { await h.fallbackSync(); }));
+  await d.boss.work(QUEUES.demoReset, each(async () => { await h.demoReset(); }));
   // the backup route in place before anything else needs it; a failure is said, and tried again at the next start
   if (d.fallback) {
     const f = d.fallback;
@@ -530,6 +555,8 @@ export async function startWorker(d: WorkerDeps) {
     // every hour, at :17, away from the other hourly jobs
     if (d.balance) await d.boss.schedule(QUEUES.moneyCheck, '17 * * * *');
     if (d.fallback) await d.boss.schedule(QUEUES.fallbackSync, '*/10 * * * *');
+    // every 10 minutes, at :03: a demo clinic is reset at the first run after 03:30 on its own clock
+    await d.boss.schedule(QUEUES.demoReset, '3-59/10 * * * *');
   }
   d.log.info({ summariser: d.summariser.model, texts: !!d.texts }, 'worker started');
   return h;

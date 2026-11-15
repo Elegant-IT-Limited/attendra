@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { z } from 'zod';
+import { DEMO_EMERGENCY_LINE } from '../demo-clinic';
 import type { PetEmergencyKind, SubjectWords } from '../emergency';
 import { B, E, PACKS } from '../locales';
 import { PROPOSE_IF_EXACT } from '../tool-notes';
@@ -75,6 +76,19 @@ const SUBJECTS: Partial<Record<'en' | 'es', SubjectWords>> = {
 function script(language: 'en' | 'es', to: EmergencyDestination): string {
   const h = to.hospital;
   const spoken = h ? PACKS[language].speakPhone(h.phone) : '';
+  if (to.demo) {
+    // a demo line sends nobody to a real hospital (2026-11-16): the same calm script, with the demo line in its place
+    const go = `"${DEMO_EMERGENCY_LINE[language]}"`;
+    return language === 'es'
+      ? 'Quien llama puede estar describiendo una emergencia de un animal. Deje la tarea actual ahora. Diga, con calma y claridad: '
+        + `${go} Luego diga: "Si una persona está herida o en peligro, llame al ${to.emergencyNumber}." `
+        + 'No ofrezca enviar nada por mensaje. No dé consejos médicos ni de primeros auxilios, no pregunte por los síntomas y no siga con la reserva. '
+        + 'Si quien llama dice que el animal está bien y que no es una emergencia, puede continuar.'
+      : 'The caller may be describing an animal emergency. Stop the current task now. Say, calmly and clearly: '
+        + `${go} Then say: "If a person is hurt or in danger, call ${to.emergencyNumber}." `
+        + 'Do not offer to text anything. Do not give medical or first-aid advice, do not ask about symptoms, and do not continue booking. '
+        + 'If the caller says the animal is safe and it is not an emergency, you may continue.';
+  }
   if (language === 'es') {
     const go = h
       ? `"Esto suena a una emergencia. Por favor lleve a su mascota ahora mismo a ${h.name}, en ${h.address}. Su número es ${spoken}."`

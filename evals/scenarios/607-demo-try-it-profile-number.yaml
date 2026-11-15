@@ -1,0 +1,51 @@
+id: demo-try-it-profile-number
+title: "The demo line's \"try it\" path: a prospect calls from a number the clinic has never seen, says a demo profile's number and the owner's name, the profile opens and a visit books"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550195"
+tags: [no-demo, demo-clinic, number-first]
+settings:
+  demoClinic:
+    enabled: true
+    baselineAt: null
+facts: "You are trying the Attendra demo line from your own phone. The card you were given says: profile number 720 555 0172, owner Linh Nguyen, pets Biscuit and Mochi. Give that number when asked for one, say yes when it is read back, give the owner's name when asked, and book a check-up for Biscuit. Any vet and any time are fine; take the first time and say yes to the read-back."
+turns:
+  - caller: Hi, I'd like to book a check-up for my dog.
+    reply: "I don't see a profile under that number. What are the last four digits of the number the profile might be under, and your pet's name? Or if your pet is new to us, I can add them."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: null }
+  - caller: It's under 720 555 0172.
+    reply: "That's 720-555-0172?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: "720 555 0172" }
+  - assistant: "That's 720-555-0172?"
+  - caller: Yes, that's right.
+    reply: "And the owner's name on that profile?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: "720 555 0172" }
+  - caller: Linh Nguyen.
+    reply: "Thanks, Linh. Is this for Biscuit or Mochi, or a new pet?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: null, phone: "720 555 0172" }
+  - caller: Biscuit.
+    reply: "I found Biscuit, your dog. I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit, phone: "720 555 0172" }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  # the caller ID has no profile (the prospect's own phone), the spoken number is read back, then the owner's name opens it
+  refusals: [no_pets_on_number, confirm_number, owner_check]
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["And the owner's name on that profile?"]
+forbid_spoken: ["I've added Biscuit"]

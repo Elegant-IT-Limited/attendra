@@ -1,0 +1,35 @@
+id: demo-try-it-last-four
+title: "The demo line's \"try it\" path, the assistant's own way: from an unknown phone, the last four digits of a demo profile's number and the pet's name open it, and a visit books"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550196"
+tags: [no-demo, demo-clinic, number-first]
+settings:
+  demoClinic:
+    enabled: true
+    baselineAt: null
+facts: "You are trying the Attendra demo line from your own phone. The card you were given says: profile number 720 555 0172, owner Linh Nguyen, pets Biscuit and Mochi. Asked for the last four digits and the pet's name, say 0172 and Biscuit. Book a check-up for Biscuit; take the first time and say yes to the read-back."
+turns:
+  - caller: Hi, I'd like to book a check-up for my dog.
+    reply: "I don't see a profile under that number. What are the last four digits of the number the profile might be under, and your pet's name? Or if your pet is new to us, I can add them."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: null }
+  - caller: It ends in 0172, and it's for Biscuit.
+    reply: "I found Biscuit. I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: null, phone_last4: "0172" }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [no_pets_on_number]
+  bookings_created: 1
+  sms_sent: 1

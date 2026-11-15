@@ -36,6 +36,8 @@ export const QUEUES = {
   dailyDigest: 'daily-digest',
   /** Every hour: the Twilio balance, paged under its line (twilio_balance_low): at $0 calls and texts stop. */
   moneyCheck: 'money-check',
+  /** Every 10 minutes: each demo clinic past 03:30 on its own clock and not reset since is put back to its baseline. */
+  demoReset: 'demo-reset',
   /** Where a job goes after its last retry fails, to be looked at, not retried. */
   deadLetter: 'dead-letter',
 } as const;
@@ -155,7 +157,7 @@ export function createBoss(target: { connectionString: string } | { pglite: PGli
 export async function ensureQueues(boss: PgBoss, retry?: Partial<RetryPolicy>) {
   const existing = new Set((await boss.getQueues()).map((q) => q.name));
   if (!existing.has(QUEUES.deadLetter)) await boss.createQueue(QUEUES.deadLetter, { retryLimit: 0, retentionSeconds: 30 * 86_400 });
-  for (const name of [QUEUES.callCompleted, QUEUES.summariseCall, QUEUES.purgeRetention, QUEUES.smsStatus, QUEUES.indexDocument, QUEUES.webhookEvent, QUEUES.deliverWebhook, QUEUES.requestReady, QUEUES.visitHandedOver, QUEUES.appointmentReminders, QUEUES.fallbackSync, QUEUES.lapseInvitations, QUEUES.dailyDigest, QUEUES.moneyCheck]) {
+  for (const name of [QUEUES.callCompleted, QUEUES.summariseCall, QUEUES.purgeRetention, QUEUES.smsStatus, QUEUES.indexDocument, QUEUES.webhookEvent, QUEUES.deliverWebhook, QUEUES.requestReady, QUEUES.visitHandedOver, QUEUES.appointmentReminders, QUEUES.fallbackSync, QUEUES.lapseInvitations, QUEUES.dailyDigest, QUEUES.moneyCheck, QUEUES.demoReset]) {
     const policy: Record<string, unknown> = { ...(name === QUEUES.deliverWebhook ? WEBHOOK_RETRY : RETRY), ...(retry ?? {}) };
     if (!policy.retryBackoff) delete policy.retryDelayMax; // only meaningful with backoff, and pg-boss refuses it otherwise
     if (existing.has(name)) await boss.updateQueue(name, { ...policy, deadLetter: QUEUES.deadLetter });
