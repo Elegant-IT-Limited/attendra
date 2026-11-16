@@ -367,7 +367,7 @@ export class FrontDeskRepository {
         actions: actions.map((a) => ({ tool: a.tool, argumentNames: a.argsRedacted as string[], result: a.result as Record<string, unknown>, revision: a.taskRevision, at: a.createdAt })),
         // each request with the clinic's own kind when it is one (its topic), read in this same audited view: the call
         // page labels it by that name, as the Requests page does
-        tasks: callTasks.map(({ detailsEnc, ...t }) => ({ ...t, kind: (JSON.parse(this.cipher.decrypt(detailsEnc, phiContext(clinicId, 'tasks.details'))) as Record<string, string>).topic ?? null })),
+        tasks: callTasks.map(({ detailsEnc, ...t }) => ({ ...t, kind: this.kindOf(clinicId, detailsEnc) })),
         // read in the same audited view as the transcript it summarises
         summary: summary ? decryptSummary(this.cipher, clinicId, summary) : null,
         appointments: changed.map((a) => ({
@@ -382,8 +382,21 @@ export class FrontDeskRepository {
   }
 
   /**
-   * The queue with no patient in it, for a viewer: number, type, state, age, who has it and
-   * when it is due. Details, notes, names and numbers are never read, so nothing is audited.
+   * Which of the clinic's own kinds of request a request is ("Boarding booking"), by name, or null for a built-in kind:
+   * the label every list shows (note 2026-11-16 R2b: Today and the read-only view said "Callback", the type it is stored
+   * as). The name is clinic configuration, checked against Settings when the request was taken, by the team or the
+   * assistant; it sits in the encrypted details, which are read here for it alone and never returned, so nothing of the
+   * patient leaves and no audit row is written (as for a call's requests).
+   */
+  private kindOf(clinicId: string, detailsEnc: string): string | null {
+    const topic = (JSON.parse(this.cipher.decrypt(detailsEnc, phiContext(clinicId, 'tasks.details'))) as Record<string, unknown>).topic;
+    return typeof topic === 'string' && topic.trim() ? topic.trim() : null;
+  }
+
+  /**
+   * The queue with no patient in it, for a viewer: number, type, kind, state, age, who has it and
+   * when it is due. Notes, names and numbers are never read, and of the details only the kind's name, so nothing is
+   * audited.
    */
   async listTasksWithoutNames(clinicId: string, opts: { status: 'open' | 'done'; limit: number; type?: TaskType }) {
     return withClinic(this.db, clinicId, async (tx) => {
@@ -395,7 +408,7 @@ export class FrontDeskRepository {
         id: task.id, number: task.number, type: task.type, status: task.status, callId: null, patientId: null, createdAt: task.createdAt,
         assigneeUserId: task.assigneeUserId, assignedByUserId: task.assignedByUserId, createdByUserId: task.createdByUserId, claimedAt: task.claimedAt, doneAt: task.doneAt, doneByUserId: task.doneByUserId, outcome: task.outcome,
         urgent: task.urgent, origin: task.origin, dueOn: task.dueOn, patientName: null, details: {} as Record<string, string>, custom: {} as Record<string, string>, followUp: null,
-        notes: [] as { id: number; authorUserId: string; at: Date; body: string }[],
+        notes: [] as { id: number; authorUserId: string; at: Date; body: string }[], kind: this.kindOf(clinicId, task.detailsEnc),
       }));
     });
   }
@@ -711,19 +724,19 @@ export class FrontDeskRepository {
   }
 
   /**
-   * Open requests nobody has claimed, newest first: type and age only, so the home
-   * screen shows them without reading patient data. `total` counts them all, past the
-   * first `limit`.
+   * Open requests nobody has claimed, newest first: type, kind and age only, so the home
+   * screen shows them without reading patient data (of the details, only the kind's name: kindOf). `total` counts
+   * them all, past the first `limit`.
    */
   async waitingTasks(clinicId: string, limit = 20) {
     return withClinic(this.db, clinicId, async (tx) => {
       const waiting = and(eq(tasks.clinicId, clinicId), eq(tasks.status, 'open'), isNull(tasks.assigneeUserId));
       // urgent ones first (a request taken during an emergency), as on the Requests page
-      const rows = await tx.select({ id: tasks.id, number: tasks.number, type: tasks.type, createdAt: tasks.createdAt, callId: tasks.callId, urgent: tasks.urgent, origin: tasks.origin }).from(tasks)
+      const rows = await tx.select({ id: tasks.id, number: tasks.number, type: tasks.type, createdAt: tasks.createdAt, callId: tasks.callId, urgent: tasks.urgent, origin: tasks.origin, detailsEnc: tasks.detailsEnc }).from(tasks)
         .where(waiting).orderBy(desc(tasks.urgent), desc(tasks.createdAt), desc(tasks.id)).limit(limit);
       const counts = await tx.select({ type: tasks.type, n: sql<number>`count(*)::int` }).from(tasks).where(waiting).groupBy(tasks.type);
       const byType = Object.fromEntries(counts.map((c) => [c.type, Number(c.n)]));
-      return { tasks: rows, total: counts.reduce((n, c) => n + Number(c.n), 0), byType };
+      return { tasks: rows.map(({ detailsEnc, ...t }) => ({ ...t, kind: this.kindOf(clinicId, detailsEnc) })), total: counts.reduce((n, c) => n + Number(c.n), 0), byType };
     });
   }
 

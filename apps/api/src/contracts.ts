@@ -438,6 +438,8 @@ export const Task = z.object({
   /** The clinic's own details on the request (Settings, Fields and lists). */
   custom: z.record(z.string(), z.string()),
   notes: z.array(z.object({ id: z.number(), author: z.string().nullable(), authorAvatarUrl: AvatarUrl, at: z.iso.datetime(), body: z.string() })),
+  /** One of the clinic's own kinds of request, by name, when the request is one; null for a built-in kind. Sent where the details are not (a viewer); with the details it is their `topic`. */
+  kind: z.string().nullable().optional(),
 });
 export const TaskList = z.object({ tasks: z.array(Task) });
 /**
@@ -934,7 +936,7 @@ export const ClinicPlan = z.object({ plan: HostingPlan.nullable(), minutesUsed: 
 
 // the oldest 20, and how many are waiting in all
 // urgent ones first: they lead Today's list
-export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), number: z.number().int(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), createdAt: z.iso.datetime(), callId: z.string().nullable(), urgent: z.boolean(), origin: z.enum(['emergency']).nullable().optional() })), total: z.number().int(),
+export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), number: z.number().int(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), createdAt: z.iso.datetime(), callId: z.string().nullable(), urgent: z.boolean(), origin: z.enum(['emergency']).nullable().optional(), kind: z.string().nullable() })), total: z.number().int(),
   /** How many are waiting, by type: a vet clinic's refill queue on the home screen. */
   byType: z.record(z.string(), z.number().int()) });
 

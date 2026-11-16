@@ -124,6 +124,32 @@ describe('fields and lists of the clinic\'s own', () => {
     expect(call.tasks.map((t) => [t.type, t.kind])).toEqual(expect.arrayContaining([['refill', null], ['callback', 'Insurance question']]));
   });
 
+  // note 2026-11-16 R2b: Today's waiting list and the read-only view still said "Callback": they get the kind's name
+  // too, and nothing else of the details
+  it('names a request of the clinic\'s own kind on Today\'s waiting list and in the read-only view, and nothing more of it', async () => {
+    const own = await new PostgresTaskQueue(api.t.db, createPhiCipher(TEST_DATA_KEY)).create(DEMO_CLINIC.id, {
+      type: 'callback', callId: null, patientId: null, idempotencyKey: 'own-kind-waiting', details: { topic: 'Boarding booking', reason: 'Three nights from Friday', callback_number: '+13035550188' },
+    });
+    const waiting = (await api.request('GET', `${C}/tasks/waiting`, { cookie: staff })).json() as { tasks: { id: string; type: string; kind: string | null }[] };
+    expect(waiting.tasks.find((t) => t.id === own.id)).toMatchObject({ type: 'callback', kind: 'Boarding booking' });
+    // a built-in kind has none
+    const builtIn = waiting.tasks.filter((t) => t.type !== 'callback');
+    expect(builtIn.length).toBeGreaterThan(0);
+    expect(builtIn.every((t) => t.kind === null)).toBe(true);
+    const viewer = await api.signIn('vic@maple.example', true);
+    const seen = (await api.request('GET', `${C}/tasks?status=open`, { cookie: viewer })).json() as { tasks: { id: string; kind?: string | null; details: Record<string, string>; patientName: string | null }[] };
+    const row = seen.tasks.find((t) => t.id === own.id)!;
+    expect(row).toMatchObject({ kind: 'Boarding booking', details: {}, patientName: null });
+    // the reason and the number never reach a viewer or the home screen
+    for (const body of [JSON.stringify(seen), JSON.stringify(waiting)]) {
+      expect(body).not.toContain('Three nights');
+      expect(body).not.toContain('5550188');
+    }
+    // the staff's list labels it from its details, the same name
+    const list = (await api.request('GET', `${C}/tasks?status=open`, { cookie: staff })).json() as { tasks: { id: string; details: Record<string, string> }[] };
+    expect(list.tasks.find((t) => t.id === own.id)!.details.topic).toBe('Boarding booking');
+  });
+
   it('filters patients by one of the clinic\'s fields, read on the server', async () => {
     await saveFields({ customFields: [{ id: 'insured', label: 'Insured', kind: 'yesno' }] });
     expect((await api.request('PUT', `${C}/patients/${api.patientIds.maria}/fields`, { cookie: staff, body: { values: { insured: 'yes' } } })).statusCode).toBe(204);

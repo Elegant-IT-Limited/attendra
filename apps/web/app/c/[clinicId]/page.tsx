@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { requestNumber, clinicTime, dayTitle, taskType, timeOf, TOOLS, usd, visitTypeName, zoneLabel } from '@/lib/format';
+import { clinicTime, dayTitle, requestKind, requestNumber, timeOf, TOOLS, usd, visitTypeName, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 import { SAFETY_POLL_MS, SAFETY_POLL_WORDS } from '@/lib/changes';
@@ -132,7 +132,7 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
   const followedUp = new Set(requests.flatMap((t) => (t.type === 'follow_up' && t.callId ? [t.callId] : [])));
   const request = (t: (typeof requests)[number]) => ({
     key: t.id, icon: t.urgent ? <AlertTriangle className="size-4 text-danger" /> : <RequestIcon type={t.type} />, ...(t.urgent ? { tone: 'danger' as const } : {}),
-    title: `${t.urgent ? (t.origin === 'emergency' ? 'Emergency · ' : 'Urgent · ') : ''}${requestNumber(t.number)} · ${taskType(t.type, terms.patient)}`, detail: <>Came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} now={now} />, nobody has it yet</>,
+    title: `${t.urgent ? (t.origin === 'emergency' ? 'Emergency · ' : 'Urgent · ') : ''}${requestNumber(t.number)} · ${requestKind(t, terms.patient)}`, detail: <>Came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} now={now} />, nobody has it yet</>,
     action: canWork
       ? <Button size="sm" variant="outline" disabled={claim.isPending} onClick={() => claim.mutate(t.id)}>Claim</Button>
       : <Link href={`/c/${clinicId}/requests`} className={LINK}>Open</Link>,
