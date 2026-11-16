@@ -24,6 +24,13 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **A location on Vapi speaks with an ElevenLabs voice** (eleven_flash_v2_5, which speaks Spanish too) of the same kind as the clinic's own voice, never Vapi's own default. Settings > Voice on such a location offers the ElevenLabs voices, with ElevenLabs' own sample on Listen; the clinic's OpenAI voice is kept for when it moves back.
 - **The test-call page on a Vapi location says how to hear Vapi**: a browser test call always uses Attendra's own engine.
 
+### Fixed (refills, 2026-11-16)
+
+- **A refill is closed with a decision someone chose.** The Outcome list starts with the refill decisions (sent to the pharmacy, ready to pick up, not approved), then the others, with nothing picked: "Mark done" waits for a choice and says so. Before, "Called back" (or "sent") was preselected, so a quick "Mark done" closed a refill with no decision.
+- **Each refill decision says whether it texts, by the rule the worker sends by** (core `refillText`): "Approved, ready to pick up (texts the caller)", "Not approved (texts the caller to call us)", "Sent to the pharmacy (no text: no pharmacy named)". Settings > Texting names the same outcomes for its three refill texts. All three decisions text; only "ready" said so.
+- **What became of the text is said.** After a decision that texts, the toast waits for the worker and says "Text sent to (516) 555-0101" or, in a dialog that stays, "Text not sent: <plain reason>"; the request's history has the same line for every text about it, and "No text sent: the caller did not say yes to texts" when none went. A refill reopened and decided again now texts the new decision (the job was one per request).
+- **New request takes a refill with only its medicine**, and says what is missing otherwise, next to "Add request". The request says "Medicine", as the form does.
+
 ### Added (a demo clinic, 2026-11-16)
 
 - **A demo clinic: one hosted location whose number prospects ring to try the assistant.** A per-clinic `demoClinic` setting, off by default, set only by the hosting layer (provisioning), never in Settings; a Settings save keeps it. Every other clinic behaves exactly as before.

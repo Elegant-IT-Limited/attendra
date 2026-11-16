@@ -345,6 +345,9 @@ describe('a refill ready to pick up', () => {
       const { id } = await new PostgresTaskQueue(t.db, cipher).create(DEMO_CLINIC.id, { type: 'refill', callId: await closedCall(), patientId: null, idempotencyKey: key, details: { medication: 'x', pharmacy: 'pick up', callback_number: '+13035550178', ...(texts ? { texts } : {}) } });
       await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.update(schema.tasks).set({ status: 'done', outcome: 'refill_ready' }).where(eq(schema.tasks.id, id)));
       expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: id })).toBe('skipped');
+      // the request's history says no text went, and why (note 2026-11-16 RF3)
+      const rows = await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.select({ action: schema.auditLogs.action, actor: schema.auditLogs.actor }).from(schema.auditLogs).where(and(eq(schema.auditLogs.entity, 'task'), eq(schema.auditLogs.entityId, id))));
+      expect(rows).toContainEqual({ action: 'task.text.none.no_consent', actor: 'worker' });
     }
     expect(sent).toEqual([]);
   });

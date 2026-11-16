@@ -55,7 +55,7 @@ export type WebhookEventJob = z.infer<typeof WebhookEventJob>;
 export const DeliveryJob = z.object({ clinicId: z.string().min(1), endpointId: z.uuid(), eventId: z.string().min(1) });
 export type DeliveryJob = z.infer<typeof DeliveryJob>;
 
-export const RequestJob = z.object({ clinicId: z.string().min(1), taskId: z.uuid() });
+export const RequestJob = z.object({ clinicId: z.string().min(1), taskId: z.uuid(), outcome: z.string().optional() });
 export type RequestJob = z.infer<typeof RequestJob>;
 
 /** A handed-over visit: which one, and the vet it is now with (the text names them; a later move makes the job a no-op). */
@@ -126,7 +126,7 @@ export function bossQueue(boss: PgBoss): JobQueue {
       await boss.send(QUEUES.indexDocument, DocumentJob.parse(job), { id: jobId(QUEUES.indexDocument, `${job.documentId}|${job.hash}|${job.version ?? ''}`) });
     },
     async requestReady(job) {
-      await boss.send(QUEUES.requestReady, RequestJob.parse(job), { id: jobId(QUEUES.requestReady, job.taskId) });
+      await boss.send(QUEUES.requestReady, RequestJob.parse(job), { id: jobId(QUEUES.requestReady, job.outcome ? `${job.taskId}|${job.outcome}` : job.taskId) });
     },
     async smsStatus(job) {
       await boss.send(QUEUES.smsStatus, SmsStatusJob.parse(job), { id: jobId(QUEUES.smsStatus, `${job.messageSid}|${job.status}`) });
