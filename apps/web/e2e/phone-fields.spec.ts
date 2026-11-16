@@ -31,8 +31,8 @@ test('the phone fields left over take numbers only: letters typed or pasted are 
 
   // the clinic's own line: a pasted number with letters keeps only the number
   const numbers = page.locator('#numbers');
-  await numbers.getByRole('button', { name: "Your clinic's own line" }).click();
-  const own = numbers.getByLabel("Your clinic's own line").last();
+  await numbers.getByRole('button', { name: "Clinic's own line" }).click();
+  const own = numbers.getByLabel("Clinic's own line").last();
   await isPhoneField(own);
   await own.fill('(720) 555-01x9 call us');
   await expect(own).toHaveValue('(720) 555-019  ');

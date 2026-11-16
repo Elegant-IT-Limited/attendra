@@ -11,6 +11,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **Settings > Website** keeps "https://" while it is typed and accepts a website without it: it is saved with https://.
 - **Settings no longer says the greeting "still says" the clinic's name** when the name is followed by a comma ("Maple Vet Clinic, Denver."), in English or Spanish; a greeting with the old name before a comma or a line break is now pointed at.
 
+### Fixed (number names, 2026-11-16)
+
+- **The two numbers have one name each, everywhere:** "Assistant number" (calls are forwarded to it) and "Clinic's own line" (set in Setup; the number clients call and texts show), or "Not set". Settings > Phone numbers uses them, and says "Not set" when the clinic has no own line yet. The provisioning overview (`GET /provisioning/clinics/:id/overview`) also returns `assistantNumber` and `ownLine`, so the hosted pages and the back office name them the same way (the back office called the assistant's number the "Main number").
+
 ### Changed (Vapi voice, 2026-11-11)
 
 - **A location on Vapi speaks with an ElevenLabs voice** (eleven_flash_v2_5, which speaks Spanish too) of the same kind as the clinic's own voice, never Vapi's own default. Settings > Voice on such a location offers the ElevenLabs voices, with ElevenLabs' own sample on Listen; the clinic's OpenAI voice is kept for when it moves back.

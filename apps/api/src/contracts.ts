@@ -875,7 +875,9 @@ const SafeLink = z.string().max(300).refine((v) => (v.startsWith('/') && !v.star
 /** A clinic's name as the hosting layer renames a location: the dashboard and the assistant follow. */
 export const ClinicName = z.object({ name: z.string().trim().min(2, 'at least 2 characters').max(60, 'at most 60 characters') });
 /** A location at a glance for the hosting layer's Locations page: counts only, no call or patient details. */
-export const ClinicOverview = z.object({ name: z.string(), phoneNumber: z.string().nullable(), city: z.string().nullable(), callsToday: z.number().int(), openRequests: z.number().int() });
+// phoneNumber: the first number in the settings, as before; assistantNumber and ownLine: the two numbers by name
+// (note 2026-11-16 N1), the assistant's from provisioning and the clinic's own line from Setup, null when there is none
+export const ClinicOverview = z.object({ name: z.string(), phoneNumber: z.string().nullable(), assistantNumber: z.string().nullable(), ownLine: z.string().nullable(), city: z.string().nullable(), callsToday: z.number().int(), openRequests: z.number().int() });
 /** Counts only: how the clinic's providers stand on the one-number rule, for the hosting layer's check after a deploy. */
 export const ProviderPhoneReport = z.object({ providers: z.number().int(), withPhone: z.number().int(), withoutPhone: z.number().int(), sharedNumbers: z.number().int(), providersSharing: z.number().int() });
 export type ProviderPhoneReport = z.infer<typeof ProviderPhoneReport>;

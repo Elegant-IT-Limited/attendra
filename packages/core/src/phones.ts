@@ -297,3 +297,15 @@ export function phoneTypingIssues(body: unknown): { path: string; message: strin
   if (Array.isArray(c.routing)) c.routing.forEach((r, i) => { const uri = (r as { uri?: unknown })?.uri; if (typeof uri === 'string' && uri.startsWith('tel:')) check(`routing.${i}.uri`, uri); });
   return out;
 }
+
+/**
+ * The two numbers a clinic has, named the same on every screen (note 2026-11-16 N1: the back office called the
+ * assistant's number the "Main number"): the assistant number (calls are forwarded to it) and the clinic's own line
+ * (set in Setup; the number clients call and texts show).
+ */
+export const NUMBER_NAMES = { assistant: 'Assistant number', ownLine: 'Clinic\'s own line', notSet: 'Not set' } as const;
+
+/** The clinic's own line in its settings: the first number that is not one of the assistant's. Null when none is set. */
+export function ownLineOf(phoneNumbers: readonly string[], assistantNumbers: readonly string[]): string | null {
+  return phoneNumbers.find((n) => !!n && !assistantNumbers.includes(n)) ?? null;
+}

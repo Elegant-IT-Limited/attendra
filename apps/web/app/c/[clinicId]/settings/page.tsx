@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { asE164, localDateOf, providerName, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, listedVapiVoice, PREVIEW_VOICES, type TalkStyle, VAPI_VOICE_MODEL, VAPI_VOICES, vapiVoiceOf, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel, DEFAULT_RECORDING_NOTICE, noticeIsSentence, openingWords, noProviderWarnings, SETTINGS_LIMITS, greetingFollowingNames, type Language, websiteWithScheme } from '@attendra/core';
+import { asE164, localDateOf, NUMBER_NAMES, providerName, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, listedVapiVoice, PREVIEW_VOICES, type TalkStyle, VAPI_VOICE_MODEL, VAPI_VOICES, vapiVoiceOf, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel, DEFAULT_RECORDING_NOTICE, noticeIsSentence, openingWords, noProviderWarnings, SETTINGS_LIMITS, greetingFollowingNames, type Language, websiteWithScheme } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
@@ -557,22 +557,28 @@ export default function Settings() {
           </Field>
         </Section>
 
-        <Section id="numbers" title="Phone numbers" description={`The assistant's number is where calls reach the assistant${clinic?.accountLinks.length ? ': to get or change it, open Phone number under Account in the menu' : ': your Attendra operator sets it up'}. Your clinic's own line is the number clients call today; you forward it to the assistant's number, and "Check my forwarding" calls it.`}>
+        <Section id="numbers" title="Phone numbers" description={`${NUMBER_NAMES.assistant}: where calls reach the assistant${clinic?.accountLinks.length ? '; to get or change it, open Phone number under Account in the menu' : '; your Attendra operator sets it up'}. ${NUMBER_NAMES.ownLine}: the number clients call today and texts show; you forward it to the assistant number, and "Check my forwarding" calls it.`}>
           <ul className="space-y-2">
             {c.phoneNumbers.map((n, i) => (assistantNumbers.has(n) ? (
               <li key={`a-${n}`} className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-surface-sunken/60 px-3 py-2 text-sm">
                 <span className="font-medium tabular-nums">{phone(n)}</span>
-                <span className="text-text-muted">Your assistant&apos;s number: calls to it reach the assistant</span>
+                <span className="text-text-muted">{NUMBER_NAMES.assistant}: calls to it reach the assistant</span>
               </li>
             ) : (
               <li key={`own-${i}`} className="flex flex-wrap items-center gap-3 rounded-md border border-border px-3 py-2 text-sm">
                 {/* typed as the clinic writes it; kept as +1… so forwarding checks and texts can use it */}
                 <OwnLine stored={n} shown={n ? phone(n) : ''} disabled={!writable} placeholder={/^\+1\d{10}$/.test(c.phoneNumbers[0] ?? '') ? `(${c.phoneNumbers[0]!.slice(2, 5)}) 555-0100` : countryCopy(c).phone.local}
                   onDone={(typed) => { const v = typed.trim() ? asE164(c, typed) : ''; if (v !== n) set({ phoneNumbers: c.phoneNumbers.map((x, j) => (j === i ? v : x)) }); }} />
-                <span className="text-text-muted">Your clinic&apos;s own line: forward it to the assistant&apos;s number</span>
+                <span className="text-text-muted">{NUMBER_NAMES.ownLine}: forward it to the assistant number</span>
                 {writable && <Button type="button" size="sm" variant="ghost" onClick={() => set({ phoneNumbers: c.phoneNumbers.filter((_, j) => j !== i) })}>Remove</Button>}
               </li>
             )))}
+            {/* no own line yet: said, not left out (note 2026-11-16 N1) */}
+            {!c.phoneNumbers.some((n) => n && !assistantNumbers.has(n)) && !c.phoneNumbers.includes('') && (
+              <li className="flex flex-wrap items-center gap-3 rounded-md border border-dashed border-border px-3 py-2 text-sm" data-testid="own-line-not-set">
+                <span className="text-text-muted">{NUMBER_NAMES.ownLine}: {NUMBER_NAMES.notSet}</span>
+              </li>
+            )}
           </ul>
           {writable && c.phoneNumbers.filter((n) => !assistantNumbers.has(n)).length < 3 && (
             <Button type="button" size="sm" variant="outline" className="mt-3" onClick={() => {
@@ -581,7 +587,7 @@ export default function Settings() {
               if (empty) { empty.focus(); return; }
               set({ phoneNumbers: [...c.phoneNumbers, ''] });
               setTimeout(() => document.querySelector<HTMLInputElement>('input[data-own-line=""]')?.focus(), 0);
-            }}><Plus /> Your clinic&apos;s own line</Button>
+            }}><Plus /> {NUMBER_NAMES.ownLine}</Button>
           )}
         </Section>
       </fieldset>
@@ -611,7 +617,7 @@ function OwnLine({ stored, shown, disabled, placeholder, onDone }: { stored: str
   useEffect(() => setTyped(shown), [shown]);
   return (
     <span className="inline-flex flex-col gap-1">
-      <PhoneInput aria-label="Your clinic's own line" data-own-line={stored} autoComplete="off" className="h-8 w-48 tabular-nums" value={typed} disabled={disabled}
+      <PhoneInput aria-label={NUMBER_NAMES.ownLine} data-own-line={stored} autoComplete="off" className="h-8 w-48 tabular-nums" value={typed} disabled={disabled}
         placeholder={placeholder} onValue={setTyped} onBlur={(e) => onDone(e.target.value)} />
     </span>
   );

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, bookableProviders, ClinicConfig, countryCopy, DEFAULT_VOICE, INDUSTRIES, localDateOf, openMinutes, REALTIME_VOICES, sharedProviderPhones, starterClinic, textingOf, vapiAlertAt, VapiVoiceChoice, VOICE_ENGINES, type VoiceEngineName, zonedInstant } from '@attendra/core';
+import { addDays, bookableProviders, ownLineOf, ClinicConfig, countryCopy, DEFAULT_VOICE, INDUSTRIES, localDateOf, openMinutes, REALTIME_VOICES, sharedProviderPhones, starterClinic, textingOf, vapiAlertAt, VapiVoiceChoice, VOICE_ENGINES, type VoiceEngineName, zonedInstant } from '@attendra/core';
 import {
   addClinicToOrganization, addMembership, assignNumber, clinicCosts, clinicOwners, confirmEmail, createOrganizationWithClinic, type Database, type FrontDeskRepository,
   openOrganizationForOwner, type PhiCipher, phoneCallsSince, phoneUsage, purgeClinic, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, schema, setClinicClosed, setHostingPlan, setTestCallLimit, testCallStarts, topUpTestCalls, vapiConcurrency,
 } from '@attendra/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { Logger } from '@attendra/observability';
 import { Body, type CanActivate, Controller, Delete, type ExecutionContext, Get, HttpCode, HttpException, Inject, Injectable, NotFoundException, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
@@ -519,8 +519,13 @@ export class ProvisioningController {
     const clinic = ClinicConfig.parse(stored);
     const now = this.now();
     const dayStart = zonedInstant(localDateOf(now, clinic.timezone), '00:00', clinic.timezone);
-    const [today, open] = await Promise.all([phoneCallsSince(this.db, this.cipher, clinicId, dayStart), this.desk.openTaskCount(clinicId)]);
-    return { name: clinic.name, phoneNumber: clinic.phoneNumbers[0] ?? null, city: cityOf(clinic.address), callsToday: today.calls, openRequests: open };
+    const [today, open, assistant] = await Promise.all([phoneCallsSince(this.db, this.cipher, clinicId, dayStart), this.desk.openTaskCount(clinicId),
+      this.db.select({ e164: schema.phoneNumbers.e164 }).from(schema.phoneNumbers).where(and(eq(schema.phoneNumbers.clinicId, clinicId), eq(schema.phoneNumbers.status, 'active')))]);
+    const assistantNumbers = assistant.map((r) => r.e164);
+    return {
+      name: clinic.name, phoneNumber: clinic.phoneNumbers[0] ?? null, assistantNumber: assistantNumbers[0] ?? null, ownLine: ownLineOf(clinic.phoneNumbers, assistantNumbers),
+      city: cityOf(clinic.address), callsToday: today.calls, openRequests: open,
+    };
   }
 
   /** How the clinic's providers stand on the one-number rule (2026-11-01), counts only: nothing is merged by anyone but the clinic. */

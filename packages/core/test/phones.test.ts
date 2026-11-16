@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { asE164, formatPhone, providerPhoneIssues, samePhone, vipRoute, withPhonesAsE164, DEMO_CLINIC } from '../src';
+import { asE164, formatPhone, NUMBER_NAMES, ownLineOf, providerPhoneIssues, samePhone, vipRoute, withPhonesAsE164, DEMO_CLINIC } from '../src';
 
 const US = { phoneNumbers: ['+13035550100'] };
 const CA = { phoneNumbers: ['+14165550100'] };
@@ -75,5 +75,15 @@ describe('one phone number, however it is typed', () => {
     const taken = { ...DEMO_CLINIC, industry: 'vet' as const, providers: [{ ...vet!, id: 'p_a', name: 'Dr Avery Lane', phone: '+13035550150' }] };
     expect(providerPhoneIssues(taken, { phone: '(303) 555-0150' }).issues).toEqual([{ path: 'phone', message: 'Dr. Avery Lane already has this number.' }]);
     expect(providerPhoneIssues(taken, { phone: '303 555 0151' }).phone).toBe('+13035550151');
+  });
+});
+
+describe('the two numbers by name (note 2026-11-16 N1)', () => {
+  it('the clinic\'s own line is the first number in the settings that is not the assistant\'s', () => {
+    expect(NUMBER_NAMES).toEqual({ assistant: 'Assistant number', ownLine: 'Clinic\'s own line', notSet: 'Not set' });
+    expect(ownLineOf(['+15165550101', '+15165550102'], ['+15165550101'])).toBe('+15165550102');
+    expect(ownLineOf(['+15165550102'], [])).toBe('+15165550102');
+    expect(ownLineOf(['+15165550101', ''], ['+15165550101'])).toBeNull();
+    expect(ownLineOf([], ['+15165550101'])).toBeNull();
   });
 });
