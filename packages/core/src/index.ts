@@ -27,6 +27,7 @@ export * from './industries';
 export * from './imports';
 export * from './ports';
 export * from './providers';
+export * from './refill-texts';
 export * from './phones';
 export * from './routing';
 export * from './slots';

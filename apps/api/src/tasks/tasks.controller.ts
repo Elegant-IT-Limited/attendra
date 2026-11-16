@@ -41,7 +41,8 @@ export class TasksController {
     if (body.topic && !topic) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'topic', message: 'not one of the clinic\'s kinds of request' }] });
     const refill = body.type === 'refill';
     const details: Record<string, string> = {
-      reason: body.reason, ...(topic ? { topic } : {}), ...(body.name ? { name: body.name } : {}), ...(body.callbackNumber ? { callback_number: asE164(config, body.callbackNumber) } : {}),
+      // a refill given only its medicine says so as what it is about
+      reason: body.reason || `Refill: ${body.medication}`, ...(topic ? { topic } : {}), ...(body.name ? { name: body.name } : {}), ...(body.callbackNumber ? { callback_number: asE164(config, body.callbackNumber) } : {}),
       ...(refill && body.medication ? { medication: body.medication } : {}), ...(refill && body.pharmacy ? { pharmacy: body.pharmacy } : {}),
     };
     // the record it is about, when one was picked: the request then belongs to that household
@@ -167,7 +168,7 @@ export class TasksController {
     this.outcome(await this.desk.completeTask(clinicId, taskId, staff.userId, body.outcome ?? null));
     const facts = await taskFacts(this.db, clinicId, taskId);
     // the caller hears what the team decided: ready to pick up, sent to the pharmacy, or please call us
-    if (body.outcome && REFILL_DECISIONS.has(body.outcome) && facts?.type === 'refill') await this.jobs.requestReady({ clinicId, taskId });
+    if (body.outcome && REFILL_DECISIONS.has(body.outcome) && facts?.type === 'refill') await this.jobs.requestReady({ clinicId, taskId, outcome: body.outcome });
     if (facts) await this.events.emit(clinicId, { type: 'request.done', key: taskId, data: facts });
   }
 

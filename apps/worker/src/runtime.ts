@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { callUsNumber, ClinicConfig, dailyDigest, demoResetDue, localName, localParts, speakSlot, textingOf, toMinutes } from '@attendra/core';
+import { callUsNumber, ClinicConfig, dailyDigest, demoResetDue, isRefillDecision, localName, localParts, refillText, speakSlot, textingOf, toMinutes } from '@attendra/core';
 import type { EventSink } from '@attendra/core';
 import { activeNumbers, allClinics, CallSummaryRepository, callFacts, callsForDigest, configName, DEMO_NIGHTLY_ACTOR, demoClinics, type Database, ensureWorkerJobsView, KnowledgeRepository, lapseInvitations, type PhiCipher, phiContext, PostgresTaskQueue, purgeCallRecords, purgeWebhookRecords, demoResetLine, resetDemoClinic, schema, WebhookRepository, withClinic } from '@attendra/db';
 import { type Embedder, indexDocument, LocalEmbedder, OpenAIEmbedder } from '@attendra/knowledge';
@@ -378,18 +378,19 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
         const [call] = task?.callId ? await tx.select({ language: schema.calls.language }).from(schema.calls).where(and(eq(schema.calls.clinicId, clinicId), eq(schema.calls.id, task.callId))) : [];
         return task && clinic ? { task, config: ClinicConfig.parse(clinic.config), language: call?.language ?? null } : null;
       });
-      // what the team decided, in one text each: ready to pick up, sent to the pharmacy, or please call us
-      const byOutcome: Record<string, 'request_ready' | 'refill_sent' | 'refill_not_approved'> = { refill_ready: 'request_ready', refill_sent: 'refill_sent', refill_declined: 'refill_not_approved' };
-      const template = found?.task.outcome ? byOutcome[found.task.outcome] : undefined;
-      if (!found || found.task.type !== 'refill' || !template) return 'skipped';
+      if (!found || found.task.type !== 'refill' || !isRefillDecision(found.task.outcome)) return 'skipped';
       const details = JSON.parse(d.cipher.decrypt(found.task.detailsEnc, phiContext(clinicId, 'tasks.details'))) as Record<string, string>;
-      // "sent to the pharmacy" names the pharmacy, never the medicine; one picked up at the clinic is "ready" instead
-      const pharmacy = details.pharmacy?.trim();
-      if (template === 'refill_sent' && (!pharmacy || /pick ?up|clinic|recoger/i.test(pharmacy))) return 'skipped';
+      // what the team decided, in one text each (core refillText, the rule the outcome labels and Settings > Texting say):
+      // ready to pick up, sent to the pharmacy (named, never the medicine), or please call us; none to a caller who did
+      // not say yes, or with no pharmacy to name, and the request's history says so (note 2026-11-16 RF3)
+      const plan = refillText(found.task.outcome, { type: found.task.type, fromCall: !!found.task.callId, details });
+      if (!plan) return 'skipped';
+      if ('none' in plan) {
+        await withClinic(d.db, clinicId, (tx) => tx.insert(schema.auditLogs).values({ clinicId, actor: 'worker', action: `task.text.none.${plan.none}`, entity: 'task', entityId: taskId }));
+        return 'skipped';
+      }
+      const { template, pharmacy } = plan;
       const { config } = found;
-      // a request from a call is texted only when the caller said yes to the text on it; one the team
-      // logged itself, on the team's word, as before
-      if (found.task.callId ? details.texts !== 'yes' : details.texts === 'no') return 'skipped';
       const language = config.languages.includes(found.language as never) ? (found.language as typeof config.primaryLanguage) : config.primaryLanguage;
       // with the clinic's texting off (its registration not approved), the text is recorded as not sent, and why
       const messenger = new TwilioMessenger(d.db, d.cipher, textingOf(config).enabled ? d.texts ?? null : null, () => config.phoneNumbers[0]!, {

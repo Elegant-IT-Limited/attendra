@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { asE164, type CallOutcome, emergencyCountryOf, type EmergencyResult, formatPhone, isE164, roleLabel } from '@attendra/core';
+import { asE164, type CallOutcome, emergencyCountryOf, type EmergencyResult, formatPhone, isE164, REFILL_NO_TEXT, refillText, roleLabel } from '@attendra/core';
 
 /**
  * What depends on the clinic's country, from its first number: a 12-hour clock in
@@ -204,9 +204,9 @@ export const taskExplained = (type: string, pets: boolean) => (!pets ? TASK_EXPL
 export const TASK_OUTCOMES: Record<string, string> = {
   called_back: 'Called back',
   left_message: 'No answer, left a message',
-  refill_sent: 'Refill sent to the pharmacy',
-  refill_ready: 'Approved, ready to pick up (texts the caller)',
-  refill_declined: 'Not approved, called back',
+  refill_sent: 'Sent to the pharmacy',
+  refill_ready: 'Approved, ready to pick up',
+  refill_declined: 'Not approved',
   not_needed: 'Not needed',
   details_confirmed: 'Details checked and confirmed',
 };
@@ -346,6 +346,62 @@ export const TASK_HISTORY: Record<string, string> = {
   'task.done.refill_ready': 'Approved a refill (ready to pick up)',
   'task.done.refill_declined': 'Declined a refill',
   'task.reopened': 'Reopened a request',
+  // a refill decision that sent no text, and why (the worker's own line, note 2026-11-16 RF3)
+  ...Object.fromEntries(Object.entries(REFILL_NO_TEXT).map(([why, words]) => [`task.text.none.${why}`, `No text sent: ${words}`])),
+};
+
+/**
+ * A refill decision's name in the Outcome list, with whether it texts on this request (core refillText, the rule the
+ * worker sends by): "Approved, ready to pick up (texts the caller)", "Sent to the pharmacy (no text: the caller did not
+ * say yes to texts)". Any other outcome, its name.
+ */
+export function outcomeChoice(outcome: string, task: { type: string; callId: string | null; details: Record<string, string> }): string {
+  const name = TASK_OUTCOMES[outcome] ?? outcome;
+  const plan = refillText(outcome, { type: task.type, fromCall: !!task.callId, details: task.details });
+  if (!plan) return name;
+  if ('none' in plan) return `${name} (no text: ${REFILL_NO_TEXT[plan.none]})`;
+  return `${name} (texts the caller${plan.template === 'refill_not_approved' ? ' to call us' : ''})`;
+}
+
+/** What became of a text about a request, as its history and the toast both say it: "Text sent to (516) 555-0101". */
+export function requestTextLine(text: { status: string; failureReason: string | null; errorCode: string | null; toLast4?: string | null }, callbackNumber?: string): string {
+  const to = callbackNumber && (!text.toLast4 || callbackNumber.replace(/\D/g, '').endsWith(text.toLast4)) ? phone(callbackNumber) : text.toLast4 ? `the number ending ${text.toLast4}` : 'the caller';
+  switch (text.status) {
+    case 'queued': return `Sending a text to ${to}`;
+    case 'sent': return `Text sent to ${to}`;
+    case 'delivered': return `Text delivered to ${to}`;
+    case 'not_sent': return `Text not sent: ${TEXT_NOT_SENT[text.failureReason ?? ''] ?? 'the reason was not recorded'}`;
+    default: return `Text not sent: the carrier refused it${text.errorCode ? ` (error ${text.errorCode})` : ''}`;
+  }
+}
+
+/** A closed refill's text line before any text is recorded: on its way, or why none goes (core refillText). */
+export function noTextYet(task: { type: string; callId: string | null; outcome: string | null; details: Record<string, string> }): string {
+  const plan = refillText(task.outcome, { type: task.type, fromCall: !!task.callId, details: task.details });
+  return plan && 'none' in plan ? `No text sent: ${REFILL_NO_TEXT[plan.none]}.` : 'No text recorded yet. It goes out within a minute of closing.';
+}
+
+/**
+ * What still stops a new request from being added, in a few words, or null when nothing does: a sentence on what it is
+ * about, or for a refill its medicine instead (note 2026-11-16 RF4). Matches what the server accepts.
+ */
+export function requestMissing(d: { kind: string; reason: string; medication: string }): string | null {
+  if (d.reason.trim().length >= 3) return null;
+  if (d.kind === 'refill') return d.medication.trim() ? null : 'Add the medicine, or say what it is about.';
+  return d.reason.trim() ? 'Say a little more in "What it is about".' : 'Add "What it is about".';
+}
+
+/** Why a text was not sent, in the team's words: the one table the texts lists and a request's history use. */
+export const TEXT_NOT_SENT: Record<string, string> = {
+  opted_out: 'the number has opted out (replied STOP)',
+  rate_limited: 'too many texts today, to that number or from the clinic',
+  monthly_limit: 'the clinic reached its monthly safety limit on texts',
+  not_textable: 'texts go only to mobile numbers in your country, never premium or toll-free ones',
+  no_number: 'no mobile number on file',
+  texting_off: 'texting is off',
+  unregistered: 'text registration (A2P) is not approved yet',
+  carrier: 'the carrier refused it',
+  test_call: 'a test call never texts anyone',
 };
 
 /**

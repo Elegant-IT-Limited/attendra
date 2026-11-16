@@ -33,7 +33,14 @@ test('front desk claims a refill request, adds a note, and closes it with an out
 
   await card.getByRole('button', { name: 'Mark done' }).click();
   // the front desk is not marked as approving refills: a vet decides
-  await expect(card.getByLabel('Outcome').locator('option', { hasText: 'Refill sent to the pharmacy' })).toBeDisabled();
+  await expect(card.getByLabel('Outcome').locator('option', { hasText: 'Sent to the pharmacy' })).toBeDisabled();
+  // a refill is closed with what someone chose (note 2026-11-16 RF1): the decisions first, none picked, Mark done waits
+  const choices = await card.getByLabel('Outcome').locator('option').allTextContents();
+  expect(choices[0]).toBe('Choose what happened');
+  expect(choices.slice(1, 4).map((c) => c.replace(/ \(.*\)$/, ''))).toEqual(['Sent to the pharmacy', 'Approved, ready to pick up', 'Not approved']);
+  await expect(card.getByLabel('Outcome')).toHaveValue('');
+  await expect(card.getByRole('button', { name: 'Mark done' })).toBeDisabled();
+  await expect(card.getByText('Choose what happened with the refill, then Mark done.')).toBeVisible();
   await expect(card.getByText(/decides this one/)).toBeVisible();
   await card.getByLabel('Outcome').selectOption({ label: 'Called back' });
   await card.getByRole('button', { name: 'Mark done' }).click();

@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { MessageSquare } from 'lucide-react';
 import { StatusPill } from '@/components/ui/badge';
 import { api } from '@/lib/api';
-import { shortWhen } from '@/lib/format';
+import { shortWhen, TEXT_NOT_SENT } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 
 /** What each text was, in the front desk's words. */
@@ -26,17 +26,7 @@ export const TEXT_TEMPLATES: Record<string, string> = {
   reminder: 'Appointment reminder',
 };
 
-const REASONS: Record<string, string> = {
-  opted_out: 'the number has opted out (replied STOP)',
-  rate_limited: 'too many texts today, to that number or from the clinic',
-  monthly_limit: 'the clinic reached its monthly safety limit on texts',
-  not_textable: 'texts go only to mobile numbers in your country, never premium or toll-free ones',
-  no_number: 'no mobile number on file',
-  texting_off: 'texting is off',
-  unregistered: 'text registration (A2P) is not approved yet',
-  carrier: 'the carrier refused it',
-  test_call: 'a test call never texts anyone',
-};
+const REASONS = TEXT_NOT_SENT;
 
 /** One line per text: a status, and what it was with when or why not. */
 export function textLine(t: TextItem, timeZone: string, provider = 'doctor'): { tone: 'ok' | 'warn' | 'danger' | 'neutral'; label: string; detail: string } {

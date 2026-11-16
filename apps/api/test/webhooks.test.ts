@@ -178,7 +178,7 @@ describe('events from the front desk', () => {
     expect((await api.request('PATCH', `${C}/members/${api.users.staff}`, { cookie: as.admin, body: { approvesRefills: true } })).statusCode).toBe(204);
     await api.request('POST', `${C}/tasks/${api.taskId}/done`, { cookie: as.staff, body: { outcome: 'refill_ready' } });
     expect(events.at(-1)).toMatchObject({ type: 'request.done', data: { requestId: api.taskId, type: 'refill', outcome: 'refill_ready' } });
-    expect(ready).toEqual([{ clinicId: DEMO_CLINIC.id, taskId: api.taskId }]);
+    expect(ready).toEqual([{ clinicId: DEMO_CLINIC.id, taskId: api.taskId, outcome: 'refill_ready' }]);
     // closing it again changes nothing and texts nobody
     expect((await api.request('POST', `${C}/tasks/${api.taskId}/done`, { cookie: as.staff, body: { outcome: 'refill_ready' } })).statusCode).toBe(409);
     expect(ready).toHaveLength(1);

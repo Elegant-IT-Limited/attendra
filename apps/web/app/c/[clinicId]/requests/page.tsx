@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import type { Task, TaskAssignees, TaskHistory, TaskList } from '@attendra/api/contracts';
-import { type CustomField, localDateOf, multiValues } from '@attendra/core';
+import type { Task, TaskAssignees, TaskHistory, TaskList, TextList } from '@attendra/api/contracts';
+import { type CustomField, isRefillDecision, localDateOf, multiValues, REFILL_NO_TEXT, refillText } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ChevronDown, ChevronRight, Flag, Hand, History, Info, Phone, PhoneCall, Pill, Plus, RotateCcw, Search, Siren, SlidersHorizontal, UserCheck, Voicemail, X } from 'lucide-react';
 import Link from 'next/link';
@@ -19,9 +19,9 @@ import { useSettled } from '@/components/patients/patient-search';
 import { Field, Input, Label, Select, Textarea } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { Panel } from '@/components/ui/dialog';
-import { useToast } from '@/components/ui/toast';
+import { useProblem, useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { ago, clinicTime, dayTitle, dob, personName, personWithRole, phone, requestCreator, requestExample, requestKind, requestNumber, TASK_HISTORY, TASK_KIND_ORDER, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, telHref, zoneLabel } from '@/lib/format';
+import { ago, clinicTime, dayTitle, dob, outcomeChoice, personName, personWithRole, phone, requestCreator, requestExample, requestKind, requestMissing, requestNumber, requestTextLine, noTextYet, TASK_HISTORY, TASK_KIND_ORDER, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, telHref, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { Avatar, RelativeTime } from '@/components/ui/bits';
 import { Segmented } from '@/components/ui/tabs';
@@ -31,7 +31,7 @@ import { patchRequestElsewhere } from '@/lib/optimistic';
 
 // the clinic's own kind (`topic`) is the request's label, in its title: not listed again among the details
 const DETAIL_LABELS: Record<string, string> = {
-  name: 'Name', medication: 'Medication', pharmacy: 'Pharmacy', callback_number: 'Call back on', reason: 'What it is about',
+  name: 'Name', medication: 'Medicine', pharmacy: 'Pharmacy', callback_number: 'Call back on', reason: 'What it is about',
   first_name: 'First name', last_name: 'Last name', date_of_birth: 'Date of birth', gender: 'Gender', phone: 'Phone', guardian_name: 'Parent or guardian', possible_duplicate: 'Worth a look',
   suggested: 'Suggested next step',
   pet_name: 'Pet', species: 'Kind of animal', sex: 'Sex', owner_name: 'Owner', date_of_birth_note: 'Birthday note',
@@ -115,6 +115,37 @@ function Requests() {
   const team = useQuery({ queryKey: ['assignees', clinicId], queryFn: () => api<TaskAssignees>(`/clinics/${clinicId}/tasks/assignees`), enabled: can('tasks:reassign') });
   const key = ['tasks', clinicId, status, type, who, q, from, to];
   const toast = useToast();
+  const problem = useProblem();
+  /**
+   * After a refill decision: what became of the text it sends, once the worker has tried, in the words of the request's
+   * history (note 2026-11-16 RF3: "Marked done." said nothing, and a text to a made-up number failed unseen). A text not
+   * sent is a problem the team sees, not a toast that fades.
+   */
+  async function textResult(task: Task, outcome?: string) {
+    const plan = refillText(outcome, { type: task.type, fromCall: !!task.callId, details: task.details });
+    if (!plan) { toast({ tone: 'success', message: 'Marked done.' }); return; }
+    if ('none' in plan) { toast({ tone: 'success', message: `Marked done. No text sent: ${REFILL_NO_TEXT[plan.none]}.` }); return; }
+    toast({ tone: 'success', message: 'Marked done. Sending the text…' });
+    const since = Date.now() - 10_000;
+    let earlier: TextList['texts'][number] | undefined;
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const list = await api<TextList>(`/clinics/${clinicId}/texts?taskId=${task.id}`).catch(() => null);
+      const same = list?.texts.filter((x) => x.template === plan.template) ?? [];
+      earlier = same.find((x) => Date.parse(x.createdAt) < since);
+      const now = same.find((x) => Date.parse(x.createdAt) >= since && x.status !== 'queued');
+      if (!now) continue;
+      void queries.invalidateQueries({ queryKey: ['texts', clinicId] });
+      void queries.invalidateQueries({ queryKey: ['tasks', clinicId, 'history', task.id] });
+      const line = requestTextLine(now, task.details.callback_number);
+      if (now.status === 'sent' || now.status === 'delivered') toast({ tone: 'success', message: `${line}.` });
+      else problem({ title: 'The text was not sent', message: `${line}. The request's history says so too.` });
+      return;
+    }
+    // the same text went once already (closed, reopened, decided the same): it is never sent twice
+    if (earlier) toast({ tone: 'success', message: `No new text: this one went before. ${requestTextLine(earlier, task.details.callback_number)}.` });
+    else toast({ tone: 'success', message: 'The text is still on its way. The request\'s history will say when it goes.' });
+  }
   type Act = { task: Task; action: 'claim' | 'done' | 'release' | 'notes' | 'assign' | 'plan' | 'reopen'; body?: ActBody };
   // The screen changes at once and puts itself back if the server says no: a claim,
   // a close, an assignment or a note should never make the front desk wait.
@@ -152,7 +183,7 @@ function Requests() {
     },
     onSuccess: (_r, { task, action, body }) => {
       if (action === 'claim') toast({ tone: 'success', message: 'Claimed. It is yours now.', action: { label: 'Undo', onClick: () => act.mutate({ task, action: 'release' }) } });
-      else if (action === 'done') { if (openId === task.id) closeTask(); toast({ tone: 'success', message: 'Marked done.' }); }
+      else if (action === 'done') { if (openId === task.id) closeTask(); void textResult(task, body?.outcome); }
       // back in the open queue: the panel closes with the done list it left, and the toast goes to it
       else if (action === 'reopen') {
         if (openId === task.id) closeTask();
@@ -418,7 +449,12 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
   const [editingFields, setEditingFields] = useState(false);
   // one of the clinic's own kinds is done when it is done ("Done", no outcome); a call back or a message is still offered
   const ownKind = !!t.details.topic;
-  const [outcome, setOutcome] = useState(t.type === 'refill' && canApprove ? 'refill_sent' : t.type === 'review' ? 'details_confirmed' : ownKind ? '' : 'called_back');
+  // a refill is closed with what someone chose, never a preset (note 2026-11-16 RF1: "Mark done" closed one as "Called back")
+  const [outcome, setOutcome] = useState(t.type === 'refill' ? '' : t.type === 'review' ? 'details_confirmed' : ownKind ? '' : 'called_back');
+  const outcomes = Object.entries(TASK_OUTCOMES).filter(([k]) => (!k.startsWith('refill_') || t.type === 'refill') && (k !== 'details_confirmed' || t.type === 'review'));
+  // the refill decisions first: sent, ready, not approved; then a call back or a message
+  const ordered = t.type === 'refill' ? [...outcomes.filter(([k]) => DECISIONS.has(k)), ...outcomes.filter(([k]) => !DECISIONS.has(k))] : outcomes;
+  const mustChoose = t.type === 'refill' && !outcome;
   const Icon = ICONS[t.type] ?? Phone;
   const mine = t.assigneeUserId === meId;
   const heldByOther = !!t.assigneeUserId && !mine;
@@ -453,7 +489,7 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
         {/* the call's one next step belongs on its follow-up; on a callback or a pet to check it repeated what the card says */}
         {open && t.type === 'follow_up' && t.followUp && t.followUp !== t.details.suggested && <><dt className="text-text-muted">Suggested by the assistant</dt><dd>{t.followUp}</dd></>}
         {!open && t.outcome && <><dt className="text-text-muted">Outcome</dt><dd className="font-medium">{TASK_OUTCOMES[t.outcome]}</dd></>}
-        {!open && t.outcome === 'refill_ready' && <><dt className="text-text-muted">Text</dt><dd><TextStatus clinicId={clinicId} filter={{ taskId: t.id }} timeZone={tz} empty="No text recorded yet. It goes out within a minute of closing." /></dd></>}
+        {!open && isRefillDecision(t.outcome) && <><dt className="text-text-muted">Text</dt><dd><TextStatus clinicId={clinicId} filter={{ taskId: t.id }} timeZone={tz} empty={noTextYet(t)} /></dd></>}
         {fields.map((f) => (
           <div key={f.id} className="contents"><dt className="text-text-muted">{f.label}</dt><dd>{t.custom[f.id] ? shownValue(f, t.custom[f.id]) : <span className="text-text-muted">Not filled in</span>}</dd></div>
         ))}
@@ -513,14 +549,15 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
               <Label htmlFor={`outcome-${t.id}`} className="sr-only">Outcome</Label>
               <Select id={`outcome-${t.id}`} className="h-8 flex-1" value={outcome} onChange={(e) => setOutcome(e.target.value)} aria-label="Outcome">
                 {ownKind && <option value="">Done</option>}
-                {Object.entries(TASK_OUTCOMES).filter(([k]) => (!k.startsWith('refill_') || t.type === 'refill') && (k !== 'details_confirmed' || t.type === 'review'))
-                  .map(([k, v]) => <option key={k} value={k} disabled={DECISIONS.has(k) && !canApprove}>{v}</option>)}
+                {t.type === 'refill' && <option value="" disabled>Choose what happened</option>}
+                {ordered.map(([k]) => <option key={k} value={k} disabled={DECISIONS.has(k) && !canApprove}>{outcomeChoice(k, t)}</option>)}
               </Select>
               {t.type === 'refill' && !canApprove && (
                 <p className="w-full text-xs text-text-muted">A {patientWord === 'pet' ? 'veterinarian' : 'prescriber'} marked as approving refills decides this one (sent, ready or not approved); you can add a note or call the {patientWord === 'pet' ? 'owner' : 'patient'}.</p>
               )}
               <Button size="sm" variant="ghost" onClick={() => setClosing(false)}>Back</Button>
-              <Button size="sm" disabled={busy} onClick={() => { onAct('done', outcome ? { outcome } : {}); setClosing(false); }}>Mark done</Button>
+              {mustChoose && <p className="w-full text-xs text-text-muted" id={`outcome-hint-${t.id}`}>Choose what happened with the refill, then Mark done.</p>}
+              <Button size="sm" disabled={busy || mustChoose} aria-describedby={mustChoose ? `outcome-hint-${t.id}` : undefined} onClick={() => { onAct('done', outcome ? { outcome } : {}); setClosing(false); }}>Mark done</Button>
             </>
           ) : (
             <>
@@ -574,6 +611,12 @@ function RequestHistory({ clinicId, task: t, tz }: { clinicId: string; task: Tas
     queryKey: ['tasks', clinicId, 'history', t.id, t.status, t.assigneeUserId, t.notes.length, t.urgent, t.dueOn],
     queryFn: () => api<TaskHistory>(`/clinics/${clinicId}/tasks/${t.id}/history`),
   });
+  const texts = useQuery({ queryKey: ['texts', clinicId, 'taskId', t.id], queryFn: () => api<TextList>(`/clinics/${clinicId}/texts?taskId=${t.id}`) });
+  // each text about the request is a line of its own (note 2026-11-16 RF3): "Text sent to (516) 555-0101", "Text not sent: ..."
+  const lines = [
+    ...(history.data?.events ?? []).map((e) => ({ at: e.at, what: e.action === 'task.created.topic' ? `Took a request: ${requestKind(t)}` : TASK_HISTORY[e.action] ?? 'Changed', who: whoDid(e.by), warn: false })),
+    ...(texts.data?.texts ?? []).map((x) => ({ at: x.sentAt ?? x.createdAt, what: requestTextLine(x, t.details.callback_number), who: 'Attendra', warn: !['queued', 'sent', 'delivered'].includes(x.status) })),
+  ].sort((a, b) => a.at.localeCompare(b.at));
   return (
     <details className="group border-t border-border text-sm" data-testid="request-history">
       <summary className="focus-ring flex cursor-pointer list-none items-center gap-2 px-5 py-2.5 font-medium text-text-muted hover:text-text [&::-webkit-details-marker]:hidden">
@@ -585,10 +628,10 @@ function RequestHistory({ clinicId, task: t, tz }: { clinicId: string; task: Tas
           : history.isError ? <p className="text-text-muted">The history did not load. Close and open the request to try again.</p>
           : (
             <ol className="space-y-1.5">
-              {history.data.events.map((e, i) => (
+              {lines.map((l, i) => (
                 <li key={i} className="flex flex-wrap gap-x-2">
-                  <span className="font-medium">{e.action === 'task.created.topic' ? `Took a request: ${requestKind(t)}` : TASK_HISTORY[e.action] ?? 'Changed'}</span>
-                  <span className="text-text-muted">{whoDid(e.by)}, {clinicTime(e.at, tz)}</span>
+                  <span className={cn('font-medium', l.warn && 'text-danger')}>{l.what}</span>
+                  <span className="text-text-muted">{l.who}, {clinicTime(l.at, tz)}</span>
                 </li>
               ))}
             </ol>
@@ -616,6 +659,8 @@ function NewRequest({ clinicId, open, onOpenChange, topics, fields, patientWord 
   const [custom, setCustom] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const refill = draft.kind === 'refill';
+  // what still stops "Add request", said next to it (note 2026-11-16 RF4: a refill with its medicine stayed disabled)
+  const missing = requestMissing(draft);
   const save = useMutation({
     mutationFn: async () => {
       const topic = draft.kind.startsWith('topic:') ? draft.kind.slice(6) : null;
@@ -646,7 +691,8 @@ function NewRequest({ clinicId, open, onOpenChange, topics, fields, patientWord 
       footer={(
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button loading={save.isPending} disabled={draft.reason.trim().length < 3} onClick={() => save.mutate()}>Add request</Button>
+          {missing && <span className="mr-auto text-xs text-text-muted" id="new-request-missing">{missing}</span>}
+          <Button loading={save.isPending} disabled={!!missing} aria-describedby={missing ? 'new-request-missing' : undefined} onClick={() => save.mutate()}>Add request</Button>
         </>
       )}>
       <div className="space-y-6">

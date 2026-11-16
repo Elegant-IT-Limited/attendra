@@ -6,7 +6,7 @@ import { Section } from '@/components/settings/section';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { phone } from '@/lib/format';
+import { phone, TASK_OUTCOMES } from '@/lib/format';
 
 const NAMES: Record<SmsTemplateName, string> = {
   booking_confirmed: 'Booking confirmed', change_confirmed: 'Visit moved', cancel_confirmed: 'Visit cancelled', reminder: 'Reminder before a visit', vet_changed: 'Visit handed to another vet',
@@ -16,13 +16,15 @@ const NAMES: Record<SmsTemplateName, string> = {
 };
 
 const DURING_CALL = 'During a call, when the caller says yes to a text';
+/** A refill text goes when the team closes the refill with its outcome, named as the Outcome list names it. */
+const refillWhen = (outcome: string) => `When your team closes a refill as "${TASK_OUTCOMES[outcome]}", to a caller who said yes to texts`;
 
 /** When each text goes, so nobody has to guess. */
 const WHEN: Record<SmsTemplateName, string> = {
   booking_confirmed: 'Right after the assistant books a visit', change_confirmed: 'Right after a visit is moved', cancel_confirmed: 'Right after a visit is cancelled',
   reminder: 'The day before a visit, to people who said yes to reminders',
   vet_changed: 'When your team removes a vet and moves their visits to another vet, only if the team says yes to texting the owners',
-  request_ready: 'When your team marks a refill ready to pick up', refill_sent: 'When your team marks a refill sent to a pharmacy', refill_not_approved: 'When your team marks a refill not approved',
+  request_ready: refillWhen('refill_ready'), refill_sent: `${refillWhen('refill_sent')}, when a pharmacy is named (picked up at the clinic: no text)`, refill_not_approved: refillWhen('refill_declined'),
   directions: DURING_CALL, hours: DURING_CALL, emergency_hospital: 'In an animal emergency, after the emergency advice', provider: DURING_CALL, answer: DURING_CALL,
   link: 'During a call, when one of your links fits and the caller says yes',
 };

@@ -391,7 +391,8 @@ export const NewTask = z.object({
   pharmacy: z.string().trim().max(120).nullable().optional(),
   /** One of the clinic's own kinds of request (Settings, Fields and lists), when one fits. */
   topic: z.string().trim().max(80).nullable().optional(),
-  reason: z.string().trim().min(3, 'say what it is about').max(300),
+  /** What it is about, in a sentence. A refill may give its medicine instead (note 2026-11-16 RF4). */
+  reason: z.string().trim().max(300).default(''),
   callbackNumber: z.string().trim().regex(PHONE_TYPED, PHONE_NUMBERS_ONLY).regex(/^\+?[\d\s().-]{7,20}$/, 'a phone number, like (555) 555-0123').nullable().optional(),
   /** Who it is about, as staff typed it, when no record is linked: the request's title. */
   name: z.string().trim().max(80).nullable().optional(),
@@ -399,7 +400,7 @@ export const NewTask = z.object({
   patientId: z.uuid().nullable().optional(),
   urgent: z.boolean().optional(),
   dueOn: z.iso.date().nullable().optional(),
-});
+}).refine((t) => t.reason.length >= 3 || (t.type === 'refill' && !!t.medication?.trim()), { path: ['reason'], message: 'say what it is about' });
 export const TaskPlan = z.object({ urgent: z.boolean().optional(), dueOn: z.iso.date().nullable().optional() });
 export const TaskNoteInput = z.object({ body: z.string().trim().min(1, 'write something first').max(1000) });
 export const Task = z.object({

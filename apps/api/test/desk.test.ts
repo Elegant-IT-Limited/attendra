@@ -240,6 +240,16 @@ describe('a request written down by hand', () => {
     expect(refill.statusCode).toBe(201);
     const refills = (await api.request('POST', `${C}/tasks/search`, { cookie: as.staff, body: { q: 'Asked at the desk' } })).json().tasks as { id: string; type: string; details: Record<string, string> }[];
     expect(refills.find((t) => t.id === refill.json().id)).toMatchObject({ type: 'refill', details: { medication: 'Apoquel 16 mg', pharmacy: 'Pick up' } });
+    // a refill with only its medicine is enough (note 2026-11-16 RF4); anything else, or a refill with neither, needs a sentence
+    const medicineOnly = await api.request('POST', `${C}/tasks`, { cookie: as.staff, body: { type: 'refill', medication: 'Carprofen 75 mg' } });
+    expect(medicineOnly.statusCode).toBe(201);
+    const byMedicine = (await api.request('POST', `${C}/tasks/search`, { cookie: as.staff, body: { q: 'Carprofen' } })).json().tasks as { id: string; details: Record<string, string> }[];
+    expect(byMedicine.find((t) => t.id === medicineOnly.json().id)?.details).toMatchObject({ medication: 'Carprofen 75 mg', reason: 'Refill: Carprofen 75 mg' });
+    for (const body of [{ type: 'refill' }, { type: 'refill', medication: ' ' }, { type: 'callback', medication: 'Carprofen 75 mg' }]) {
+      const refused = await api.request('POST', `${C}/tasks`, { cookie: as.staff, body });
+      expect(refused.statusCode, JSON.stringify(body)).toBe(422);
+      expect(refused.json().issues).toContainEqual(expect.objectContaining({ path: 'reason' }));
+    }
     expect((await api.request('POST', `${C}/tasks`, { cookie: as.staff, body: { type: 'voicemail', reason: 'Left a message about boarding' } })).statusCode).toBe(201);
     expect((await api.request('POST', `${C}/tasks`, { cookie: as.staff, body: { type: 'review', reason: 'nope' } })).statusCode).toBe(422);
     // about a record picked from the files: the request belongs to that household; a record from nowhere is refused under the field
