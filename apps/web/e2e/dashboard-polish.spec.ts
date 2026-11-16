@@ -55,11 +55,12 @@ test.describe('dashboard polish, 2026-11-16', () => {
   test('U2 and U3: a vet clinic\'s owner asks to cancel, and Reschedule never offers the visit\'s own time', async () => {
     const settings = await call<{ timezone: string }>(page, 'GET', `/clinics/${C}/settings`);
     const today = new Date().toISOString().slice(0, 10);
-    const list = await call<{ appointments: { id: string; startsAt: string; status: string; providerId: string; visitTypeId: string }[] }>(page, 'GET', `/clinics/${C}/appointments?from=${today}&days=14`);
+    const list = await call<{ appointments: { id: string; patientId: string; startsAt: string; status: string; providerId: string; visitTypeId: string }[] }>(page, 'GET', `/clinics/${C}/appointments?from=${today}&days=14`);
     const a = list.appointments.filter((x) => x.status === 'booked' && Date.parse(x.startsAt) > Date.now() + 86_400_000).sort((x, y) => x.startsAt.localeCompare(y.startsAt))[0]!;
     const day = new Date(a.startsAt).toLocaleDateString('en-CA', { timeZone: settings.timezone });
-    // the server: the visit's own place is not a time to move it to
-    const slots = (await call<{ slots: { providerId: string; startsAt: string }[] }>(page, 'GET', `/clinics/${C}/appointments/slots?visitTypeId=${a.visitTypeId}&from=${day}&days=1&excluding=${a.id}`)).slots;
+    // the server, asked as the Reschedule picker asks (for this pet: only the vets who see its kind, K1): the visit's own
+    // place is not a time to move it to
+    const slots = (await call<{ slots: { providerId: string; startsAt: string }[] }>(page, 'GET', `/clinics/${C}/appointments/slots?visitTypeId=${a.visitTypeId}&from=${day}&days=1&excluding=${a.id}&patientId=${a.patientId}`)).slots;
     expect(slots.length).toBeGreaterThan(0);
     expect(slots.filter((s) => s.providerId === a.providerId && Date.parse(s.startsAt) === Date.parse(a.startsAt))).toEqual([]);
 
