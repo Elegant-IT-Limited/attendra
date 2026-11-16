@@ -82,6 +82,7 @@ async function seed(clinicId: string, orgId: string, owner: string, phone: strin
   await q(`insert into call_search_keys (clinic_id, key, call_id) values ($1, 'k', $2)`, [clinicId, call!.id]);
   await q(`insert into call_actions (clinic_id, call_id, tool, args_redacted, result, task_revision) values ($1, $2, 'find_slots', '{}', '{}', 0)`, [clinicId, call!.id]);
   await q(`insert into handoffs (clinic_id, call_id, engine, channel, kind, reason) values ($1, $2, 'gpt-live', 'phone', 'callback', 'caller_asked_person')`, [clinicId, call!.id]);
+  await q(`insert into call_events (clinic_id, call_id, path, seq, at_ms, type) values ($1, $2, 'gpt-realtime/tools', 0, 0, 'response.done')`, [clinicId, call!.id]);
   await q(`insert into call_costs (call_id, clinic_id, engine, rates_version) values ($1, $2, 'gpt-live', 'test')`, [call!.id, clinicId]);
   await q(`insert into vapi_secrets (clinic_id, secret_enc, secret_hash) values ($1, 'x', 'h')`, [clinicId]);
   await q(`insert into demo_baselines (clinic_id, taken_at, taken_by, data_enc, counts) values ($1, now(), 'backoffice:a@example.com', 'x', '{}')`, [clinicId]);

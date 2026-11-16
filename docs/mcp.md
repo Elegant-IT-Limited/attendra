@@ -12,6 +12,7 @@ An owner or practice manager makes a key under **Settings > API keys**. A key be
 | `requests:read` | The open refill and callback requests, with the patient and the details |
 | `requests:write` | Closing a request, with its outcome |
 | `quality:read` | The Quality page's numbers for the last 7 days. Counts only |
+| `qa:read` | Not an MCP tool: the daily call export for quality review, read over HTTPS ([qa-export.md](qa-export.md)) |
 
 The key is shown once, when it is made. Attendra keeps only its SHA-256 hash, so a copy of the database holds nothing that works. Revoke a key and it stops at once. Every use is written to the audit log as `mcp.<tool>` with the key's id, including uses a scope refused, and the key shows when it was last used.
 

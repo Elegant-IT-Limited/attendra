@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, type Backend, CallAgent, CallCache, cachedBackend, CallState, type Planner, warmPatient } from '@attendra/agent';
-import { ClinicConfig, clinicDay, DEMO_LIMITS, DEMO_TIME_UP, DEMO_WRAP_UP, type DemoLimitCode, demoLimitHit, isDemoClinic, openAiEngineOf, resolveTransfer, VOICE_ENGINES, type VoiceEngineName, type VoiceFlow, vipRoute } from '@attendra/core';
+import { type CallEventSink, callPath, ClinicConfig, clinicDay, DEMO_LIMITS, DEMO_TIME_UP, DEMO_WRAP_UP, type DemoLimitCode, demoLimitHit, isDemoClinic, openAiEngineOf, resolveTransfer, VOICE_ENGINES, type VoiceEngineName, type VoiceFlow, vipRoute } from '@attendra/core';
 import { type Alerter, isOpenAiQuotaError, type Logger } from '@attendra/observability';
 import { callerNumber, dialledCandidates, maskedHeaders, type PhoneCallRef, type PhoneLine, SPEND_ALERT_PATH, spendAlertText, trimEnd, twilioCallSid, twilioSignatureValid, twiml } from '@attendra/telephony';
 import { callerContext, CallMarks, CallRunner, demoBusyOpening, EngineRouter, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine, pausedOpening, vipOpening } from '@attendra/voice-engine';
@@ -44,6 +44,11 @@ export interface VoiceDeps {
   historyFor?(clinicId: string, fromNumber: string, callId: string): Promise<string | null>;
   recorderFor(clinicId: string, callId: string): CallRecorder;
   actionsFor(clinicId: string, callId: string): ActionRecorder;
+  /**
+   * The call's event log (foundation A): provider events and the gate's and runner's decisions, types and ids only,
+   * written in batches. `path`: engine/flow. Without it nothing is logged.
+   */
+  callEventsFor?(clinicId: string, callId: string, path: string): CallEventSink;
   engine: VoiceEngine;
   backend: Backend;
   planner: Planner;
@@ -476,6 +481,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
     let hungUp = false;
     let agent: CallAgent | null = null;
     let cacheStats: CallCache | null = null;
+    let events: CallEventSink | null = null;
     const hangup = () => { hungUp = true; return engine.hangup(sessionId).catch(() => {}); };
     // what an alert about this call names: the clinic, and the call it links to
     const where = { clinicId: clinic.id, clinicName: clinic.name, callId };
@@ -511,11 +517,16 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         agent.state.answersAcrossPieces = true;
         agent.onPatientFound = (patientId) => warmPatient(backend, clinic.id, patientId, now());
       }
+      // the call's event log, from before the sideband attaches, so the greeting's request is in it
+      events = deps.callEventsFor?.(clinic.id, callId, callPath(engine.sessionInfo?.(sessionId)?.engine ?? engineName(engine) ?? engine.name, flowOf(clinic))) ?? null;
       const sideband = engine.attach(sessionId);
+      const log = events;
+      if (log) sideband.onTrace?.((e) => log.add(e));
       marks.mark('attached');
       sideband.onEvent((e) => { if (e.type === 'session.closed') closed = true; });
       const runner = new CallRunner(sessionId, engine, sideband, agent, deps.recorderFor(clinic.id, callId), deps.log, marks,
         deps.alerts ? { alert: (kind, text) => deps.alerts!.alert(kind, text, where), where } : undefined);
+      if (log) runner.trace = (e) => log.add(e);
       // gpt-realtime on the tools path waits for our go once a pet is found, so a lookup runs before its reply (round 2)
       runner.manualTurns = tools && (deps.lookupAhead ?? false) && engine.sessionInfo?.(sessionId)?.engine === 'gpt-realtime';
       // a phone call whose line closes with no end known: the phone side says whether it was hung up (note 48)
@@ -605,6 +616,11 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       // phone calls too: the engine and the router keep a little per call until released
       engine.release?.(sessionId);
       if (cacheStats) deps.log.info({ session_id: sessionId, call_id: callId, hits: cacheStats.hits, misses: cacheStats.misses }, 'call cache');
+      // the rest of the event log, written at the end; a log that fails is said here, never to the caller
+      if (events) {
+        const { written, dropped } = await events.close();
+        if (dropped) deps.log.warn({ session_id: sessionId, call_id: callId, written, dropped }, 'call events dropped');
+      }
     }
   }
 
@@ -708,7 +724,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
   }
 
   if (deps.vapi) {
-    registerVapi(app, { ...deps.vapi, clinicById: deps.clinicById, openCall: deps.openCall, recorderFor: deps.recorderFor, actionsFor: deps.actionsFor, backend: deps.backend, planner: deps.planner, log: deps.log, alerts: deps.alerts, now, demoLimitFor });
+    registerVapi(app, { ...deps.vapi, clinicById: deps.clinicById, openCall: deps.openCall, recorderFor: deps.recorderFor, callEventsFor: deps.callEventsFor, actionsFor: deps.actionsFor, backend: deps.backend, planner: deps.planner, log: deps.log, alerts: deps.alerts, now, demoLimitFor });
   }
   // tests read a live tools-path call's token here; nothing else does, and it is never logged
   app.decorate('toolTokenFor', (callId: string) => toolLines.get(callId)?.token ?? null);

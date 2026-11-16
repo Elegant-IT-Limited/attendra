@@ -1,12 +1,12 @@
 import { ClinicConfig, DEMO_CLINIC, RIVERBEND_CLINIC, zonedInstant } from '@attendra/core';
-import { CallRepository, createPhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, saveVapiSecret, seedDemo, seedRiverbend, vapiCallEnded, vapiCallLive, vapiConcurrency, vapiSecretHashOf, vapiSecretMatches } from '@attendra/db';
+import { CallEventLog, CallRepository, createPhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, saveVapiSecret, seedDemo, seedRiverbend, vapiCallEnded, vapiCallLive, vapiConcurrency, vapiSecretHashOf, vapiSecretMatches } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { BuiltinScheduler } from '@attendra/scheduling';
 import Fastify from 'fastify';
 import { Writable } from 'node:stream';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { quotedLines, registerVapi, vapiControlUrl, vapiDestination } from '../src/vapi';
+import { quotedLines, registerVapi, vapiControlUrl, vapiDestination, vapiTurnEvents } from '../src/vapi';
 
 // Vapi as a location's backup engine (batch 6; path C of the bake-off before it): a Vapi assistant whose tools are ours.
 // Same agent, same rules, its own engine on the call row. Made-up demo data only; nothing here reaches Vapi.
@@ -55,6 +55,7 @@ describe('Vapi calling our tools', () => {
       clinicById: async (id) => (id === clinic.id ? clinic : id === OAK ? oak : null),
       openCall: (clinicId, sessionId, from, channel, startedBy, last4, how) => calls.open(clinicId, sessionId, from, channel, startedBy, last4, how),
       recorderFor: (clinicId, callId) => ({ appendSegment: (s) => calls.appendSegment(clinicId, callId, s), close: (c) => calls.close(clinicId, callId, c) }),
+      callEventsFor: (clinicId, callId, path) => new CallEventLog(t.db, clinicId, callId, path),
       actionsFor: (clinicId, callId) => ({ record: (a) => calls.recordAction(clinicId, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, taskRevision: a.revision, patientId: a.patientId }) }),
       backend: {
         patients: new PostgresPatientDirectory(t.db, cipher), scheduler: new BuiltinScheduler(t.db), tasks: new PostgresTaskQueue(t.db, cipher),
@@ -145,6 +146,26 @@ describe('Vapi calling our tools', () => {
     const [row] = (await t.client.query(`select c.first_audio_ms, (select count(*)::int from call_segments s where s.call_id = c.id) as lines,
       (select result->>'wait_ms' from call_actions a where a.call_id = c.id and a.tool = 'answer_timing') as wait from calls c where c.openai_session_id = 'vapi_vapi-call-3'`)).rows;
     expect(row).toEqual({ first_audio_ms: 1120, lines: 3, wait: '1900' });
+  });
+
+  it('logs each message\'s kind and, at the end, the turns on Vapi\'s own clock: never a word (foundation A)', async () => {
+    const c = { id: 'vapi-call-events', type: 'webCall' };
+    const greeting = { role: 'bot', message: clinic.greeting, secondsFromStart: 1, duration: 2000 };
+    const ask = { role: 'user', message: 'Hi, this is Maria Delgado, 303 555 0147. When do you close?', secondsFromStart: 4, duration: 2000 };
+    const toolCall = { role: 'tool_calls', secondsFromStart: 6.5 };
+    const answer = { role: 'bot', message: 'We close at six today.', secondsFromStart: 7.2, duration: 1500 };
+    await post({ type: 'status-update', status: 'in-progress', call: c });
+    await post({ type: 'tool-calls', call: c, artifact: { messages: [greeting, ask, toolCall] }, toolCallList: [{ id: 'tc_events', function: { name: 'clinic_now', arguments: {} } }] });
+    await post({ type: 'end-of-call-report', call: c, endedReason: 'customer-ended-call', durationSeconds: 10, artifact: { messages: [greeting, ask, toolCall, answer] } });
+    await t.client.query(`select set_config('app.clinic_id', $1, false)`, [clinic.id]);
+    const rows = (await t.client.query(`select e.type, e.at_ms, e.item_id, e.path from call_events e join calls c on c.id = e.call_id where c.openai_session_id = 'vapi_vapi-call-events' order by e.seq`)).rows as { type: string; at_ms: number; item_id: string | null; path: string }[];
+    expect(rows.map((r) => r.type)).toEqual(['vapi.status-update.in-progress', 'vapi.tool-calls', 'vapi.tool_call', 'vapi.end-of-call-report',
+      'vapi.assistant.started', 'vapi.assistant.stopped', 'vapi.caller.started', 'vapi.caller.stopped', 'vapi.tool_calls', 'vapi.assistant.started', 'vapi.assistant.stopped']);
+    expect(rows.find((r) => r.type === 'vapi.tool_call')?.item_id).toBe('tc_events');
+    expect(rows.filter((r) => r.type.startsWith('vapi.caller') || r.type === 'vapi.assistant.started').map((r) => r.at_ms)).toEqual([1000, 4000, 6000, 7200]);
+    expect(rows.every((r) => r.path === 'vapi/tools')).toBe(true);
+    expect(JSON.stringify(rows)).not.toMatch(/Maria|0147|close/);
+    expect(vapiTurnEvents([])).toEqual([]);
   });
 
   it('refuses a clinic it does not know, as a result Vapi can say', async () => {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { voiceToolDefinitions } from '@attendra/agent';
-import { callFacts, type ClinicConfig, DEFAULT_VOICE, industryPack, PACKS, REALTIME_VOICES, type VoiceFlow } from '@attendra/core';
+import { callFacts, type CallEventInput, type ClinicConfig, DEFAULT_VOICE, industryPack, PACKS, providerEvent, REALTIME_VOICES, type VoiceFlow } from '@attendra/core';
 
 /**
  * What a caller's line becomes when the transcriber wrote it in a script none of the clinic's languages is written in
@@ -206,6 +206,94 @@ const TOOLS_TURNS = { type: 'semantic_vad' as const, eagerness: 'high' as const,
 /** The longest a reply waits for the caller's words before it, when transcription is slow. */
 export const TRANSCRIPT_WAIT_MS = 3000;
 
+/**
+ * What a reply request is, for the turn gate: the greeting (never merged), a reply that may call tools, a reply that
+ * says a tool's words with no tools (`say`), or a hold line ("One moment."). When two wait at once they merge: one reply
+ * goes, and one that may call tools wins over one that may not (a hold line or a `say` never replaces it).
+ */
+export type ReplyKind = 'greeting' | 'reply' | 'say' | 'hold';
+const RANK: Record<Exclude<ReplyKind, 'greeting'>, number> = { hold: 0, say: 1, reply: 2 };
+
+/**
+ * The Realtime error that means our response.create was refused because a response is already running (one the
+ * server's turn detection started, or ours raced it): that response's end lets ours go, so ours waits for it.
+ */
+export const ACTIVE_RESPONSE_ERROR = 'conversation_already_has_active_response';
+/** Errors that answer a command other than a response.create (our cancel, sent when nothing was running): never a failed create. */
+const NOT_A_CREATE = new Set(['response_cancel_not_active']);
+
+/**
+ * The turn gate: one response at a time. A request while one is in flight waits in a small ordered queue (merged as
+ * ReplyKind says) and goes when that response is done. An error clears the gate only when it means no response is
+ * running: our create was refused before any response.created came. "Already has an active response" puts our request
+ * back at the front to go when the running one is done. An error while a response really is running changes nothing.
+ * Every decision is traced (gate.sent.*, gate.queued.*, gate.merged.*, gate.requeued, gate.cleared_on_error,
+ * gate.kept_on_error) so a stall can be proven from the call's event log.
+ */
+export class TurnGate {
+  /** A response is in flight (sent by us and not done) or running (the server's own). */
+  active = false;
+  private inflight: { kind: ReplyKind; event: Record<string, unknown> } | null = null;
+  /** A response.created came since our request went out. */
+  private created = false;
+  readonly queue: { kind: ReplyKind; event: Record<string, unknown> }[] = [];
+
+  constructor(private readonly sendRaw: (e: Record<string, unknown>) => void, private readonly trace: (e: CallEventInput) => void = () => {}) {}
+
+  request(event: Record<string, unknown>, kind: ReplyKind) {
+    if (!this.active) return this.go({ kind, event });
+    if (kind === 'greeting') { this.queue.push({ kind, event }); this.trace({ type: 'gate.queued.greeting' }); return; }
+    const i = this.queue.findIndex((w) => w.kind !== 'greeting');
+    if (i < 0) { this.queue.push({ kind, event }); this.trace({ type: `gate.queued.${kind}` }); return; }
+    const queued = this.queue[i]!;
+    // the same reply asked for twice is one; one that may call tools takes the place of one that may not
+    if (RANK[kind] > RANK[queued.kind as Exclude<ReplyKind, 'greeting'>]) this.queue[i] = { kind, event };
+    this.trace({ type: `gate.merged.${kind}` });
+  }
+
+  /** A response started: ours, or one the server's turn detection started itself. */
+  started() { this.active = true; if (this.inflight) this.created = true; }
+
+  /** The running response ended (done, cancelled or failed): the next request goes. */
+  done() {
+    this.active = false;
+    this.inflight = null;
+    this.created = false;
+    this.next();
+  }
+
+  /** A provider error, by its code. */
+  error(code: string | undefined) {
+    if (code === ACTIVE_RESPONSE_ERROR) {
+      // a response is running: ours goes again, first, when it is done (that response's response.done frees the gate)
+      if (this.inflight) { this.queue.unshift(this.inflight); this.inflight = null; this.active = true; this.trace({ type: 'gate.requeued' }); }
+      return;
+    }
+    if (this.inflight && !this.created && !(code && NOT_A_CREATE.has(code))) {
+      // our create was refused before any response started: nothing is running, so nothing would speak until a nudge
+      this.trace({ type: 'gate.cleared_on_error' });
+      this.active = false;
+      this.inflight = null;
+      this.next();
+      return;
+    }
+    if (this.active) this.trace({ type: 'gate.kept_on_error' });
+  }
+
+  private next() {
+    const w = this.queue.shift();
+    if (w) this.go(w);
+  }
+
+  private go(w: { kind: ReplyKind; event: Record<string, unknown> }) {
+    this.active = true;
+    this.inflight = w;
+    this.created = false;
+    this.trace({ type: `gate.sent.${w.kind}` });
+    this.sendRaw(w.event);
+  }
+}
+
 /** The part of the SDK's call socket the engine uses; tests pass a fake. */
 export interface RealtimeSocket {
   send(event: Record<string, unknown>): void;
@@ -361,15 +449,22 @@ export class RealtimeEngine implements VoiceEngine {
     // queued as context for that first answer. Realtime models wait for the caller otherwise.
     let open = ws.socket.readyState === 1;
     let queue: Record<string, unknown>[] = [];
-    // one response at a time: a new one waits for the one in progress to finish (or be cancelled)
-    let active = false;
-    let wanted: Record<string, unknown> | null = null;
-    const raw = (e: Record<string, unknown>) => (open ? ws.send(e) : queue.push(e));
-    const respond = (e: Record<string, unknown> = { type: 'response.create' }) => {
-      if (!open) return; // the greeting on open answers for it
-      if (active) wanted = e; else { active = true; ws.send(e); }
+    // the call's event log: every provider event and the gate's decisions, types and ids only (never content)
+    // (what comes before the log is attached, the greeting's request, waits for it: a few events at most)
+    const traces: ((e: CallEventInput) => void)[] = [];
+    const early: CallEventInput[] = [];
+    const trace = (e: CallEventInput) => {
+      if (!traces.length) { if (early.length < 50) early.push({ ...e, atMs: ms() }); return; }
+      for (const h of traces) { try { h(e); } catch { /* the log never fails the call */ } }
     };
-    const interrupt = () => { if (open && active) ws.send({ type: 'response.cancel' }); };
+    // one response at a time: a new one waits for the one in progress to finish (or be cancelled), see TurnGate
+    const gate = new TurnGate((e) => ws.send(e), trace);
+    const raw = (e: Record<string, unknown>) => (open ? ws.send(e) : queue.push(e));
+    const respond = (e: Record<string, unknown> = { type: 'response.create' }, kind: ReplyKind = 'reply') => {
+      if (!open) return; // the greeting on open answers for it
+      gate.request(e, kind);
+    };
+    const interrupt = () => { if (open && gate.active) ws.send({ type: 'response.cancel' }); };
     // a note for the model at the end of the conversation (never removed: removing one moves everything after it, and
     // the prompt cache misses from there)
     const note = (text: string) => ws.send({ type: 'conversation.item.create', item: { type: 'message', role: 'system', content: [{ type: 'input_text', text }] } });
@@ -378,13 +473,13 @@ export class RealtimeEngine implements VoiceEngine {
     const facts = this.facts.get(callId);
     // words a tool gave that the next reply says as written: a note, then a reply with no tools. Not the reply's own
     // instructions, which replace the session's for that reply, so the prompt cache missed the whole call each time
-    const sayNext = (instructions: string) => { note(instructions); respond({ type: 'response.create', response: { tool_choice: 'none' } }); };
+    const sayNext = (instructions: string) => { note(instructions); respond({ type: 'response.create', response: { tool_choice: 'none' } }, 'say'); };
     // The greeting is the first reply, with its own short instructions: only what to say, and no tools. With the whole
     // session prompt (the clinic, the tools and their rules) the model first read all of it, and the caller waited
     // (path A, 2026-11-07: first audio 5.3 s on a browser call). Anything queued before the socket opened (a note for the
     // first answer) is context the greeting must see: then the reply is the usual one.
     const opening = this.openings.get(callId);
-    const greet = (queued: boolean) => respond(opening && !queued ? { type: 'response.create', response: { instructions: `${opening} ${GREETING_VOICE}`, tool_choice: 'none' } } : { type: 'response.create' });
+    const greet = (queued: boolean) => respond(opening && !queued ? { type: 'response.create', response: { instructions: `${opening} ${GREETING_VOICE}`, tool_choice: 'none' } } : { type: 'response.create' }, 'greeting');
     ws.socket.on('open', () => {
       open = true;
       if (facts) note(facts);
@@ -435,6 +530,7 @@ export class RealtimeEngine implements VoiceEngine {
     // wait for an answer look shorter than it was)
     const spokenAt = new Map<string, { start: number; end: number | null }>();
     ws.on('event', (e) => {
+      trace(providerEvent(e));
       switch (e.type) {
         case 'input_audio_buffer.speech_started':
           if (typeof e.item_id === 'string') spokenAt.set(e.item_id, { start: ms(), end: null });
@@ -477,7 +573,7 @@ export class RealtimeEngine implements VoiceEngine {
         case 'response.output_audio_transcript.done':
           return spoken(e, true);
         case 'response.created':
-          active = true;
+          gate.started();
           return;
         // the caller's line starts playing the assistant's audio (WebRTC and phone calls): the runner's first audio
         case 'output_audio_buffer.started':
@@ -488,10 +584,7 @@ export class RealtimeEngine implements VoiceEngine {
           // what the reply cost: audio and text tokens, each with its cached part, priced per modality (call_costs)
           // each with its own event id: the runner drops an event id it has seen (the reply's own words carry this one)
           for (const u of replyUsage(this.models.get(callId) ?? this.model, (e as { response?: { usage?: RealtimeUsage } }).response?.usage)) emit({ type: 'session.model_usage', event_id: `${id(e)}_usage_${u.model}`, ...u });
-          active = false;
-          const next = wanted;
-          wanted = null;
-          if (next) respond(next);
+          gate.done();
           return;
         }
         // the model hands the caller's request to the backend: the runner answers it like a GPT-Live delegation
@@ -507,9 +600,13 @@ export class RealtimeEngine implements VoiceEngine {
             if (READS.has(e.name)) emit(call); else reply(call);
           }
           return;
-        case 'error':
-          emit({ type: 'error', event_id: id(e), error: (e.error ?? undefined) as { code?: string; message?: string } | undefined });
+        case 'error': {
+          const error = (e.error ?? undefined) as { code?: string; message?: string } | undefined;
+          emit({ type: 'error', event_id: id(e), error });
+          // an error that means no response is running lets the next request go; one while a response runs changes nothing
+          gate.error(typeof error?.code === 'string' ? error.code : undefined);
           return;
+        }
         default:
       }
     });
@@ -562,7 +659,7 @@ export class RealtimeEngine implements VoiceEngine {
       } else if (c.type === 'session.thinking.append') {
         // GPT-Live hears progress notes as context; here only "still working" is said, the rest is silent
         // the first note of a wait is "One moment."; a later one (told not to say it again) a thank-you
-        if (/^Still working/.test(c.content)) respond({ type: 'response.create', response: { instructions: /Do not say again|still checking or still working/.test(c.content) ? HOLD_AGAIN_LINE : HOLD_LINE, tool_choice: 'none' } });
+        if (/^Still working/.test(c.content)) respond({ type: 'response.create', response: { instructions: /Do not say again|still checking or still working/.test(c.content) ? HOLD_AGAIN_LINE : HOLD_LINE, tool_choice: 'none' } }, 'hold');
       } else {
         // new instructions (an emergency script, a staff note, a nudge): a system message in
         // the conversation, so it stays in context without becoming a standing rule, acted on
@@ -578,6 +675,10 @@ export class RealtimeEngine implements VoiceEngine {
       onEvent: (handler) => { handlers.push(handler); },
       onError: (handler) => { ws.on('error', handler); },
       onConnection: (handler) => { if (open) handler({ state: 'open' }); else ws.socket.on('open', () => handler({ state: 'open' })); },
+      onTrace: (handler) => {
+        traces.push(handler);
+        for (const e of early.splice(0)) { try { handler(e); } catch { /* never into the call */ } }
+      },
       // a Realtime call has no closing event: a clean close of the call's socket is the end
       // of the call; any other close is a dropped connection, and the runner records it so
       onClose: (handler) => {

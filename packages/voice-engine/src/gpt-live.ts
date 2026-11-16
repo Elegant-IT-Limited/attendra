@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { voiceToolDefinitions } from '@attendra/agent';
-import type { ClinicConfig, VoiceFlow } from '@attendra/core';
+import { type ClinicConfig, providerEvent, type VoiceFlow } from '@attendra/core';
 import OpenAI from 'openai';
 import type { DataChannelConfig } from 'openai/resources/live/live';
 import { SidebandWS } from 'openai/resources/live/sideband/ws';
@@ -200,6 +200,8 @@ export class GptLiveEngine implements VoiceEngine {
         handler(ev);
       }),
       onError: (handler) => ws.on('error', (err) => handler(err)),
+      // the call's event log: every sideband event's type and ids, never its content (core providerEvent)
+      onTrace: (handler) => ws.on('event', (e) => { try { handler(providerEvent(e as unknown as Record<string, unknown>)); } catch { /* never into the call */ } }),
       // the SDK's close: for good, after any reconnecting has given up (a drop it recovers from is not the end of the call)
       onClose: (handler) => ws.on('close', (code: number) => handler(code)),
       onConnection: (handler) => {
