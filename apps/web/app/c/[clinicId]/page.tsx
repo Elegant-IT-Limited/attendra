@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import { useProblem } from '@/components/ui/toast';
-import type { CallList, Overview, Schedule, WaitingTasks, WebhookEndpoints } from '@attendra/api/contracts';
+import type { CallList, Overview, Schedule, TextProblems, WaitingTasks, WebhookEndpoints } from '@attendra/api/contracts';
 import { bookableWindows, type ClinicConfig, holdsTime, localDateOf, localParts, shownProviders, toMinutes, providerName } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ArrowRight, Flag, PhoneCall, PhoneOff, Pill, Siren, UserCheck, Voicemail, Webhook } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Flag, MessageSquareWarning, PhoneCall, PhoneOff, Pill, Siren, UserCheck, Voicemail, Webhook } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
@@ -17,7 +17,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { clinicTime, dayTitle, requestKind, requestNumber, timeOf, TOOLS, usd, visitTypeName, zoneLabel } from '@/lib/format';
+import { clinicTime, dayTitle, requestKind, requestNumber, requestTextLine, taskType, timeOf, TOOLS, usd, visitTypeName, zoneLabel } from '@/lib/format';
+import { problemHref } from '@/lib/text-problems';
 import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 import { SAFETY_POLL_MS, SAFETY_POLL_WORDS } from '@/lib/changes';
@@ -112,6 +113,13 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
   const router = useRouter();
   const queries = useQueryClient();
   const problem = useProblem();
+  // texts about requests that were not sent, lately: each is something to do (call them instead), demo findings 3
+  const { can } = useClinic(clinicId);
+  const textProblems = useQuery({
+    queryKey: ['texts', clinicId, 'problems'],
+    queryFn: () => api<TextProblems>(`/clinics/${clinicId}/tasks/text-problems`),
+    enabled: can('tasks:read'), refetchInterval: SAFETY_POLL_MS,
+  });
   const setTaken = (message: string | null) => { if (message) problem({ title: 'Not claimed', message }); };
   const claim = useMutation({
     mutationFn: (id: string) => api<void>(`/clinics/${clinicId}/tasks/${id}/claim`, { method: 'POST' }),
@@ -144,6 +152,12 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
       key: c.id, icon: <Siren className="size-4 text-danger" />, tone: 'danger' as const, title: 'Emergency language on a call', detail: <>{timeOf(c.startedAt, tz)}, <RelativeTime iso={c.startedAt} exact={clinicTime(c.startedAt, tz, 'long')} now={now} /></>,
       action: canOpenCalls ? <Link href={`/c/${clinicId}/calls/${c.id}`} className={LINK}>Review the call</Link> : null,
     })),
+    ...(textProblems.data?.problems ?? []).map((p) => ({
+      key: `text-${p.textId}`, icon: <MessageSquareWarning className="size-4 text-danger" />, tone: 'danger' as const,
+      title: `Text not sent · ${requestNumber(p.number)} · ${taskType(p.type, terms.patient)}`,
+      detail: <>{requestTextLine(p)}. <RelativeTime iso={p.at} exact={clinicTime(p.at, tz, 'long')} now={now} />. Call them instead.</>,
+      action: <Link href={problemHref(clinicId, p)} className={LINK}>Open the request</Link>,
+    })),
     ...requests.filter((t) => !t.urgent).map(request),
     ...flagged.filter((c) => !followedUp.has(c.id)).map((c) => ({
       key: c.id, icon: <Flag className="size-4 text-warning" />, title: 'A call flagged for review',
@@ -172,7 +186,7 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
       {calls.isError && <Alert tone="danger" className="m-5">This list did not load. It tries again every {SAFETY_POLL_WORDS}.</Alert>}
       {loading ? <div className="space-y-3 p-5"><Skeleton className="h-10" /><Skeleton className="h-10" /></div>
         : items.length === 0 ? (
-          <Empty title="Nothing needs you right now" action={<Link href={`/c/${clinicId}/calls`} className="text-sm text-primary hover:underline">See the latest calls</Link>}>Emergencies from the last day, requests nobody has claimed, calls flagged for review, and calls that ended without an outcome appear here.</Empty>
+          <Empty title="Nothing needs you right now" action={<Link href={`/c/${clinicId}/calls`} className="text-sm text-primary hover:underline">See the latest calls</Link>}>Emergencies from the last day, requests nobody has claimed, texts about requests that were not sent, calls flagged for review, and calls that ended without an outcome appear here.</Empty>
         ) : (
           <ul className="divide-y divide-border" aria-label="Needs attention">
             {items.map((i) => (

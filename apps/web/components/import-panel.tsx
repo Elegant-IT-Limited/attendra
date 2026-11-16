@@ -10,6 +10,7 @@ import { Panel } from '@/components/ui/dialog';
 import { Alert } from '@/components/ui/feedback';
 import { useProblem } from '@/components/ui/toast';
 import { api, ApiFailure } from '@/lib/api';
+import { checkedLine, importedLine } from '@/lib/import-summary';
 
 const STATUS: Record<ImportResult['rows'][number]['status'], { label: string; tone: 'ok' | 'info' | 'neutral' | 'danger' }> = {
   add: { label: 'New', tone: 'ok' },
@@ -94,8 +95,8 @@ export function ImportPanel({ open, onOpenChange, title, what, endpoint, templat
           <>
             <Alert tone={done ? 'ok' : result.counts.error ? 'warn' : 'info'}>
               {done
-                ? `Imported: ${done.counts.add} new, ${done.counts.update} updated, ${done.counts.skip} already on file, ${done.counts.error} not imported.`
-                : `Checked ${result.rows.length} rows: ${result.counts.add} new, ${result.counts.update} to update, ${result.counts.skip} already on file, ${result.counts.error} with a problem. Rows with a problem are left out; fix them in the file and upload it again.`}
+                ? importedLine(done.counts)
+                : checkedLine(result.rows.length, result.counts)}
               {result.counts.notListed > 0 && ` ${result.counts.notListed} ${result.counts.notListed === 1 ? 'row brings a value' : 'rows bring values'} your list has no room for (60 at most): ${done ? 'imported' : 'they import'} without adding ${result.counts.notListed === 1 ? 'it' : 'them'} to the list.`}
             </Alert>
             <div className="max-h-80 overflow-y-auto rounded-md border border-border">

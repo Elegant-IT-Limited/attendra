@@ -4,7 +4,7 @@ import { approvesRefills, type Database, type FrontDeskRepository, type PhiCiphe
 import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { CustomFieldValues, NewTask, TaskAssign, TaskAssignees, TaskCount, TaskDone, TaskList, TaskNoteInput, TaskHistory, TaskPlan, TaskQuery, TaskSearch, WaitingTasks } from '../contracts';
+import { CustomFieldValues, NewTask, TaskAssign, TaskAssignees, TaskCount, TaskDone, TaskList, TaskNoteInput, TaskHistory, TaskPlan, TaskQuery, TaskSearch, TextProblems, WaitingTasks } from '../contracts';
 import { can } from '../access';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
@@ -17,6 +17,8 @@ import { avatarUrl } from '../me/avatar';
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 /** Sent to the pharmacy, ready to pick up, or not approved: each one says a vet decided. */
 const REFILL_DECISIONS = new Set<string>(['refill_sent', 'refill_ready', 'refill_declined']);
+/** How far back the dashboard looks for texts about requests that were not sent. */
+const TEXT_PROBLEM_DAYS = 3;
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
 
 @ApiTags('tasks')
@@ -107,8 +109,23 @@ export class TasksController {
         doneByName: nameOf(t.doneByUserId),
         createdBy: by ? { name: nameOf(by), role: people.get(by)?.role ?? null, avatarUrl: pictureOf(by) } : null,
         notes: notes.map((n) => ({ id: n.id, author: nameOf(n.authorUserId), authorAvatarUrl: pictureOf(n.authorUserId), at: n.at.toISOString(), body: n.body })),
+        textProblem: t.textProblem ? { ...t.textProblem, at: t.textProblem.at.toISOString() } : null,
       })),
     };
+  }
+
+  /**
+   * Texts about requests not sent in the last three days, the newest of each kind per request (note 2026-11-16, demo
+   * findings 3): what the dashboard's notice and Today's list show, so a text that fails after the request was closed
+   * is still seen. Numbers, types and codes only; not audited.
+   */
+  @Get('text-problems')
+  @Requires('tasks:read')
+  @ApiOperation({ summary: 'Texts about requests not sent in the last three days: request number and type, the text\'s state and why. No patient data, not audited.' })
+  @ApiOkResponse({ schema: schemaOf(TextProblems) })
+  async textProblems(@Param('clinicId') clinicId: string): Promise<TextProblems> {
+    const rows = await this.desk.textProblems(clinicId, new Date(Date.now() - TEXT_PROBLEM_DAYS * 86_400_000));
+    return { problems: rows.map((r) => ({ ...r, at: r.at.toISOString() })) };
   }
 
   @Get('count')

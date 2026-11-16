@@ -97,6 +97,23 @@ const fold = (s: string) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').
  * A request matches when every word typed is found in its number ("R-1042" or "1042"), its patient's or owner's name,
  * its phone numbers, its details, its notes or its type; digits match inside phone numbers.
  */
+/** A text's states that mean it did not reach the caller. */
+export const TEXT_FAILED = new Set(['not_sent', 'failed', 'undelivered']);
+export type TextFailure = { status: string; failureReason: string | null; errorCode: string | null; at: Date };
+/** Each request's latest text, when it is one that was not sent: { request id: why }. */
+async function lastTextFailures(tx: Tx, clinicId: string, taskIds: string[]): Promise<Map<string, TextFailure>> {
+  const rows = await tx.select({ taskId: smsMessages.taskId, status: smsMessages.status, failureReason: smsMessages.failureReason, errorCode: smsMessages.errorCode, at: smsMessages.createdAt })
+    .from(smsMessages).where(and(eq(smsMessages.clinicId, clinicId), inArray(smsMessages.taskId, taskIds))).orderBy(desc(smsMessages.createdAt), desc(smsMessages.id));
+  const out = new Map<string, TextFailure>();
+  const seen = new Set<string>();
+  for (const r of rows) {
+    if (seen.has(r.taskId!)) continue;
+    seen.add(r.taskId!);
+    if (TEXT_FAILED.has(r.status)) out.set(r.taskId!, { status: r.status, failureReason: r.failureReason, errorCode: r.errorCode, at: r.at });
+  }
+  return out;
+}
+
 export function taskMatches(q: string, t: { number?: number; type: string; patientName: string; details: string[]; owner?: string | null; phone?: string | null; notes?: string[] }): boolean {
   const hay = fold([t.patientName, t.owner ?? '', TASK_LABELS[t.type] ?? t.type, ...t.details, ...(t.notes ?? [])].join(' '));
   const digits = [hay, t.phone ?? ''].join(' ').replace(/\D/g, '');
@@ -492,6 +509,7 @@ export class FrontDeskRepository {
     // the Requests page reads again on every change to a request (and every 2 minutes): one row per person and request per five minutes
     for (const { task } of rows) await recordView(tx, { clinicId, actor, action: 'task.viewed', entity: 'task', entityId: task.id, callId: task.callId }, 5);
     const ctx = (col: string) => phiContext(clinicId, col);
+    const failed = rows.length ? await lastTextFailures(tx, clinicId, rows.map((r) => r.task.id)) : new Map<string, TextFailure>();
     return rows.map(({ task, firstNameEnc, lastNameEnc, summary }) => ({
       id: task.id, number: task.number, type: task.type, status: task.status, callId: task.callId, patientId: task.patientId, createdAt: task.createdAt,
       assigneeUserId: task.assigneeUserId, assignedByUserId: task.assignedByUserId, createdByUserId: task.createdByUserId, claimedAt: task.claimedAt, doneAt: task.doneAt, doneByUserId: task.doneByUserId, outcome: task.outcome,
@@ -504,7 +522,32 @@ export class FrontDeskRepository {
       // what the call's summary suggests staff do, for a request the assistant created
       followUp: summary ? decryptSummary(this.cipher, clinicId, summary).followUp : null,
       notes: notes.filter((n) => n.taskId === task.id).map((n) => ({ id: n.id, authorUserId: n.authorUserId, at: n.createdAt, body: this.cipher.decrypt(n.bodyEnc, ctx('task_notes.body')) })),
+      // the request's latest text, when it was not sent (note 2026-11-16, demo findings 3: a failure after the panel closed went unseen)
+      textProblem: failed.get(task.id) ?? null,
     }));
+  }
+
+  /**
+   * Texts about requests that were not sent since `since`, newest first, each the latest of its kind on its request (a
+   * later text of that kind that went clears it): the request's number and type, the text's state and why. No patient
+   * data and nothing decrypted, so not audited. For the notice and Today's list that a failed text is never missed.
+   */
+  async textProblems(clinicId: string, since: Date): Promise<{ textId: string; taskId: string; number: number; type: string; taskStatus: 'open' | 'done'; status: string; failureReason: string | null; errorCode: string | null; at: Date }[]> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const rows = await tx.select({ id: smsMessages.id, taskId: smsMessages.taskId, template: smsMessages.template, status: smsMessages.status, failureReason: smsMessages.failureReason, errorCode: smsMessages.errorCode, at: smsMessages.createdAt, number: tasks.number, type: tasks.type, taskStatus: tasks.status })
+        .from(smsMessages).innerJoin(tasks, and(eq(tasks.clinicId, smsMessages.clinicId), eq(tasks.id, smsMessages.taskId)))
+        .where(and(eq(smsMessages.clinicId, clinicId), isNotNull(smsMessages.taskId), sql`${smsMessages.createdAt} >= ${since}`))
+        .orderBy(desc(smsMessages.createdAt), desc(smsMessages.id));
+      const seen = new Set<string>();
+      const out: Awaited<ReturnType<FrontDeskRepository['textProblems']>> = [];
+      for (const r of rows) {
+        const key = `${r.taskId}|${r.template}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (TEXT_FAILED.has(r.status)) out.push({ textId: r.id, taskId: r.taskId!, number: r.number, type: r.type, taskStatus: r.taskStatus, status: r.status, failureReason: r.failureReason, errorCode: r.errorCode, at: r.at });
+      }
+      return out.slice(0, 20);
+    });
   }
 
   /** The clinic's own details on a request: the whole set, encrypted, audited without the values. */
@@ -549,6 +592,27 @@ export class FrontDeskRepository {
       }
     }
     return out;
+  }
+
+  /**
+   * A renamed kind of request carried to every request of that kind (note 2026-11-16, demo findings 3), the way
+   * renamed dropdown choices are: each request's details read, its kind renamed and written back, inside the settings
+   * save's transaction, with one audit row for the rename and how many requests it reached. Returns that number.
+   */
+  async renameRequestKinds(tx: Tx, clinicId: string, userId: string, renames: Record<string, string>): Promise<number> {
+    if (!Object.keys(renames).length) return 0;
+    const ctx = phiContext(clinicId, 'tasks.details');
+    const rows = await tx.select({ id: tasks.id, detailsEnc: tasks.detailsEnc }).from(tasks).where(eq(tasks.clinicId, clinicId));
+    let n = 0;
+    for (const r of rows) {
+      const details = JSON.parse(this.cipher.decrypt(r.detailsEnc, ctx)) as Record<string, string>;
+      const to = details.topic !== undefined ? renames[details.topic] : undefined;
+      if (!to) continue;
+      await tx.update(tasks).set({ detailsEnc: this.cipher.encrypt(JSON.stringify({ ...details, topic: to }), ctx) }).where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, r.id)));
+      n++;
+    }
+    await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'clinic.request_kind.renamed', entity: 'clinic', entityId: clinicId, counts: { kinds: Object.keys(renames).length, requests: n } });
+    return n;
   }
 
   /** Adds an internal note to a request. Notes are never edited or removed. */
@@ -861,13 +925,15 @@ export class FrontDeskRepository {
    * unchanged. With `expectedVersion`, it saves only over that version: someone else's
    * save in between is a conflict, and nothing is written.
    */
-  async saveSettings(clinicId: string, config: { name: string; timezone: string }, userId: string, action = 'clinic.settings.updated', opts: { expectedVersion?: number } = {}):
+  async saveSettings(clinicId: string, config: { name: string; timezone: string }, userId: string, action = 'clinic.settings.updated', opts: { expectedVersion?: number; also?: (tx: Tx) => Promise<unknown> } = {}):
     Promise<{ status: 'saved'; version: number } | { status: 'conflict' }> {
     return withClinic(this.db, clinicId, async (tx) => {
       const match = opts.expectedVersion === undefined ? eq(clinics.id, clinicId) : and(eq(clinics.id, clinicId), eq(clinics.configVersion, opts.expectedVersion));
       const [row] = await tx.update(clinics).set({ name: config.name, timezone: config.timezone, config, ...bump(userId) }).where(match).returning({ version: clinics.configVersion });
       if (!row) return { status: 'conflict' as const };
       await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action, entity: 'clinic', entityId: clinicId });
+      // what goes with the save, in its transaction (a renamed kind of request carried to its requests)
+      if (opts.also) await opts.also(tx);
       return { status: 'saved' as const, version: row.version };
     });
   }

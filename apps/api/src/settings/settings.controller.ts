@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { applyListChange, carriedRenames, ClinicConfig, SETTINGS_LIMITS, EmergencyDraft, emergencyFormFor, emergencyFormView, emergencyNumberProblem, phoneTypingIssues, settingsFieldProblems, inClinicCountry, LANGUAGES, LIST_NAMES, listedVapiVoice, type ListName, PACKS, PREVIEW_VOICES, VAPI_VOICE_MODEL, type VapiVoiceChoice, viewerConfig, voiceLabel, withPhonesAsE164, withRenamedChoices } from '@attendra/core';
+import { applyListChange, carriedRenames, ClinicConfig, requestKindRenames, SETTINGS_LIMITS, EmergencyDraft, emergencyFormFor, emergencyFormView, emergencyNumberProblem, phoneTypingIssues, settingsFieldProblems, inClinicCountry, LANGUAGES, LIST_NAMES, listedVapiVoice, type ListName, PACKS, PREVIEW_VOICES, VAPI_VOICE_MODEL, type VapiVoiceChoice, viewerConfig, voiceLabel, withPhonesAsE164, withRenamedChoices } from '@attendra/core';
 import { can } from '../access';
 import { type Database, type FrontDeskRepository, PostgresAuditLog, type ScheduleRepository, schema, staffNames } from '@attendra/db';
 import { and, eq } from 'drizzle-orm';
@@ -164,6 +164,8 @@ export class SettingsController {
       const problems = settingsFieldProblems(next.data);
       if (problems.length) return { result: { issues: problems } };
       await this.desk.renameChoiceValues(tx, clinicId, { customFields: lists.customFields, requestFields: lists.requestFields }, carried);
+      // a renamed kind of request: every request of that kind takes the new name, in this transaction
+      await this.desk.renameRequestKinds(tx, clinicId, staff.userId, requestKindRenames(current.requestTopics, lists.requestTopics));
       return { save: next.data, result: next.data };
     });
     if (!out) throw new NotFoundException({ error: 'not_found' });
@@ -267,7 +269,9 @@ export class SettingsController {
     const now = this.now();
     const strands = await strandedBy(this.desk, clinicId, current, next, now);
     if (strands.length && !keeps(q)) throw await strandedConflict(this.schedule, clinicId, strands, staff);
-    const saved = await this.desk.saveSettings(clinicId, next, staff.userId, undefined, { expectedVersion });
+    const kindRenames = requestKindRenames(current.requestTopics, next.requestTopics);
+    const saved = await this.desk.saveSettings(clinicId, next, staff.userId, undefined, { expectedVersion,
+      also: Object.keys(kindRenames).length ? (tx) => this.desk.renameRequestKinds(tx, clinicId, staff.userId, kindRenames) : undefined });
     if (saved.status === 'conflict') return this.conflict(clinicId, staff.userId);
     if (strands.length) await this.schedule.keepStranded(clinicId, strands.map((v) => v.id), staff.userId, now);
     reply.header('etag', etag(saved.version));

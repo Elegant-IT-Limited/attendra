@@ -24,6 +24,13 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **A location on Vapi speaks with an ElevenLabs voice** (eleven_flash_v2_5, which speaks Spanish too) of the same kind as the clinic's own voice, never Vapi's own default. Settings > Voice on such a location offers the ElevenLabs voices, with ElevenLabs' own sample on Listen; the clinic's OpenAI voice is kept for when it moves back.
 - **The test-call page on a Vapi location says how to hear Vapi**: a browser test call always uses Attendra's own engine.
 
+### Fixed (requests and texts, 2026-11-16)
+
+- **A text that fails after the request was closed is still seen.** The request's row says "Text not sent", Today lists it ("Text not sent · R-37 · Prescription refill", with why, and a link to the request), and wherever the person is on the dashboard a notice that stays until read says it in the request history's words, once per text in that browser. Kept current by the texts change stream; the API gives each request its latest failed text (`textProblem`) and the recent ones (`GET tasks/text-problems`: numbers, types and codes only).
+- **Renaming a kind of request carries the new name to every request of that kind**, from Fields and lists or a whole settings save, in the save's transaction, with one audit row and how many requests it reached (`clinic.request_kind.renamed`). A kind removed keeps its requests' name.
+- **Requests search by a clinic's own kind name** ("Kennel stay") is covered by an end-to-end test; it already worked for the newest 2,000 requests a search reads.
+- **The pets and vets import results count one row as "1 row"**, and only speak of rows left out when there are some.
+
 ### Fixed (refills, 2026-11-16)
 
 - **A refill is closed with a decision someone chose.** The Outcome list starts with the refill decisions (sent to the pharmacy, ready to pick up, not approved), then the others, with nothing picked: "Mark done" waits for a choice and says so. Before, "Called back" (or "sent") was preselected, so a quick "Mark done" closed a refill with no decision.
