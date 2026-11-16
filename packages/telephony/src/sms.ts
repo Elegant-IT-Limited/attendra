@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { asE164, ClinicConfig, textableNumber, type Language, type Messenger, PACKS, renderText, smsSegments, type TextRefusal, type TextRequest, type TextResult, textingOf } from '@attendra/core';
-import { type Database, type PhiCipher, phoneKey, schema, withClinic } from '@attendra/db';
+import { type Database, phiContext, type PhiCipher, phoneKey, schema, smsNumberHash, withClinic } from '@attendra/db';
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
 
 /**
@@ -30,7 +30,8 @@ export const DEFAULT_SMS_MONTHLY_CAP = 2000;
 const OPTED_OUT = 21610;
 
 /** The one-way key of a number for one clinic. Texts, opt-outs and replies all use it. */
-export const smsNumberHash = (cipher: PhiCipher, clinicId: string, number: string) => cipher.hash(`${clinicId}|${number.replace(/\D/g, '').slice(-10)}`);
+/** The key a text's number is stored under (one source, in @attendra/db: the household's texts are found by it). */
+export { smsNumberHash };
 
 export interface SmsSender {
   send(input: { from: string; to: string; body: string; statusCallback?: string }): Promise<{ sid: string }>;
@@ -165,9 +166,11 @@ export class TwilioMessenger implements Messenger {
 
     try {
       const statusCallback = this.options.statusCallback?.(clinicId);
-      const { sid } = await this.sender.send({ from, to, body: renderSms(input.template, input.vars, input.language, await this.wordingFor(clinicId, input.template, input.language ?? 'en')), ...(statusCallback ? { statusCallback } : {}) });
+      const body = renderSms(input.template, input.vars, input.language, await this.wordingFor(clinicId, input.template, input.language ?? 'en'));
+      const { sid } = await this.sender.send({ from, to, body, ...(statusCallback ? { statusCallback } : {}) });
       await withClinic(this.db, clinicId, async (tx) => {
-        await tx.update(smsMessages).set({ status: 'sent', providerSid: sid, sentAt: new Date() }).where(eq(smsMessages.id, id));
+        // the words that went out, for the clinic's text history: encrypted like other caller data, dropped after retention
+        await tx.update(smsMessages).set({ status: 'sent', providerSid: sid, sentAt: new Date(), bodyEnc: this.cipher.encrypt(body, phiContext(clinicId, 'sms_messages.body')) }).where(eq(smsMessages.id, id));
         await tx.insert(auditLogs).values(audit(`sms.sent.${input.template}`, sid));
       });
       return { status: 'sent', messageId: id };

@@ -3,7 +3,7 @@ import { type ChoiceRenames, type CustomField, HOLDS_TIME, normalizeName, withRe
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL, sql } from 'drizzle-orm';
 import { clinicAccess, clinicMemberships, memberships } from '../auth-schema';
 import { type Database, type Tx, withClinic } from '../client';
-import { type PhiCipher, phiContext } from '../crypto';
+import { type PhiCipher, phiContext, smsNumberHash } from '../crypto';
 import { patientSetKey, recordView } from './audit';
 import { callerKey, callerPartKey } from './calls';
 import { nameWordKeys, patientsWithKey, PHONE_PART_DIGITS, searchHash, phoneKey, phoneMatch, phonePartKey } from './patients';
@@ -939,24 +939,45 @@ export class FrontDeskRepository {
   }
 
   /**
-   * The texts about one call, request, pet or patient, or visit, newest first. Only
-   * the last four digits of the number, and only when the text is about a patient
-   * (the stored hash is one way). Listing a patient's texts is audited as a view.
+   * The texts about one call, request or visit; to one pet's or patient's household (every text to the number on its
+   * record, plus any filed under it); or the clinic's newest, all or only those not sent. Newest first: 20, or 50 for the
+   * clinic's list. Each with its kind, state, the words that went out (decrypted, while the clinic keeps call records),
+   * what it belongs to (the request's number, the visit's start, the pet's name) and, for a household, the number's last
+   * four digits. Every read is audited as a view of caller data (texts.viewed, by what was read), folded per person and
+   * five minutes like other views.
    */
-  async texts(clinicId: string, filter: { callId?: string; taskId?: string; patientId?: string; appointmentId?: string }, userId?: string) {
+  async texts(clinicId: string, filter: { callId?: string; taskId?: string; patientId?: string; appointmentId?: string; recent?: boolean; status?: 'all' | 'not_sent' }, userId?: string) {
     return withClinic(this.db, clinicId, async (tx) => {
-      const where = filter.callId ? eq(smsMessages.callId, filter.callId) : filter.taskId ? eq(smsMessages.taskId, filter.taskId)
-        : filter.patientId ? eq(smsMessages.patientId, filter.patientId) : eq(smsMessages.appointmentId, filter.appointmentId ?? '');
-      const rows = await tx.select().from(smsMessages).where(and(eq(smsMessages.clinicId, clinicId), where)).orderBy(desc(smsMessages.createdAt)).limit(20);
       let last4: string | null = null;
+      let where: SQL | undefined;
       if (filter.patientId) {
         const [p] = await tx.select({ phoneEnc: patients.phoneEnc }).from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, filter.patientId)));
-        last4 = p?.phoneEnc ? this.cipher.decrypt(p.phoneEnc, phiContext(clinicId, 'patients.phone')).replace(/\D/g, '').slice(-4) : null;
-        if (userId) await recordView(tx, { clinicId, actor: actorOf(userId), action: 'patient.texts.viewed', entity: 'patient', entityId: filter.patientId }, 5);
+        const phone = p?.phoneEnc ? this.cipher.decrypt(p.phoneEnc, phiContext(clinicId, 'patients.phone')) : null;
+        last4 = phone ? phone.replace(/\D/g, '').slice(-4) : null;
+        // the household: every text to the number on the record, and any filed under this record
+        where = phone ? or(eq(smsMessages.toHash, smsNumberHash(this.cipher, clinicId, phone)), eq(smsMessages.patientId, filter.patientId)) : eq(smsMessages.patientId, filter.patientId);
+      } else if (filter.callId) where = eq(smsMessages.callId, filter.callId);
+      else if (filter.taskId) where = eq(smsMessages.taskId, filter.taskId);
+      else if (filter.appointmentId) where = eq(smsMessages.appointmentId, filter.appointmentId);
+      else if (filter.recent) where = filter.status === 'not_sent' ? inArray(smsMessages.status, [...TEXT_FAILED]) : undefined;
+      else where = sql`false`;
+      const rows = await tx.select({ m: smsMessages, taskNumber: tasks.number, taskStatus: tasks.status, appointmentStartsAt: appointments.startsAt, firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc })
+        .from(smsMessages)
+        .leftJoin(tasks, and(eq(tasks.clinicId, smsMessages.clinicId), eq(tasks.id, smsMessages.taskId)))
+        .leftJoin(appointments, and(eq(appointments.clinicId, smsMessages.clinicId), eq(appointments.id, smsMessages.appointmentId)))
+        .leftJoin(patients, and(eq(patients.clinicId, smsMessages.clinicId), eq(patients.id, smsMessages.patientId)))
+        .where(and(eq(smsMessages.clinicId, clinicId), where)).orderBy(desc(smsMessages.createdAt), desc(smsMessages.id)).limit(filter.recent ? 50 : 20);
+      if (userId) {
+        const [entity, entityId] = filter.patientId ? ['patient', filter.patientId] : filter.callId ? ['call', filter.callId] : filter.taskId ? ['task', filter.taskId] : filter.appointmentId ? ['appointment', filter.appointmentId] : ['clinic', clinicId];
+        await recordView(tx, { clinicId, actor: actorOf(userId), action: filter.patientId ? 'patient.texts.viewed' : 'texts.viewed', entity, entityId: entityId!, ...(filter.callId ? { callId: filter.callId } : {}) }, 5);
       }
-      return rows.map((r) => ({
+      const ctx = (col: string) => phiContext(clinicId, col);
+      return rows.map(({ m: r, taskNumber, taskStatus, appointmentStartsAt, firstNameEnc, lastNameEnc }) => ({
         id: r.id, template: r.template, kind: r.kind, status: r.status, failureReason: r.failureReason, errorCode: r.errorCode, language: r.language,
         callId: r.callId, createdAt: r.createdAt, sentAt: r.sentAt, deliveredAt: r.deliveredAt, consentAtMs: r.consentAtMs, toLast4: last4,
+        body: r.bodyEnc ? this.cipher.decrypt(r.bodyEnc, ctx('sms_messages.body')) : null,
+        taskId: r.taskId, taskNumber: taskNumber ?? null, taskStatus: taskStatus ?? null, appointmentId: r.appointmentId, appointmentStartsAt: appointmentStartsAt ?? null, patientId: r.patientId,
+        patientName: filter.recent && firstNameEnc ? this.cipher.decrypt(firstNameEnc, ctx('patients.first_name')) + (lastNameEnc ? ` ${this.cipher.decrypt(lastNameEnc, ctx('patients.last_name'))}` : '') : null,
       }));
     });
   }

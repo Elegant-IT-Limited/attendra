@@ -18,6 +18,7 @@ import { api, ApiFailure } from '@/lib/api';
 import { cancelReasons, clinicTime, dayTitle, dob, phone, telHref, timeOf, visitTypeName } from '@/lib/format';
 import { offersChanges } from '@/lib/visit';
 import { patchAppointment } from '@/lib/optimistic';
+import { TextStatus } from '@/components/calls/text-status';
 
 type Mode = 'view' | 'reschedule' | 'cancel';
 
@@ -217,6 +218,9 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
                         ? <><Badge tone="ok">Confirmed</Badge> {a.confirmedVia === 'text' ? 'replied C to the reminder' : 'at the desk'}, {clinicTime(a.confirmedAt, tz)}</>
                         : `Texted ${clinicTime(a.reminderSentAt!, tz)}`}</dd></>
                     )}
+                    {/* the texts about this visit and where each is: confirmation, move, cancel, reminder (text history, 2026-11-16) */}
+                    <dt className="text-text-muted">Texts</dt>
+                    <dd data-testid="visit-texts"><TextStatus clinicId={clinicId} filter={{ appointmentId: a.id }} timeZone={tz} empty="No texts about this visit." /></dd>
                   </dl>
                 </section>
                 <section className="space-y-2">

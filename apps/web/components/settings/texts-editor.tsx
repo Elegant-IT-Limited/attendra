@@ -7,13 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { phone, TASK_OUTCOMES } from '@/lib/format';
+import { TEXT_KINDS } from '@/lib/text-kinds';
 
-const NAMES: Record<SmsTemplateName, string> = {
-  booking_confirmed: 'Booking confirmed', change_confirmed: 'Visit moved', cancel_confirmed: 'Visit cancelled', reminder: 'Reminder before a visit', vet_changed: 'Visit handed to another vet',
-  directions: 'Address and directions', hours: 'Opening hours', emergency_hospital: 'Emergency hospital', provider: 'A vet\'s details',
-  answer: 'An answer to a common question', link: 'One of your links',
-  request_ready: 'Refill ready to pick up', refill_sent: 'Refill sent to the pharmacy', refill_not_approved: 'Refill: please call us',
-};
+/** The kinds of text, by the one table every text list uses. */
+const NAMES: Record<SmsTemplateName, string> = TEXT_KINDS;
 
 const DURING_CALL = 'During a call, when the caller says yes to a text';
 /** A refill text goes when the team closes the refill with its outcome, named as the Outcome list names it. */

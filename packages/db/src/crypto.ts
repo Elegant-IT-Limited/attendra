@@ -24,6 +24,9 @@ export interface PhiCipher {
 /** The associated-data string for one column of one clinic's table. */
 export const phiContext = (clinicId: string, column: string) => `${clinicId}:${column}`;
 
+/** The key a text's number is stored under in sms_messages.to_hash: the clinic and the number's last 10 digits. */
+export const smsNumberHash = (cipher: Pick<PhiCipher, 'hash'>, clinicId: string, number: string) => cipher.hash(`${clinicId}|${number.replace(/\D/g, '').slice(-10)}`);
+
 export function createPhiCipher(masterKeyBase64: string): PhiCipher {
   const master = Buffer.from(masterKeyBase64, 'base64');
   if (master.length !== 32) throw new Error('ATTENDRA_DATA_KEY must be 32 bytes, base64 encoded');

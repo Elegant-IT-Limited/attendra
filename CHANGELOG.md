@@ -4,6 +4,12 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (text history for the clinic, 2026-11-16)
+
+- **Every text the clinic sent, read-only, where the team looks for it.** A pet's or patient's page has a Texts tab: the newest 20 texts to that household's number, each with when, its kind ("Booking confirmed", "Refill ready to pick up", "Address and directions"), where it is ("Waiting", "Sent", "Delivered", "Not sent: <plain reason>"), the words that went out, and links to the call, the request and the visit. Settings > Texting has "Recent texts": the clinic's newest 50, with the pet, filtered All or Not sent ("No texts sent yet." when there are none). The visit panel lists its own texts (confirmation, move, cancel, reminder); the call page already did.
+- **The words that went out are kept**, encrypted like other caller data (migration 0059, `sms_messages.body_enc`), for the clinic's call-records retention; the nightly purge then clears them and keeps the text's kind, status and times. Never in logs, Slack or reports.
+- Owners, managers and front desk see texts (a viewer does not); every read is audited (`texts.viewed`, `patient.texts.viewed`). Delivery reports (Twilio's status callback) already fill in "Delivered" and the carrier's error for every kind of text, not only refills. One table of kind names and status words for every text list.
+
 ### Fixed (flaky tests, 2026-11-16)
 
 - **The same note no longer shows twice.** Two requests added within a note's 4 seconds stacked two identical "Request added" notes (and made the e2e test match twice on CI); the same note again now replaces the one showing and starts its time again. Notes with an Undo still stack. The schedule-at-scale e2e test now waits for the End key's smooth scroll to reach the bottom, and clicks the last visit as an element (stable, and the click lands on it), not at a point measured while the grid still moved.

@@ -1,5 +1,5 @@
 import { DEMO_CLINIC } from '@attendra/core';
-import { createPhiCipher, schema, seedDemo, withClinic } from '@attendra/db';
+import { createPhiCipher, phiContext, schema, seedDemo, withClinic } from '@attendra/db';
 import { eq, sql } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -62,6 +62,10 @@ describe('SMS confirmations', () => {
     await messenger.sendTemplate(DEMO_CLINIC.id, input);
     expect(sent).toHaveLength(1);
     expect(sent[0]!.body).toBe("Maple Street Family Medicine: Your visit is booked for Tue Sep 29, 9:00 AM. To change or cancel, call (303) 555-0100. Reply STOP to opt out.");
+    // the words that went out are kept for the clinic's text history, encrypted, exactly as sent (2026-11-16)
+    const [kept] = await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.select({ bodyEnc: schema.smsMessages.bodyEnc }).from(schema.smsMessages).where(eq(schema.smsMessages.idempotencyKey, 'sms:1')));
+    expect(kept!.bodyEnc).not.toContain('Maple Street');
+    expect(cipher.decrypt(kept!.bodyEnc!, phiContext(DEMO_CLINIC.id, 'sms_messages.body'))).toBe(sent[0]!.body);
   });
 
   it('retries a send that failed, with the same key', async () => {
@@ -101,6 +105,8 @@ describe('SMS confirmations', () => {
     expect(await off.sendTemplate(DEMO_CLINIC.id, { to: '+13035550173', template: 'request_ready', idempotencyKey: 'sms:off', vars })).toMatchObject({ status: 'not_sent', reason: 'texting_off' });
     expect(await messenger.sendTemplate(DEMO_CLINIC.id, { to: '+13035550173', template: 'request_ready', idempotencyKey: 'sms:test-call', vars, testCall: true })).toMatchObject({ status: 'not_sent', reason: 'test_call' });
     expect(await row('sms:test-call')).toMatchObject({ status: 'not_sent', failureReason: 'test_call' });
+    // nothing went out, so no words are kept
+    expect((await row('sms:stop')).bodyEnc).toBeNull();
     expect(calls).toBe(0);
     // START again: texts go
     await recordSmsStanding(t.db, cipher, DEMO_CLINIC.id, '+13035550172', 'opted_in', 'keyword');

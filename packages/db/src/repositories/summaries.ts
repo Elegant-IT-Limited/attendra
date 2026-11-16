@@ -2,7 +2,7 @@
 import { and, asc, desc, eq, gt, inArray, isNotNull, lt, ne, sql } from 'drizzle-orm';
 import { type Database, withClinic, setClinicScope } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
-import { auditLogs, callActions, calls, callSearchKeys, callSegments, callSummaries, clinics, handoffs, tasks } from '../schema';
+import { auditLogs, callActions, calls, callSearchKeys, callSegments, callSummaries, clinics, handoffs, smsMessages, tasks } from '../schema';
 import { callerKey } from './calls';
 
 export const INTENTS = ['book', 'reschedule', 'cancel', 'refill', 'question', 'callback', 'emergency', 'other'] as const;
@@ -208,6 +208,21 @@ export async function purgeCallRecords(db: Database, clinicId: string, before: D
     after = ids.at(-1)!;
   }
   return counts;
+}
+
+/**
+ * Drops the words of texts sent before `before` (sms_messages.body_enc, migration 0059): on the clinic's call-records
+ * retention, like transcripts. The text's row stays, with its kind, status, times and links, so the history still says
+ * what went and whether it arrived. Counts only in the audit row, never what was written.
+ */
+export async function purgeTextBodies(db: Database, clinicId: string, before: Date): Promise<{ textBodies: number }> {
+  return db.transaction(async (tx) => {
+    await setClinicScope(tx, clinicId);
+    const cleared = await tx.update(smsMessages).set({ bodyEnc: null })
+      .where(and(eq(smsMessages.clinicId, clinicId), lt(smsMessages.createdAt, before), isNotNull(smsMessages.bodyEnc))).returning({ id: smsMessages.id });
+    if (cleared.length) await tx.insert(auditLogs).values({ clinicId, actor: WORKER, action: 'retention.purged', entity: 'clinic', entityId: clinicId, counts: { textBodies: cleared.length } });
+    return { textBodies: cleared.length };
+  });
 }
 
 /**
