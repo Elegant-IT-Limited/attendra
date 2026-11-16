@@ -6,6 +6,8 @@ export * from './crypto';
 export * from './migrate';
 export * from './repositories/calls';
 export * from './repositories/call-stats';
+export * from './repositories/call-events';
+export * from './repositories/qa-export';
 export * from './repositories/phone-cleanup';
 export * from './repositories/title-cleanup';
 export * from './repositories/visit-type-coverage';

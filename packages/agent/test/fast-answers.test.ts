@@ -1,9 +1,9 @@
 // The backend's own words as the whole answer: a tool that did the thing and wrote the sentence for it is spoken as it
 // is, with no further model round (2026-11). Nothing is ever spoken as done before the tool returned ok.
-import { DEMO_CLINIC, localDateOf, localParts } from '@attendra/core';
+import { callFacts, DEMO_CLINIC, localDateOf, localParts, zonedInstant } from '@attendra/core';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { lookupLine, type Outbound, ResponsesPlanner, type ToolResult } from '../src';
-import { textingOn, world } from './support';
+import { NOW, textingOn, world } from './support';
 
 let w: Awaited<ReturnType<typeof world>>;
 beforeAll(async () => { w = await world(); }, 60_000);
@@ -43,7 +43,7 @@ describe('the planner speaks the tool\'s own sentence and stops', () => {
     let calls = 0;
     const execute = async (): Promise<ToolResult> => ({ ok: true, data: { spoken: `Line ${++calls}.` } });
     const model = { responses: { create: vi.fn(async (..._args: unknown[]) => (model.responses.create.mock.calls.length === 1 ? { output: [call('send_text'), call('end_call')], output_text: '' } : { output: [], output_text: 'Both done.' })) } };
-    const two = await new ResponsesPlanner(model as never, 'gpt-test').plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: '' }, execute);
+    const two = await new ResponsesPlanner(model as never, 'gpt-test').plan({ clinic: DEMO_CLINIC, state: c.state, facts: callFacts(DEMO_CLINIC, NOW, null) }, execute);
     expect(two.say).toBe('Both done.');
     expect(model.responses.create).toHaveBeenCalledTimes(2);
   });
@@ -163,18 +163,19 @@ describe('a request the prompt cache can reuse', () => {
     const planner = new ResponsesPlanner({ responses: { create } } as never, 'gpt-main');
     const c = await w.call('+13035550147', { history: 'Name on file for this number: Maria.' });
     c.caller('Hi, it\'s Maria.');
-    await planner.plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: 'Today is Monday, 2026-09-28, 20:14 clinic time. The clinic is closed today.', callerNumber: '+13035550147', history: 'Name on file for this number: Maria.' }, async () => ({ ok: true, data: {} }));
+    await planner.plan({ clinic: DEMO_CLINIC, state: c.state, facts: callFacts(DEMO_CLINIC, zonedInstant('2026-09-28', '20:14', DEMO_CLINIC.timezone), '+13035550147'), history: 'Name on file for this number: Maria.' }, async () => ({ ok: true, data: {} }));
     c.assistant('Hi Maria, how can I help?');
     c.caller('I need a sick visit.');
-    await planner.plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: 'Today is Monday, 2026-09-28, 20:15 clinic time. The clinic is closed today.', callerNumber: '+13035550147', history: 'Name on file for this number: Maria.' }, async () => ({ ok: true, data: {} }));
+    await planner.plan({ clinic: DEMO_CLINIC, state: c.state, facts: callFacts(DEMO_CLINIC, zonedInstant('2026-09-28', '20:15', DEMO_CLINIC.timezone), '+13035550147'), history: 'Name on file for this number: Maria.' }, async () => ({ ok: true, data: {} }));
     const [a, b] = [body(create, 0), body(create, 1)];
     expect(a.instructions).toBe(b.instructions);
     expect(JSON.stringify(a.tools)).toBe(JSON.stringify(b.tools));
-    expect(a.instructions).toContain('Today is Monday, 2026-09-28. The clinic is closed today.');
+    expect(a.instructions).toContain('Today is Monday, 2026-09-28. Today the clinic is open 08:00 to 12:00 and 13:00 to 17:00.');
     expect(a.instructions).not.toContain('20:14');
     // the clock, then the 14-day date table, last: neither touches the cached prefix
-    expect(a.input[0]!.content).toMatch(/The time now: 20:14 clinic time\.\n\nDates: \w{3} \w{3} \d+ = \d{4}-\d{2}-\d{2} \(today\), [^\n]*\.$/);
-    expect(b.input[0]!.content).toMatch(/The time now: 20:15 clinic time\.\n\nDates: [^\n]*\.$/);
+    // with open or closed now and the next opening (core callFacts), which change by the minute too
+    expect(a.input[0]!.content).toMatch(/The time now: 20:14 clinic time\. The clinic is closed now; it next opens Tuesday, 2026-09-29 at 08:00\.\n\nDates: \w{3} \w{3} \d+ = \d{4}-\d{2}-\d{2} \(today\), [^\n]*\.$/);
+    expect(b.input[0]!.content).toMatch(/The time now: 20:15 clinic time\. The clinic is closed now; it next opens Tuesday, 2026-09-29 at 08:00\.\n\nDates: [^\n]*\.$/);
     // the fixed notes open the message, and the second request's message starts with the first's
     expect(a.input[0]!.content.startsWith('Our records for the number this caller is calling from')).toBe(true);
     const upTo = (s: string) => s.slice(0, s.indexOf('Caller: Hi, it\'s Maria.') + 'Caller: Hi, it\'s Maria.'.length);
@@ -188,7 +189,7 @@ describe('a request the prompt cache can reuse', () => {
     const planner = new ResponsesPlanner({ responses: { create } } as never, 'gpt-main', 8, undefined, { tier: 'fast' });
     const c = await w.call();
     c.caller('Maria Delgado.');
-    const out = await planner.plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: '' }, async () => ({ ok: true, data: {} }));
+    const out = await planner.plan({ clinic: DEMO_CLINIC, state: c.state, facts: callFacts(DEMO_CLINIC, NOW, null) }, async () => ({ ok: true, data: {} }));
     expect(body(create, 0).service_tier).toBe('fast');
     expect(out.timing).toMatchObject({ tier: 'fast', requests: [{ served: 'priority' }] });
   });
@@ -204,16 +205,16 @@ describe('a round that fails is tried once more on the fallback model', () => {
     });
     const c = await w.call();
     c.caller('Maria Delgado.');
-    const out = await new ResponsesPlanner({ responses: { create } } as never, 'gpt-main', 8, undefined, { fallbackModel: 'gpt-spare' }).plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: '' }, async () => ({ ok: true, data: {} }));
+    const out = await new ResponsesPlanner({ responses: { create } } as never, 'gpt-main', 8, undefined, { fallbackModel: 'gpt-spare' }).plan({ clinic: DEMO_CLINIC, state: c.state, facts: callFacts(DEMO_CLINIC, NOW, null) }, async () => ({ ok: true, data: {} }));
     expect(seen).toEqual(['gpt-main', 'gpt-spare']);
     expect(out.say).toBe('Sure.');
     expect(out.timing).toMatchObject({ model: 'gpt-spare', fallback: true, rounds: 1 });
     // no fallback set: the error is the request's, as before
     const none = new ResponsesPlanner({ responses: { create } } as never, 'gpt-main');
-    await expect(none.plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: '' }, async () => ({ ok: true, data: {} }))).rejects.toThrow('Request timed out.');
+    await expect(none.plan({ clinic: DEMO_CLINIC, state: c.state, facts: callFacts(DEMO_CLINIC, NOW, null) }, async () => ({ ok: true, data: {} }))).rejects.toThrow('Request timed out.');
     // the fallback fails too: the error is the request's
     const both = vi.fn(async () => { throw new Error('down'); });
-    await expect(new ResponsesPlanner({ responses: { create: both } } as never, 'gpt-main', 8, undefined, { fallbackModel: 'gpt-spare' }).plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: '' }, async () => ({ ok: true, data: {} }))).rejects.toThrow('down');
+    await expect(new ResponsesPlanner({ responses: { create: both } } as never, 'gpt-main', 8, undefined, { fallbackModel: 'gpt-spare' }).plan({ clinic: DEMO_CLINIC, state: c.state, facts: callFacts(DEMO_CLINIC, NOW, null) }, async () => ({ ok: true, data: {} }))).rejects.toThrow('down');
     expect(both).toHaveBeenCalledTimes(2);
   });
 });
@@ -243,7 +244,7 @@ describe('the voice says what the backend is doing the moment a lookup starts', 
     const now = new Date('2026-09-28T16:00:00Z'); // a Monday in Denver
     const started = performance.now();
     const out = await new ResponsesPlanner({ responses: { create: streaming('find_slots', { visit_type_id: 'vt_sick', provider_id: null, from_date: '2026-10-01', part_of_day: 'any' }) } } as never, 'gpt-main')
-      .plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: '', now, onLookup: (line) => order.push(`said: ${line}`) }, async (name) => { order.push(`ran: ${name}`); return { ok: true, data: { slots: [] } }; });
+      .plan({ clinic: DEMO_CLINIC, state: c.state, facts: callFacts(DEMO_CLINIC, NOW, null), now, onLookup: (line) => order.push(`said: ${line}`) }, async (name) => { order.push(`ran: ${name}`); return { ok: true, data: { slots: [] } }; });
     expect(order).toEqual(['said: Let me check Thursday, October 1, for you.', 'ran: find_slots']);
     expect(out.say).toBe('Here you are.');
     expect(out.timing).toMatchObject({ announced: true, rounds: 2 });

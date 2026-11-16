@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type CallAgent, callStateNote, type Outbound } from '@attendra/agent';
-import { addTokens, askedToHangUp, type CallQuality, EMPTY_CALL_MIN_MS, maxGapMs, type ModelTokens, recordedOutcome, repeatedQuestions, saidGoodbye } from '@attendra/core';
+import { addTokens, askedToHangUp, type CallEventInput, type CallQuality, EMPTY_CALL_MIN_MS, maxGapMs, type ModelTokens, recordedOutcome, repeatedQuestions, saidGoodbye, STALL_MS } from '@attendra/core';
 import { isOpenAiQuotaError, type Logger } from '@attendra/observability';
 import { randomUUID } from 'node:crypto';
 import type { Sideband, SidebandConnection, SidebandEvent, VoiceEngine } from './engine';
@@ -40,7 +40,7 @@ const SPEECH_WAIT_MS = { hangup: 4000, transfer: HANGUP_MAX_WAIT_MS } as const;
  * The caller finished and nothing came back (no reply, no hand-off to the backend): their words go back to the
  * assistant to answer after this long, and again after the second. 6 s left callers asking "are you with me?" (2026-10-26).
  */
-export const SILENCE_NUDGE_MS = [5000, 12_000] as const;
+export const SILENCE_NUDGE_MS = [STALL_MS, 12_000] as const;
 /** How often the runner checks the line: often enough that a nudge comes within half a second of its time. */
 const CHECK_MS = 500;
 /**
@@ -153,6 +153,12 @@ export class CallRunner {
    * cannot say): a dropped line, as before. Set by the voice service.
    */
   phoneLineEnded: (() => Promise<boolean | null>) | null = null;
+
+  /** The call's event log (foundation A): the runner's own nudges go there next to the provider's events. Set by the voice service. */
+  trace: ((e: CallEventInput) => void) | null = null;
+  private traced(type: string) {
+    try { this.trace?.({ type }); } catch { /* the log never fails the call */ }
+  }
 
   /** The caller ended the call from their side (the dashboard's End, a closed page): a close after this is a hang-up, not a drop. */
   callerEnded() {
@@ -564,6 +570,7 @@ export class CallRunner {
     if (this.closed || this.ending || this.agent.state.endedByStaff || this.openingNudged || this.audioStartedAt || this.agentSpokeAt || this.callerSaidAt) return;
     this.openingNudged = true;
     this.marks.mark('nudged');
+    this.traced('runner.opening_nudge');
     this.log.info({ session_id: this.sessionId, ms: Date.now() - this.startedAt }, 'the assistant has not greeted the caller: nudging it');
     this.sideband.send({ type: 'session.commentary.append', event_id: `opening_nudge_${this.sessionId}`, delegation_id: null, content: OPENING_NUDGE });
   }
@@ -578,6 +585,7 @@ export class CallRunner {
     if (this.closed || this.ending || this.agent.state.endedByStaff || this.audioStartedAt || this.agentSpokeAt) return;
     this.silentStartHandled = true;
     this.marks.mark('silent_start');
+    this.traced('runner.silent_start');
     const uri = this.silentStartUri;
     this.log.warn({ session_id: this.sessionId, ms: Date.now() - this.startedAt, to: uri ? 'front_desk' : 'end', caller_spoke: !!this.callerSaidAt }, 'the assistant never spoke: the caller is not left in silence');
     await this.dispatch(uri ? [{ type: 'transfer', uri }] : [{ type: 'hangup' }]);
@@ -632,6 +640,7 @@ export class CallRunner {
     // and no answer began after the caller stopped: a reply already given is never talked over by a nudge
     if (this.callerSaidAt > this.speakingUntil && this.agentSpokeAt < this.callerSaidAt && !this.pending && !leaving && this.nudged < SILENCE_NUDGE_MS.length && now - this.callerSaidAt >= SILENCE_NUDGE_MS[this.nudged]!) {
       this.nudged++;
+      this.traced(`runner.nudge.${this.nudged}`);
       this.log.info({ session_id: this.sessionId, nudge: this.nudged, waited_ms: now - this.callerSaidAt }, 'the caller is waiting in silence: giving the assistant their words to answer');
       // the first nudge of a turn is a stall: the caller spoke and heard nothing back for 5 s, and nothing was at work
       if (this.nudged === 1) {

@@ -1,10 +1,10 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { ClinicConfig, DEMO_CLINIC, RIVERBEND_CLINIC } from '@attendra/core';
+import { callFacts, ClinicConfig, DEMO_CLINIC, RIVERBEND_CLINIC } from '@attendra/core';
 import { type Outbound, ResponsesPlanner } from '../src';
 
 const commentary = (out: Outbound[]) => out.flatMap((o) => (o.type === 'commentary' ? [o.content] : [])).join(' ');
-import { world } from './support';
+import { NOW, world } from './support';
 
 // one database for the file, started once, with room for a busy machine: from the repo
 // root and from this package's own folder alike
@@ -79,10 +79,10 @@ describe('the production planner', () => {
     const c = await w.call(null, { channel: 'web', clinic: { ...RIVERBEND_CLINIC } });
     c.caller('Hi, my dog needs a check-up.');
     const said: string[] = [];
-    const first = await planner.plan({ clinic: RIVERBEND_CLINIC, state: c.state, nowLine: '', onLookup: (line) => said.push(line) }, async () => ({ ok: true, data: {} }));
+    const first = await planner.plan({ clinic: RIVERBEND_CLINIC, state: c.state, facts: callFacts(RIVERBEND_CLINIC, NOW, null), onLookup: (line) => said.push(line) }, async () => ({ ok: true, data: {} }));
     expect(said).toEqual(['One moment.']);
     expect(first.timing).toMatchObject({ announced: true });
-    await planner.plan({ clinic: RIVERBEND_CLINIC, state: c.state, nowLine: '', onLookup: (line) => said.push(line) }, async () => ({ ok: true, data: {} }));
+    await planner.plan({ clinic: RIVERBEND_CLINIC, state: c.state, facts: callFacts(RIVERBEND_CLINIC, NOW, null), onLookup: (line) => said.push(line) }, async () => ({ ok: true, data: {} }));
     expect(said).toEqual(['One moment.']);
   });
 

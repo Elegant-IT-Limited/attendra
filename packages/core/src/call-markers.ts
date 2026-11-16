@@ -11,6 +11,13 @@
  */
 export const LONG_WAIT_MS = 3_000;
 
+/**
+ * A caller who stopped speaking and heard no reply start for this long was left in silence: a stall. The runner's first
+ * nudge comes at this point (SILENCE_NUDGE_MS) and counts the call's stalls by it; the event log's daily numbers count
+ * stalls by the same 5 s.
+ */
+export const STALL_MS = 5_000;
+
 /** One turn of a call, on the call's own timeline. */
 export interface MarkedTurn { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }
 

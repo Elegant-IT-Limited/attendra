@@ -4,7 +4,7 @@ import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
-  ApiKeyRepository, authenticateApiKey, avatarFor, CallRepository, callStats, callTimeline, CallSummaryRepository, cleanTitles, createPhiCipher, type Database,
+  ApiKeyRepository, authenticateApiKey, CallEventLog, callEventsOf, callNumbers, findCallEvents, purgeCallEvents, qaExport, avatarFor, CallRepository, callStats, callTimeline, CallSummaryRepository, cleanTitles, createPhiCipher, type Database,
   FrontDeskRepository, householdOf, inviteToTeam, KnowledgeRepository, listMembers, normalisePhones, PatientRecords, PatientRemoval, phoneUsage, PostgresAuditLog,
   PostgresPatientDirectory, PostgresTaskQueue, qualityRows, saveAvatar, ScheduleRepository, seedCedarPark, seedDemo, seedDemoSchedule, staffNames,
   teamInvitations, clinicCosts, demoClinics, demoState, demoUsage, resetDemoClinic, setDemoBaseline, setDemoSwitch, handoffWeeks, listHandoffs, recordHandoff, setHandoffVerdict, viewHandoff, saveVapiSecret, vapiCallEnded, vapiCallLive, vapiConcurrency, vapiSecretHashOf, vapiSecretOf, visitTypeCoverageReport, WebhookRepository, withClinic, withClinicScope,
@@ -168,6 +168,35 @@ const CASES: Record<string, Case> = {
       },
     };
   })(),
+  'call-events.ts': {
+    tables: ['call_events', 'audit_logs'],
+    own: async () => {
+      const log = new CallEventLog(db, A, callA, 'gpt-realtime/tools', { flushMs: 60_000 });
+      log.add({ type: 'input_audio_buffer.speech_stopped' });
+      log.add({ type: 'output_audio_buffer.started' });
+      expect(await log.close()).toEqual({ written: 2, dropped: 0 });
+      expect((await callEventsOf(db, A, callA)).map((e) => e.type)).toContain('output_audio_buffer.started');
+      expect((await findCallEvents(db, callA))?.clinicId).toBe(A);
+      expect((await callNumbers(db, cipher, A, null, UNTIL))?.paths.length).toBeGreaterThan(0);
+      expect(await purgeCallEvents(db, A, SINCE)).toEqual({ callEvents: 0 });
+    },
+    other: async () => {
+      expect(await callEventsOf(db, B, callA)).toEqual([]);
+      expect(await purgeCallEvents(db, B, UNTIL)).toEqual({ callEvents: 0 });
+      expect((await callNumbers(db, cipher, B, null, UNTIL))?.paths).toEqual([]);
+      expect((await callEventsOf(db, A, callA)).length).toBeGreaterThan(0);
+    },
+  },
+  'qa-export.ts': {
+    tables: ['calls', 'call_segments', 'call_events', 'audit_logs'],
+    own: async () => {
+      const day = await qaExport(db, cipher, A, null, { userId: 'u_omar' }, UNTIL);
+      expect(day?.calls.map((c) => c.id)).toContain(callA);
+    },
+    other: async () => {
+      expect((await qaExport(db, cipher, B, null, { userId: 'u_cara' }, UNTIL))?.calls).toEqual([]);
+    },
+  },
   'invitations.ts': {
     tables: ['audit_logs'],
     own: async () => {

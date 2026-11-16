@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { ClinicConfig, VoiceFlow } from '@attendra/core';
+import type { CallEventInput, ClinicConfig, VoiceFlow } from '@attendra/core';
 import type { CommentaryAppendEvent, InstructionsAppendEvent, ThinkingAppendEvent } from 'openai/resources/live/live';
 
 /**
@@ -56,6 +56,11 @@ export interface Sideband {
   onClose(handler: (code: number) => void): void;
   /** The connection opening, dropping and coming back, for the logs and for answers a drop may have lost. */
   onConnection?(handler: (e: SidebandConnection) => void): void;
+  /**
+   * Every event the provider sends, and the engine's own turn-gate decisions, for the call's event log (foundation A):
+   * types and ids only, never content (core providerEvent). A handler that throws never reaches the call.
+   */
+  onTrace?(handler: (e: CallEventInput) => void): void;
   close(): void;
 }
 

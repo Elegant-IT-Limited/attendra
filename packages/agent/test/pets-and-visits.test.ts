@@ -1,10 +1,10 @@
-import { PACKS, RIVERBEND_CLINIC, zonedInstant } from '@attendra/core';
+import { callFacts, PACKS, RIVERBEND_CLINIC, zonedInstant } from '@attendra/core';
 import { PostgresPatientDirectory, createPhiCipher, seedRiverbend } from '@attendra/db';
 import { TEST_DATA_KEY } from '@attendra/db/testing';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { CallState, ResponsesPlanner } from '../src';
-import { world } from './support';
+import { NOW, world } from './support';
 
 /**
  * What the assistant may say about an owner's pets and their visits, by how much it knows (2026-11):
@@ -303,7 +303,7 @@ describe('a found pet\'s visits: the last and the next, and the usual vet, never
   it('is offered only at a veterinary clinic', async () => {
     const toolsFor = async (c: typeof RIVERBEND_CLINIC) => {
       const create = vi.fn(async (..._args: unknown[]) => ({ output: [], output_text: 'ok' }));
-      await new ResponsesPlanner({ responses: { create } } as never, 'test-model').plan({ clinic: c, state: new CallState(), nowLine: 'Today is Monday.' }, async () => ({ ok: true, data: {} }));
+      await new ResponsesPlanner({ responses: { create } } as never, 'test-model').plan({ clinic: c, state: new CallState(), facts: callFacts(c, NOW, null) }, async () => ({ ok: true, data: {} }));
       return (create.mock.calls[0]![0] as { tools: { name: string }[] }).tools.map((t) => t.name);
     };
     expect(await toolsFor(RIVERBEND_CLINIC)).toContain('visit_summary');

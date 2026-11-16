@@ -12,6 +12,7 @@ An owner or practice manager makes a key under **Settings > API keys**. A key be
 | `requests:read` | The open refill and callback requests, with the patient and the details |
 | `requests:write` | Closing a request, with its outcome |
 | `quality:read` | The Quality page's numbers for the last 7 days. Counts only |
+| `qa:read` | Not an MCP tool: the daily call export for quality review, read over HTTPS ([qa-export.md](qa-export.md)) |
 
 The key is shown once, when it is made. Attendra keeps only its SHA-256 hash, so a copy of the database holds nothing that works. Revoke a key and it stops at once. Every use is written to the audit log as `mcp.<tool>` with the key's id, including uses a scope refused, and the key shows when it was last used.
 
@@ -21,7 +22,7 @@ A key acts in the name of the person who made it: a request it closes is closed 
 
 | Tool | Scope | What it does |
 |---|---|---|
-| `find_open_slots` | `schedule:read` | Open times for a visit type over the next days, optionally for one provider. No patient data. |
+| `find_open_slots` | `schedule:read` | Open times for a visit type over the next days, optionally for one provider: the times the phone assistant offers and books (the visit type's notice, at least two hours ahead, up to its furthest date, a visit apart), with `earliestStart` and `lastDate` for those limits. An agent offers them to callers, so it never lists a time the phone would refuse; staff see every start in the dashboard. No patient data. |
 | `list_todays_schedule` | `schedule:read` | Today's appointments, with patient names; the audit row records how many were shown. |
 | `list_open_requests` | `requests:read` | Open requests, urgent ones first, then the newest, with the patient, the details, the suggested follow-up, whether staff marked it urgent or gave it a due day, and `createdBy` (the name and role of whoever at the clinic added it by hand, never an email; null when the assistant made it from a call). |
 | `mark_request_done` | `requests:write` | Close a request with `called_back`, `left_message`, `refill_sent` or `not_needed`. It tells the clinic's webhooks, as the dashboard does. |

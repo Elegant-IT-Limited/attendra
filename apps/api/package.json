@@ -38,8 +38,10 @@
   },
   "devDependencies": {
     "@attendra/evals": "workspace:*",
+    "@attendra/mcp": "workspace:*",
     "@attendra/voice": "workspace:*",
     "@electric-sql/pglite": "0.5.10",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "drizzle-orm": "0.45.4"
   },
   "exports": {

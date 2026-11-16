@@ -1,12 +1,12 @@
-import { ClinicConfig, DEMO_CLINIC, RIVERBEND_CLINIC } from '@attendra/core';
-import { CallRepository, createPhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, saveVapiSecret, seedDemo, seedRiverbend, vapiCallEnded, vapiCallLive, vapiConcurrency, vapiSecretHashOf, vapiSecretMatches } from '@attendra/db';
+import { ClinicConfig, DEMO_CLINIC, RIVERBEND_CLINIC, zonedInstant } from '@attendra/core';
+import { CallEventLog, CallRepository, createPhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, saveVapiSecret, seedDemo, seedRiverbend, vapiCallEnded, vapiCallLive, vapiConcurrency, vapiSecretHashOf, vapiSecretMatches } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { BuiltinScheduler } from '@attendra/scheduling';
 import Fastify from 'fastify';
 import { Writable } from 'node:stream';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { quotedLines, registerVapi, vapiControlUrl, vapiDestination } from '../src/vapi';
+import { quotedLines, registerVapi, vapiControlUrl, vapiDestination, vapiTurnEvents } from '../src/vapi';
 
 // Vapi as a location's backup engine (batch 6; path C of the bake-off before it): a Vapi assistant whose tools are ours.
 // Same agent, same rules, its own engine on the call row. Made-up demo data only; nothing here reaches Vapi.
@@ -28,6 +28,8 @@ describe('Vapi calling our tools', () => {
   const alerts: string[] = [];
   const allAlerts: string[] = [];
   let vapi: ReturnType<typeof registerVapi>;
+  /** The call's clock: a test that needs a known moment sets it, then clears it. */
+  let clock: Date | null = null;
 
   beforeAll(async () => {
     t = await openTestDatabase();
@@ -54,6 +56,7 @@ describe('Vapi calling our tools', () => {
       clinicById: async (id) => (id === clinic.id ? clinic : id === OAK ? oak : null),
       openCall: (clinicId, sessionId, from, channel, startedBy, last4, how) => calls.open(clinicId, sessionId, from, channel, startedBy, last4, how),
       recorderFor: (clinicId, callId) => ({ appendSegment: (s) => calls.appendSegment(clinicId, callId, s), close: (c) => calls.close(clinicId, callId, c) }),
+      callEventsFor: (clinicId, callId, path) => new CallEventLog(t.db, clinicId, callId, path),
       actionsFor: (clinicId, callId) => ({ record: (a) => calls.recordAction(clinicId, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, taskRevision: a.revision, patientId: a.patientId }) }),
       backend: {
         patients: new PostgresPatientDirectory(t.db, cipher), scheduler: new BuiltinScheduler(t.db), tasks: new PostgresTaskQueue(t.db, cipher),
@@ -62,7 +65,7 @@ describe('Vapi calling our tools', () => {
       planner: { plan: async () => { throw new Error('the Vapi path never asks the planner'); } }, log,
       // the clinic an alert is about goes beside its text, so a test can check both
       alerts: { alert: (_k, text, where) => { const line = where?.clinicId ? `${text} [${where.clinicId}]` : text; alerts.push(line); allAlerts.push(line); }, resolved: () => {}, note: () => {}, flush: async () => {} },
-      now: () => new Date(),
+      now: () => clock ?? new Date(),
     });
     await app.ready();
   });
@@ -146,6 +149,26 @@ describe('Vapi calling our tools', () => {
     expect(row).toEqual({ first_audio_ms: 1120, lines: 3, wait: '1900' });
   });
 
+  it('logs each message\'s kind and, at the end, the turns on Vapi\'s own clock: never a word (foundation A)', async () => {
+    const c = { id: 'vapi-call-events', type: 'webCall' };
+    const greeting = { role: 'bot', message: clinic.greeting, secondsFromStart: 1, duration: 2000 };
+    const ask = { role: 'user', message: 'Hi, this is Maria Delgado, 303 555 0147. When do you close?', secondsFromStart: 4, duration: 2000 };
+    const toolCall = { role: 'tool_calls', secondsFromStart: 6.5 };
+    const answer = { role: 'bot', message: 'We close at six today.', secondsFromStart: 7.2, duration: 1500 };
+    await post({ type: 'status-update', status: 'in-progress', call: c });
+    await post({ type: 'tool-calls', call: c, artifact: { messages: [greeting, ask, toolCall] }, toolCallList: [{ id: 'tc_events', function: { name: 'clinic_now', arguments: {} } }] });
+    await post({ type: 'end-of-call-report', call: c, endedReason: 'customer-ended-call', durationSeconds: 10, artifact: { messages: [greeting, ask, toolCall, answer] } });
+    await t.client.query(`select set_config('app.clinic_id', $1, false)`, [clinic.id]);
+    const rows = (await t.client.query(`select e.type, e.at_ms, e.item_id, e.path from call_events e join calls c on c.id = e.call_id where c.openai_session_id = 'vapi_vapi-call-events' order by e.seq`)).rows as { type: string; at_ms: number; item_id: string | null; path: string }[];
+    expect(rows.map((r) => r.type)).toEqual(['vapi.status-update.in-progress', 'vapi.tool-calls', 'vapi.tool_call', 'vapi.end-of-call-report',
+      'vapi.assistant.started', 'vapi.assistant.stopped', 'vapi.caller.started', 'vapi.caller.stopped', 'vapi.tool_calls', 'vapi.assistant.started', 'vapi.assistant.stopped']);
+    expect(rows.find((r) => r.type === 'vapi.tool_call')?.item_id).toBe('tc_events');
+    expect(rows.filter((r) => r.type.startsWith('vapi.caller') || r.type === 'vapi.assistant.started').map((r) => r.at_ms)).toEqual([1000, 4000, 6000, 7200]);
+    expect(rows.every((r) => r.path === 'vapi/tools')).toBe(true);
+    expect(JSON.stringify(rows)).not.toMatch(/Maria|0147|close/);
+    expect(vapiTurnEvents([])).toEqual([]);
+  });
+
   it('refuses a clinic it does not know, as a result Vapi can say', async () => {
     const res = await post({ type: 'tool-calls', call: { id: 'vapi-call-2', type: 'webCall' }, toolCallList: [{ id: 'tc_9', function: { name: 'clinic_now', arguments: {} } }] }, TEST_SECRET, 'clinic_demo_unknown');
     expect(res.json()).toEqual({ results: [{ toolCallId: 'tc_9', error: 'This call cannot be helped here.' }] });
@@ -218,6 +241,30 @@ describe('Vapi calling our tools', () => {
     expect(second.say ?? '').not.toContain('Call facts');
     expect(controls).toEqual([]);
     await post({ type: 'end-of-call-report', call: d, endedReason: 'customer-ended-call', durationSeconds: 5 });
+  });
+
+  it('the call facts carry the clinic\'s date, its time and whether it is open, from the one builder every path uses (foundation A, item 5)', async () => {
+    // Monday, March 1, 2027 at the vet test clinic (Denver): 10 AM open, 8 PM closed. A day after this file's other calls,
+    // so the calls live at once (counted back from the call's own clock) are only this test's
+    const factsAt = async (id: string, local: string) => {
+      clock = zonedInstant('2027-03-01', local, clinic.timezone);
+      controls.length = 0;
+      const c = { id, type: 'inboundPhoneCall', customer: { number: '+13035550149' }, monitor: { controlUrl: CONTROL } };
+      await post({ type: 'status-update', status: 'in-progress', call: c });
+      await post({ type: 'conversation-update', call: c, messages: [{ role: 'bot', message: clinic.greeting, secondsFromStart: 0.5, duration: 3000 }] });
+      const [sent] = controls.filter((x) => x.body.type === 'add-message');
+      await post({ type: 'end-of-call-report', call: c, endedReason: 'customer-ended-call', durationSeconds: 5 });
+      clock = null;
+      return String((sent!.body.message as { content: string }).content);
+    };
+    const open = await factsAt('vapi-oak-facts-open', '10:00');
+    expect(open).toContain('Today at the clinic is Monday, March 1 (2027-03-01)');
+    expect(open).toContain('It\'s 10:00 AM on Monday, March 1, clinic time (MST).');
+    expect(open).toContain('The clinic is open until 6:00 PM.');
+    expect(open).toContain('ending 0149');
+    const closed = await factsAt('vapi-oak-facts-closed', '20:00');
+    expect(closed).toContain('It\'s 8:00 PM on Monday, March 1, clinic time (MST).');
+    expect(closed).toContain('The clinic is closed; it opens at 8:00 AM on Tuesday, March 2.');
   });
 
   it('counts the Vapi calls live at once, keeps the day\'s peak and says it once at 70% of the limit', async () => {

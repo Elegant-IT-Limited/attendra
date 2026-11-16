@@ -28,6 +28,7 @@ import { clientAddress } from './http/client-address';
 import { compressReply } from './http/compress';
 import { rateLimitKey } from './http/rate-key';
 import { StaffGuard, toHeaders } from './http/staff.guard';
+import { QaController } from './qa/qa.controller';
 import { IdempotencyInterceptor } from './http/idempotency';
 import { ALERTS, API_OPTIONS, type ApiOptions, AUTH, CHANGES, CIPHER, CLOCK, DB, EVENTS, FRONT_DESK, JOBS, KNOWLEDGE, WEBHOOK_GUARD, LOGGER, MAIL, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VAPI, VOICE, VOICE_SAMPLES, type VoiceClient, type VoiceSampler } from './http/tokens';
 import { MeController } from './me/me.controller';
@@ -110,7 +111,7 @@ class ApiModule {
     if (vapi) onSettingsSaved(desk, (clinicId) => vapi.touched(clinicId));
     return {
       module: ApiModule,
-      controllers: [HealthController, MeController, UsersController, ChangesController, OverviewController, PlanController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, TextsController, AppointmentsController, PatientsController, DoctorsController, TeamController, TeamInvitationsController, MyInvitationsController, SettingsController, VoiceSamplesController, EmergencyReviewController, AuditController, ProvisioningController, HandoffsController, DemoClinicController],
+      controllers: [HealthController, MeController, UsersController, ChangesController, OverviewController, PlanController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, TextsController, AppointmentsController, PatientsController, DoctorsController, TeamController, TeamInvitationsController, MyInvitationsController, SettingsController, VoiceSamplesController, EmergencyReviewController, AuditController, ProvisioningController, HandoffsController, DemoClinicController, QaController],
       providers: [
         { provide: DB, useValue: deps.db },
         { provide: CIPHER, useValue: deps.cipher },
@@ -300,9 +301,10 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
 
   const doc = new DocumentBuilder()
     .setTitle('Attendra dashboard API')
-    .setDescription('What the staff dashboard uses. Sign in through /api/auth; the session cookie authenticates every call.')
+    .setDescription('What the staff dashboard uses. Sign in through /api/auth; the session cookie authenticates every call. The QA export (/qa/export) also takes a clinic API key with qa:read as a bearer token.')
     .setVersion(version)
     .addCookieAuth('attendra.session_token')
+    .addBearerAuth()
     .build();
   SwaggerModule.setup('api/docs', app, () => SwaggerModule.createDocument(app, doc));
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { afterTool, type CallState, callStateNote, type FlowMemory, flowStage, nextStep, type Planner, type PlannerInput, type PlannerOutput, type PlannerTiming, shapeForVoice, speculativeLookup, type ToolResult, voiceToolDefinitions } from '@attendra/agent';
 import { addDays, clinicNow, clinicNowLine, type ClinicConfig, localDateOf, type ToolName, weekdayOf } from '@attendra/core';
-import { callFacts, realtimeTools, toolQuestion, toolRefusalLine, toolReplyInstructions, toolsBackendInstructions, toolsVoiceStaticPrompt, TOOLS_TRUNCATION, TURN_NOTE } from '@attendra/voice-engine';
+import { callFactsNote, realtimeTools, toolQuestion, toolRefusalLine, toolReplyInstructions, toolsBackendInstructions, toolsVoiceStaticPrompt, TOOLS_TRUNCATION, TURN_NOTE } from '@attendra/voice-engine';
 import type OpenAI from 'openai';
 import { OpenAIRealtimeWS } from 'openai/realtime/ws';
 
@@ -58,7 +58,7 @@ export class ToolsPathPlanner implements Planner {
         const r = await execute(name as ToolName, args);
         afterTool(s.flow, name, r.ok && !r.data.error, state.turns.length);
         const stage = flowStage(state, s.flow);
-        return JSON.stringify(shapeForVoice(name, r, stage, nextStep(stage, state, clinic, input.callerNumber ?? null)));
+        return JSON.stringify(shapeForVoice(name, r, stage, nextStep(stage, state, clinic, input.facts.caller?.number ?? null)));
       } finally {
         toolMs += performance.now() - t0;
       }
@@ -106,7 +106,7 @@ export class ToolsPathPlanner implements Planner {
       await s.ready;
       ws.send({ type: 'session.update', session: { type: 'realtime', output_modalities: ['text'], instructions: toolsVoiceStaticPrompt(input.clinic), tools: realtimeTools(input.clinic) as never, tool_choice: 'auto', truncation: TOOLS_TRUNCATION } });
       // the call's own facts first, once (batch 1d), as on a call
-      ws.send({ type: 'conversation.item.create', item: { type: 'message', role: 'system', content: [{ type: 'input_text', text: callFacts(input.clinic, input.now ?? new Date(), input.callerNumber ?? null) }] } } as never);
+      ws.send({ type: 'conversation.item.create', item: { type: 'message', role: 'system', content: [{ type: 'input_text', text: callFactsNote(input.clinic, input.facts) }] } } as never);
       // the greeting was said before the caller spoke
       ws.send({ type: 'conversation.item.create', item: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: input.clinic.greeting }] } } as never);
     }

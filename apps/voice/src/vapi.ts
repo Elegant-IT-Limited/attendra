@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, type Backend, CallAgent, CallCache, cachedBackend, CallState, type Outbound, type Planner } from '@attendra/agent';
-import { ClinicConfig, DEMO_BUSY_LINE, DEMO_GOODBYE_LINE, DEMO_LIMITS, DEMO_WRAP_UP_LINE, type DemoLimitCode, isDemoClinic, isVapiTestClinic, maxGapMs, repeatedQuestions, vapiAlertAt } from '@attendra/core';
+import { callFacts, type CallEventSink, ClinicConfig, DEMO_BUSY_LINE, DEMO_GOODBYE_LINE, DEMO_LIMITS, DEMO_WRAP_UP_LINE, type DemoLimitCode, isDemoClinic, isVapiTestClinic, maxGapMs, repeatedQuestions, vapiAlertAt } from '@attendra/core';
 import { type Alerter, isVapiCreditEnd, isVapiOpenAiQuotaEnd, type Logger } from '@attendra/observability';
-import { type CallRecorder, callFacts, VAPI_EVENTS_PATH, VAPI_SECRET_HEADER } from '@attendra/voice-engine';
+import { type CallRecorder, callFactsNote, VAPI_EVENTS_PATH, VAPI_SECRET_HEADER } from '@attendra/voice-engine';
 import type { FastifyInstance } from 'fastify';
 import { createHash, timingSafeEqual } from 'node:crypto';
 
@@ -40,6 +40,8 @@ export interface VapiDeps extends VapiOptions {
   openCall(clinicId: string, sessionId: string, fromNumber: string | null, channel: 'phone' | 'web', startedBy?: string, calledAsLast4?: string, how?: { engine?: 'vapi'; voiceFlow?: 'tools' }): Promise<string>;
   recorderFor(clinicId: string, callId: string): CallRecorder;
   actionsFor(clinicId: string, callId: string): ActionRecorder;
+  /** The call's event log (foundation A): Vapi's message types, and at the end its line times. Without it nothing is logged. */
+  callEventsFor?(clinicId: string, callId: string, path: string): CallEventSink;
   backend: Backend;
   planner: Planner;
   log: Logger;
@@ -84,8 +86,9 @@ interface Session {
   /** Set once the call is over: a transfer or hang-up still waiting is dropped. */
   closed: boolean;
   /**
-   * This call's own facts (the clinic's date, the caller ID and the number question; callFacts, as on path A), until
-   * they are sent into the call: the assistant's prompt is the same on every call of the location.
+   * This call's own facts (core callFacts: the clinic's date and time, open or closed, the caller ID and the number
+   * question; in path A's words, callFactsNote), until they are sent into the call: the assistant's prompt is the same
+   * on every call of the location.
    */
   facts: string | null;
   /** A demo call turned away by a limit: its tool calls are refused, and it is ended. */
@@ -94,6 +97,25 @@ interface Session {
   pending: Record<string, unknown>[];
   /** Vapi said the call ended (its status): no longer live for a restart's drain, though its report may still come. */
   over?: boolean;
+  /** The call's event log: each message's type, never its content. */
+  events: CallEventSink;
+}
+
+const NO_EVENTS: CallEventSink = { add: () => {}, close: async () => ({ written: 0, dropped: 0 }) };
+
+/**
+ * A Vapi call's turns for its event log, from the end-of-call report's lines (Vapi's own times, as vapiAnswerWaits reads
+ * them): when the caller started and stopped, and when the assistant started and stopped, and each tool call's moment.
+ * Times and kinds only. The daily numbers read stalls and reply times from them, as from the Realtime events.
+ */
+export function vapiTurnEvents(lines: VapiLine[]): { type: string; atMs: number }[] {
+  const out: { type: string; atMs: number }[] = [];
+  for (const l of vapiRecordLines(lines)) {
+    const who = l.speaker === 'caller' ? 'caller' : 'assistant';
+    out.push({ type: `vapi.${who}.started`, atMs: l.startMs }, { type: `vapi.${who}.stopped`, atMs: l.endMs });
+  }
+  for (const l of lines) if (l.role === 'tool_calls') out.push({ type: 'vapi.tool_calls', atMs: startOf(l) });
+  return out.sort((a, b) => a.atMs - b.atMs);
 }
 
 /** Vapi's own times, in ms from the call's start: when a line began and ended. */
@@ -310,7 +332,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
     agent.state.answersAcrossPieces = true;
     // the caller ID reaches every tool as on path A (the agent's callerNumber), and the voice hears it with the date
     const s: Session = { agent, clinicId: clinic.id, callId, fed: [], startedAt: Date.now(), notes: [], controlUrl: controlUrlOf(m), closed: false,
-      facts: demoLimit ? null : callFacts(clinic, deps.now(), from), refused: !!demoLimit, pending: [] };
+      facts: demoLimit ? null : callFactsNote(clinic, callFacts(clinic, deps.now(), from)), refused: !!demoLimit, pending: [], events: deps.callEventsFor?.(clinic.id, callId, 'vapi/tools') ?? NO_EVENTS };
     sessions.set(vapiId, s);
     if (demoLimit) {
       // over a limit: the one fixed line over whatever Vapi's assistant began, then the end; recorded with the limit's code
@@ -362,7 +384,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
     if (!clinicId || !CLINIC_ID.test(clinicId) || !(await authorised(clinicId, presentedOf(req.headers)))) return reply.code(401).send({ error: 'unauthorized' });
     let m: VapiMessage;
     try { m = (JSON.parse(req.body as string) as { message?: VapiMessage }).message ?? {}; } catch { return reply.code(400).send({ error: 'invalid body' }); }
-    for (const [id, s] of sessions) if (Date.now() - s.startedAt > SESSION_TTL_MS) sessions.delete(id);
+    for (const [id, s] of sessions) if (Date.now() - s.startedAt > SESSION_TTL_MS) { sessions.delete(id); void s.events.close(); }
     if (refused.size > 10_000) refused.clear();
     const vapiId = m.call?.id;
 
@@ -381,6 +403,8 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
       if (vapiId && !sessions.has(vapiId)) await live(vapiId);
       const s = await session(m, clinicId);
       if (!s || s.refused) return reply.code(200).send({ results: (m.toolCallList ?? []).map((t) => ({ toolCallId: t.id, error: 'This call cannot be helped here.' })) });
+      s.events.add({ type: 'vapi.tool-calls' });
+      for (const t of m.toolCallList ?? []) s.events.add({ type: 'vapi.tool_call', itemId: t.id });
       // the call facts never sent (no control URL yet): with this result, before anything else
       if (s.facts) { s.notes.unshift(s.facts); s.facts = null; }
       sync(s, m.artifact?.messages);
@@ -400,7 +424,11 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
     // even when the model calls no tool (an emergency in the first sentence), and the call is on file from its start
     const opens = m.type === 'conversation-update' || m.type === 'end-of-call-report' || (m.type === 'status-update' && m.status === 'in-progress');
     const s = vapiId ? sessions.get(vapiId) ?? (opens ? await session(m, clinicId) ?? undefined : undefined) : undefined;
-    if (s) { s.controlUrl ??= controlUrlOf(m); sendFacts(s); flushPending(s); }
+    if (s) {
+      s.controlUrl ??= controlUrlOf(m); sendFacts(s); flushPending(s);
+      // the message's kind (and a status's name), never its content
+      if (typeof m.type === 'string') s.events.add({ type: `vapi.${m.type}${m.type === 'status-update' && typeof m.status === 'string' ? `.${m.status}` : ''}` });
+    }
     if (m.type === 'conversation-update' && s) sync(s, m.messages);
     if (m.type === 'end-of-call-report' && s) {
       const lines = m.artifact?.messages ?? [];
@@ -417,6 +445,10 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
       for (const line of record) await recorder.appendSegment(line);
       await recorder.close({ reason: m.endedReason ?? 'ended', voiceSeconds: typeof m.durationSeconds === 'number' ? m.durationSeconds : null, outcome: s.agent.state.outcome, emergency: !!s.agent.state.emergency, emergencyResult: s.agent.state.emergencyResult, language: s.agent.state.language, quality: { firstAudioMs: vapiFirstAudioMs(lines), stalls: 0, answerTimeouts: 0, maxGapMs: maxGapMs(record), repeatedQuestions: repeatedQuestions(record).length }, usage: { models: s.agent.state.modelTokens, ...(typeof m.cost === 'number' && m.cost >= 0 ? { engineUsd: m.cost } : {}) } });
       sessions.delete(vapiId!);
+      // the call's turns on Vapi's own clock, then the rest of the log written
+      for (const e of vapiTurnEvents(lines)) s.events.add(e);
+      const logged = await s.events.close();
+      if (logged.dropped) deps.log.warn({ call_id: s.callId, ...logged }, 'vapi: call events dropped');
       deps.log.info({ call_id: s.callId, engine: 'vapi', reason: m.endedReason ?? 'ended' }, 'vapi call closed');
     }
     return reply.code(200).send({});

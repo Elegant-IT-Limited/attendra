@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, industryPack, localName, PACKS } from '@attendra/core';
+import { callerIdOf, type ClinicConfig, industryPack, localName, PACKS } from '@attendra/core';
 import type { CallState } from '../call-state';
 import { NOT_OFFERED_VISIT } from '../visit-offer';
 
@@ -46,7 +46,7 @@ export function nextStep(stage: FlowStage, state: CallState, clinic: ClinicConfi
   switch (stage) {
     case 'idle':
       if (!pets) return 'For a visit, find the patient first with verify_caller: their full name and date of birth, phone null for the number they are calling from.';
-      return `For a visit, the number comes first: ask "${pack.profileNumberQuestion({ last4: callerNumber ? callerNumber.replace(/\D/g, '').slice(-4) : null })}" then call verify_caller with what they say (phone null when it is the number they are calling from) and pet_name when they named the pet. A question about the clinic needs no number: answer it with get_clinic_info.`;
+      return `For a visit, the number comes first: ask "${pack.profileNumberQuestion({ last4: callerIdOf(callerNumber)?.last4 ?? null })}" then call verify_caller with what they say (phone null when it is the number they are calling from) and pet_name when they named the pet. A question about the clinic needs no number: answer it with get_clinic_info.`;
     case 'number_asked':
       return 'Wait for the caller\'s answer to the number read-back. On a yes, call verify_caller again with the same number; on a no, ask for the number again.';
     case 'number_confirmed':

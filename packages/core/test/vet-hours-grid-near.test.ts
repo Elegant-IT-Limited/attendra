@@ -42,7 +42,7 @@ describe('a vet\'s own hours decide (item 1)', () => {
   });
 
   it('a vet in until 7 at a clinic that closes at 5 is booked after 5, marked outside the clinic\'s hours', () => {
-    const slots = findSlots(clinic, [], { visitType: vt('vt_exam'), providers: [vet('prov_hartley')], from: '2026-11-05', days: 1, now, limit: 100, allStarts: true });
+    const slots = findSlots(clinic, [], { visitType: vt('vt_exam'), providers: [vet('prov_hartley')], from: '2026-11-05', days: 1, now, limit: 100, actor: 'desk' as const });
     const late = slots.find((s) => hm(s.start) === 'Thu 18:40')!;
     expect(late.outsideClinicHours).toBe(true);
     expect(slots.find((s) => hm(s.start) === 'Thu 16:40')!.outsideClinicHours).toBe(false);
@@ -72,7 +72,7 @@ describe('a vet\'s own hours decide (item 1)', () => {
 });
 
 describe('start times on the clinic\'s grid (item 2)', () => {
-  const thursday = { providers: [vet('prov_hartley')], from: '2026-11-05', days: 1, now, limit: 500, allStarts: true };
+  const thursday = { providers: [vet('prov_hartley')], from: '2026-11-05', days: 1, now, limit: 500, actor: 'desk' as const };
   it('5, 10 and 15 minutes', () => {
     expect(times(findSlots(clinic, [], { ...thursday, visitType: vt('vt_exam'), startEvery: 5 })).slice(0, 4)).toEqual(['Thu 08:00', 'Thu 08:05', 'Thu 08:10', 'Thu 08:15']);
     expect(times(findSlots(clinic, [], { ...thursday, visitType: vt('vt_exam'), startEvery: 10 })).slice(0, 4)).toEqual(['Thu 08:00', 'Thu 08:10', 'Thu 08:20', 'Thu 08:30']);
@@ -92,21 +92,21 @@ describe('start times on the clinic\'s grid (item 2)', () => {
 
   it('the visit fits inside the window; its buffer (cleaning time) may run past the close (approved 2026-11-08, SCH-11)', () => {
     // Friday 2 to 6: a 30-minute consultation keeps 10 minutes after it, and 5:30 is still the last start: it ends at 6
-    const fri = findSlots(clinic, [], { visitType: vt('vt_consult'), providers: [vet('prov_marlow')], from: '2026-11-06', days: 1, now, limit: 500, allStarts: true });
+    const fri = findSlots(clinic, [], { visitType: vt('vt_consult'), providers: [vet('prov_marlow')], from: '2026-11-06', days: 1, now, limit: 500, actor: 'desk' as const });
     expect(times(fri).at(-1)).toBe('Fri 17:30');
     // the morning window too: 12:30 ends at 1, its cleaning time runs into the break
     expect(times(fri.filter((s) => hm(s.start) < 'Fri 14:00')).at(-1)).toBe('Fri 12:30');
     // a 20-minute visit with 10 minutes after it may start at 4:40 on a 5:00 close
     const exam = { ...vt('vt_exam'), bufferMinutes: 10 };
-    const late = findSlots({ ...clinic, visitTypes: clinic.visitTypes.map((v) => (v.id === 'vt_exam' ? exam : v)) }, [], { visitType: exam, providers: [vet('prov_nolan')], from: '2026-11-05', days: 1, now, limit: 500, allStarts: true });
+    const late = findSlots({ ...clinic, visitTypes: clinic.visitTypes.map((v) => (v.id === 'vt_exam' ? exam : v)) }, [], { visitType: exam, providers: [vet('prov_nolan')], from: '2026-11-05', days: 1, now, limit: 500, actor: 'desk' as const });
     expect(times(late).at(-1)).toBe('Thu 16:40');
     // and the buffer still keeps the next visit off: one booked at 4:40 leaves nothing at 4:20 for a buffered exam (4:20-4:40, then 10 free)
     const booked = [{ providerId: 'prov_nolan', start: zonedInstant('2026-11-05', '16:40', tz), end: zonedInstant('2026-11-05', '17:00', tz), visitTypeId: 'vt_exam' }];
-    const around = times(findSlots({ ...clinic, visitTypes: clinic.visitTypes.map((v) => (v.id === 'vt_exam' ? exam : v)) }, booked, { visitType: exam, providers: [vet('prov_nolan')], from: '2026-11-05', days: 1, now, limit: 500, allStarts: true }));
+    const around = times(findSlots({ ...clinic, visitTypes: clinic.visitTypes.map((v) => (v.id === 'vt_exam' ? exam : v)) }, booked, { visitType: exam, providers: [vet('prov_nolan')], from: '2026-11-05', days: 1, now, limit: 500, actor: 'desk' as const }));
     expect(around).not.toContain('Thu 16:20');
     expect(around.at(-1)).toBe('Thu 16:10');
     // and the window end: a 20-minute visit at a clinic that closes at 5 starts 4:40 at the latest
-    expect(times(findSlots(clinic, [], { visitType: vt('vt_exam'), providers: [vet('prov_nolan')], from: '2026-11-05', days: 1, now, limit: 500, allStarts: true })).at(-1)).toBe('Thu 16:40');
+    expect(times(findSlots(clinic, [], { visitType: vt('vt_exam'), providers: [vet('prov_nolan')], from: '2026-11-05', days: 1, now, limit: 500, actor: 'desk' as const })).at(-1)).toBe('Thu 16:40');
   });
 
   it('a booked visit\'s buffer is kept: the next start is the first grid time after it', () => {
@@ -116,7 +116,7 @@ describe('start times on the clinic\'s grid (item 2)', () => {
   });
 
   it('the times offered are a visit apart, while every grid start stays bookable', () => {
-    expect(times(findSlots(clinic, [], { ...thursday, visitType: vt('vt_exam'), allStarts: false, limit: 3 }))).toEqual(['Thu 08:00', 'Thu 08:20', 'Thu 08:40']);
+    expect(times(findSlots(clinic, [], { ...thursday, visitType: vt('vt_exam'), actor: 'assistant' as const, limit: 3 }))).toEqual(['Thu 08:00', 'Thu 08:20', 'Thu 08:40']);
   });
 
   it('nothing sooner than the lead time, two hours by default', () => {

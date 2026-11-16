@@ -100,8 +100,11 @@ const digitsOf = (w: string) => w.replace(/\D/g, '');
 const NUMBER_BODY = /^[+(]?[\d().-]+$/;
 const isNumberish = (w: string) => { const body = w.slice(0, w.length - trailOf(w, (ch) => ',.;:!?)'.includes(ch)).length); return /\d/.test(body) && NUMBER_BODY.test(body); };
 
-/** Every run of words that writes or says five digits or more, cut to its last four ("…0172"). */
-function maskNumbers(pieces: Piece[]): Piece[] {
+/**
+ * Every run of words that writes or says `min` digits or more (five by default), replaced by `as` (by default cut to its
+ * last four, "…0172").
+ */
+function maskNumbers(pieces: Piece[], min = 5, as: (digits: string) => string = lastFour): Piece[] {
   const out: Piece[] = [];
   let i = 0;
   while (i < pieces.length) {
@@ -119,9 +122,9 @@ function maskNumbers(pieces: Piece[]): Piece[] {
       }
       break;
     }
-    if (j > i && digits.length >= 5) {
+    if (j > i && digits.length >= min) {
       const trail = trailOf(pieces[j - 1]!.word).replace(/[\d()+-]/g, '');
-      out.push({ word: `${lastFour(digits)}${trail}`, gap: pieces[j - 1]!.gap });
+      out.push({ word: `${as(digits)}${trail}`, gap: pieces[j - 1]!.gap });
       i = j;
     } else {
       out.push(pieces[i]!);
@@ -163,6 +166,16 @@ export function maskExcerptLine(line: string, names: KnownNames): string {
     for (const w of nameWords(list)) t = t.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escape(w)}(?![\\p{L}\\p{N}])`, 'giu'), `[${kind}]`);
   }
   return t;
+}
+
+/**
+ * A line with every run of `min` digits or more, written ("555-0172") or said ("five five five, oh one"), replaced by
+ * `as`, and every email as [email]; the other words as they were (no accent folding). The QA export's masking
+ * (qa-mask.ts) is built on it.
+ */
+export function maskDigitRuns(line: string, min: number, as: (digits: string) => string): string {
+  const lead = /^\s*/.exec(line)![0];
+  return lead + maskNumbers(maskEmails(piecesOf(line)), min, as).map((p) => p.word + p.gap).join('');
 }
 
 /** One line of an excerpt as stored: who said it, and the masked words. */

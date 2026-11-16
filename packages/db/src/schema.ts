@@ -213,6 +213,29 @@ export const callActions = pgTable('call_actions', {
 });
 
 /**
+ * The per-call event log (migration 0060): each provider event's type and timing, its response and item ids, and an
+ * error's code and type. Never content. Kept 7 days (core CALL_EVENTS_RETENTION_DAYS).
+ */
+export const callEvents = pgTable('call_events', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  clinicId: text('clinic_id').notNull(),
+  callId: uuid('call_id').notNull(),
+  /** engine/flow, as the call was answered: gpt-realtime/tools, gpt-live/planner, vapi/tools. */
+  path: text('path').notNull(),
+  seq: integer('seq').notNull(),
+  atMs: integer('at_ms').notNull(),
+  type: text('type').notNull(),
+  /** How many events of this type in a row were folded into the row (deltas), the last at lastMs. */
+  n: integer('n').notNull().default(1),
+  lastMs: integer('last_ms'),
+  responseId: text('response_id'),
+  itemId: text('item_id'),
+  errorCode: text('error_code'),
+  errorType: text('error_type'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
  * One row each time the assistant handed a call to the team or had no answer (note 47; migration 0057): codes only, and
  * a masked, encrypted excerpt where the clinic allows it. Goes with the call; the excerpt is cleared with its transcript.
  */

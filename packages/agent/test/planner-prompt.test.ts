@@ -1,7 +1,8 @@
-import { DEMO_CLINIC, RIVERBEND_CLINIC, Texting } from '@attendra/core';
+import { callFacts, DEMO_CLINIC, RIVERBEND_CLINIC, Texting } from '@attendra/core';
 import { describe, expect, it } from 'vitest';
 import { ResponsesPlanner, stateLine, systemPrompt } from '../src/planner';
 import { CallState } from '../src';
+import { NOW } from './support';
 
 describe('the planner\'s instructions follow the clinic\'s industry', () => {
   it('a clinic finds a patient by name, date of birth and phone', () => {
@@ -68,7 +69,7 @@ describe('the planner\'s instructions follow the clinic\'s industry', () => {
   it('a veterinary clinic\'s tools take the owner\'s and the pet\'s names', async () => {
     let tools: { name: string; description: string; parameters: { properties: Record<string, unknown> } }[] = [];
     const openai = { responses: { create: async (req: { tools: typeof tools }) => { tools = req.tools; return { output: [], output_text: 'ok' }; } } };
-    await new ResponsesPlanner(openai as never, 'test-model').plan({ clinic: RIVERBEND_CLINIC, state: new CallState(), nowLine: 'Today is Monday.' }, async () => ({ ok: true, data: {} }));
+    await new ResponsesPlanner(openai as never, 'test-model').plan({ clinic: RIVERBEND_CLINIC, state: new CallState(), facts: callFacts(RIVERBEND_CLINIC, NOW, null) }, async () => ({ ok: true, data: {} }));
     const verify = tools.find((t) => t.name === 'verify_caller')!;
     expect(Object.keys(verify.parameters.properties)).toEqual(['owner_name', 'pet_name', 'phone', 'species', 'phone_last4']);
     expect(verify.description).toContain('Find the pet');
@@ -80,7 +81,7 @@ describe('the planner\'s instructions follow the clinic\'s industry', () => {
     const toolsFor = async (clinic: typeof DEMO_CLINIC) => {
       let tools: { name: string; strict: boolean }[] = [];
       const openai = { responses: { create: async (req: { tools: typeof tools }) => { tools = req.tools; return { output: [], output_text: 'ok' }; } } };
-      await new ResponsesPlanner(openai as never, 'test-model').plan({ clinic, state: new CallState(), nowLine: 'Today is Monday.' }, async () => ({ ok: true, data: {} }));
+      await new ResponsesPlanner(openai as never, 'test-model').plan({ clinic, state: new CallState(), facts: callFacts(clinic, NOW, null) }, async () => ({ ok: true, data: {} }));
       return tools;
     };
     expect((await toolsFor(DEMO_CLINIC)).some((t) => t.name === 'send_text')).toBe(false);

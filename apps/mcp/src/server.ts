@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ClinicConfig, isOpen, localDateOf, qualityOf, ROLE_LABEL, zonedInstant } from '@attendra/core';
+import { addDays, bookingPolicy, ClinicConfig, earliestStart, isOpen, lastBookableDate, localDateOf, qualityOf, ROLE_LABEL, zonedInstant } from '@attendra/core';
 import { apiKeyIsLive, approvesRefills, type ApiCaller, type ApiScope, auditKeyUse, auditKeyUseIn, type Database, FrontDeskRepository, type PhiCipher, phiContext, qualityRows, schema, staffPeople, taskFacts, withClinic } from '@attendra/db';
 import type { Logger } from '@attendra/observability';
 import { openSlots } from '@attendra/scheduling';
@@ -60,7 +60,7 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
 
   server.registerTool('find_open_slots', {
     title: 'Find open appointment times',
-    description: 'Open times for a visit type, over the next days, optionally for one provider. No patient data. Needs schedule:read. It does not book: offer the times to a person or the caller.',
+    description: 'Open times for a visit type, over the next days, optionally for one provider: the times the clinic\'s phone assistant offers and books (the visit\'s notice, at least two hours ahead, up to its furthest date), so a caller can take any of them on a call. earliestStart and lastDate say the limits. No patient data. Needs schedule:read. It does not book: offer the times to a person or the caller.',
     inputSchema: {
       visitTypeId: z.string().describe('A visit type id from the clinic, like vt_sick'),
       providerId: z.string().optional().describe('Only this provider'),
@@ -73,10 +73,20 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
     const c = await clinic();
     const from = a.from ?? localDateOf(now(), c.timezone);
     const busy = await desk.busy(c.id, { from: zonedInstant(from, '00:00', c.timezone), to: zonedInstant(addDays(from, a.days + 1), '00:00', c.timezone) });
-    const slots = openSlots(c, busy, { visitTypeId: a.visitTypeId, providerId: a.providerId, from, days: a.days, partOfDay: a.partOfDay, now: now(), limit: 20 });
+    // the assistant's booking rule (core bookingPolicy): an agent offers these times to callers, who book them on a call,
+    // so it lists only what the phone books. A key carries no "desk" marker; staff see every start in the dashboard
+    const at = now();
+    const slots = openSlots(c, busy, { visitTypeId: a.visitTypeId, providerId: a.providerId, from, days: a.days, partOfDay: a.partOfDay, now: at, actor: 'assistant', limit: 20 });
+    const visitType = c.visitTypes.find((v) => v.id === a.visitTypeId);
+    const policy = visitType ? bookingPolicy(visitType, 'assistant') : null;
     const names = (id: string) => c.providers.find((p) => p.id === id)?.name ?? id;
     return {
-      result: { timezone: c.timezone, visitTypes: c.visitTypes.map((v) => ({ id: v.id, name: v.name })), slots: slots.map((s) => ({ providerId: s.providerId, provider: names(s.providerId), startsAt: s.start.toISOString(), endsAt: s.end.toISOString() })) },
+      result: {
+        timezone: c.timezone, visitTypes: c.visitTypes.map((v) => ({ id: v.id, name: v.name })),
+        slots: slots.map((s) => ({ providerId: s.providerId, provider: names(s.providerId), startsAt: s.start.toISOString(), endsAt: s.end.toISOString() })),
+        // why a day has nothing: the first start the rule allows, and the last date (null: no limit)
+        ...(policy ? { earliestStart: earliestStart(policy, at).toISOString(), lastDate: lastBookableDate(policy, at, c.timezone) } : {}),
+      },
       counts: { slots: slots.length },
     };
   }));
