@@ -62,7 +62,8 @@ describe('the call event log', () => {
     // and anything handed to it directly that is not id-shaped
     log.add({ type: SAID, responseId: SAID, itemId: 'Maria Delgado', errorCode: '303 555 0147' });
     expect(await log.close()).toEqual({ written: 5, dropped: 0 });
-    const stored = JSON.stringify(await rowsOf(callId));
+    // every text column (ids and times are not words: a timestamp may hold "303" by chance)
+    const stored = JSON.stringify((await rowsOf(callId)).map((r) => [r.path, r.type, r.response_id, r.item_id, r.error_code, r.error_type]));
     for (const word of ['Maria', 'Delgado', '0147', '303', 'owner_name', 'Bad value']) expect(stored).not.toContain(word);
     expect((await rowsOf(callId)).map((r) => r.type)).toEqual(['conversation.item.input_audio_transcription.completed', 'session.input_transcript.delta', 'response.function_call_arguments.done', 'error', 'unknown']);
     // the table refuses a sentence even from code that skips the checks

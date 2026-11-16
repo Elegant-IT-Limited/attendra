@@ -18,7 +18,8 @@ Authorization: Bearer <key>
 `day` is the clinic's own day, in its time zone (Settings > General). Leave it out for yesterday by the clinic's clock. For example, with placeholder values:
 
 ```bash
-curl -s -H "Authorization: Bearer atk_REPLACE_WITH_YOUR_KEY" \
+ATTENDRA_QA_KEY=atk_...   # the key, from Settings > API keys (better: from your secrets store)
+curl -s -H "Authorization: Bearer $ATTENDRA_QA_KEY" \
   "https://attendra.example.com/api/v1/clinics/clinic_example/qa/export?day=2026-11-16"
 ```
 
