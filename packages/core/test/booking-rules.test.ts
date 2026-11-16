@@ -65,9 +65,13 @@ describe('the vets a pet may be offered for its kind of animal (note 2026-11-16 
     expect(animalFit(maple, 'perro')?.seeIds).toEqual(['chen']);
   });
 
-  it('a vet who lists no animals sees them all, as the booking rules say', () => {
+  it('a vet who lists no animals sees them all, as the booking rules say; only vets with animals listed are filtered', () => {
     const mixed = vets([{ id: 'chen', categories: ['Dog', 'Cat'] }, { id: 'lee', categories: ['Bird'] }, { id: 'gray', categories: ['Dentistry'] }]);
     expect(animalFit(mixed, 'bird')?.seeIds).toEqual(['lee', 'gray']);
+    expect(animalFit(mixed, 'dog')?.seeIds).toEqual(['chen', 'gray']);
+    // nobody lists a horse: everyone, the dogs-and-cats vet too, as before
+    expect(animalFit(mixed, 'horse')).toBeNull();
+    expect(animalFit(vets([{ id: 'chen', categories: ['Dog', 'Cat'] }, { id: 'gray', categories: [] }]), 'bird')).toBeNull();
   });
 
   it('nothing narrows when no vet lists the kind, no vet lists animals, the pet has no kind, or the rule is off', () => {

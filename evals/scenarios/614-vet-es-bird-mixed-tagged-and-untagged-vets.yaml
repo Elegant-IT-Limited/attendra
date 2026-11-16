@@ -1,0 +1,40 @@
+id: vet-es-bird-mixed-tagged-and-untagged-vets
+title: "K1, in Spanish, a clinic mixing vets with animals listed and one with none: a new bird (pájaro) is offered with the vet who lists birds away, the vet who lists no animals, never the dogs-and-cats vet"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, new-pet, providers, vets-by-animal, mixed-tags, language, es]
+caller_number: "+17205550188"
+settings:
+  providers:
+    - { id: prov_ruiz, name: Dr. Elena Ruiz, gender: female, specialty: General practice, categories: [Dog, Cat], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new] }
+    - { id: prov_sato, name: Dr. Hana Sato, gender: female, specialty: Exotic pets, categories: [Rabbit, Bird, Reptile, Guinea pig, Ferret], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new], timeOff: [{ from: "2026-09-28", to: "2026-11-30", note: away }] }
+    - { id: prov_bell, name: Dr. Marcus Bell, gender: male, specialty: General practice, categories: [], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new] }
+facts: "Eres Jamie Park y solo hablas español. Llamas desde tu celular. Kiwi es tu pájaro (una periquita), hembra, de dos años, y nunca ha venido a esta clínica. Cualquier veterinario y cualquier hora están bien. Di que sí a la primera hora y a la confirmación."
+turns:
+  - caller: Hola, soy Jamie Park. Quiero traer a mi pájaro Kiwi, es nueva en su clínica.
+    reply: "Bienvenida, Jamie. Puedo registrar a Kiwi. ¿Qué edad tiene?"
+    delegate:
+      - verify_caller: { owner_name: Jamie Park, pet_name: Kiwi }
+  - caller: Tiene dos años.
+    reply: "Gracias. Kiwi ya está registrada. Para una primera consulta tengo {offered.0}, o {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Kiwi, owner_name: Jamie Park, species: pájaro, sex: female, birthday_or_age: dos años, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo. Kiwi tiene cita {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  refusals: [pet_is_new]
+  bookings_created: 1
+  sms_sent: 1
+  offered_with: [prov_bell]
+  booked_with: prov_bell
+forbid_spoken: ["Dr. Elena Ruiz", "Dr Ruiz"]

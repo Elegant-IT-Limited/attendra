@@ -174,17 +174,19 @@ export function animalsWord(kind: string): string {
 
 /**
  * The vets a pet may be offered for its kind of animal, the one rule the staff's open times and New booking's vet list
- * follow (note 2026-11-16 K1: a bird was offered the dogs-and-cats vet first), as the assistant's find_slots does: with
- * the clinic's "Match the kind of animal" rule on, the vets who see the kind (listed for it, a rabbit under "Exotics"
- * too, or listing no animals at all). Null when nothing narrows: the rule is off, the pet has no kind, every vet sees
- * it (none lists animals, say), or none does (then the desk sees everyone, as before; the assistant takes a request).
+ * follow (note 2026-11-16 K1: a bird was offered the dogs-and-cats vet first). With the clinic's "Match the kind of
+ * animal" rule on and at least one vet listing the pet's kind (a rabbit under "Exotics" too): those vets, and every vet
+ * who lists no animals (they see them all); a vet who lists other animals only is left out. Null when nothing narrows,
+ * and everyone is offered as before: the rule is off, the pet has no kind, no vet lists its kind, or every vet sees it.
+ * The owner's rule, 2026-11-16: only vets with animals listed are filtered by the pet's kind.
  */
 export function animalFit(clinic: Pick<ClinicConfig, 'providers' | 'booking'>, species: string | null | undefined): { kind: string; seeIds: string[] } | null {
   const kind = species?.trim();
   if (!kind || !bookingOf(clinic).matchAnimal) return null;
   const all = bookableProviders(clinic.providers);
+  if (!all.some((p) => listsAnimals(p) && seesAnimal(p, kind))) return null;
   const see = all.filter((p) => seesAnimal(p, kind));
-  if (!see.length || see.length === all.length) return null;
+  if (see.length === all.length) return null;
   return { kind: kind.toLowerCase(), seeIds: see.map((p) => p.id) };
 }
 

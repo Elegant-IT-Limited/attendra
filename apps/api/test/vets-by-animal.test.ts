@@ -68,6 +68,11 @@ describe('open times for a pet, by its kind of animal (K1)', () => {
     }
     await saveClinic(api.t.db, 'org_demo', clinic({ chen: [], lee: ['Dentistry'] }));
     expect(vetsIn(await slots('Kiwi'))).toEqual(['prov_chen', 'prov_lee']);
+    // one vet lists dogs and cats, the other no animals: nobody lists birds, so everyone, as before
+    await saveClinic(api.t.db, 'org_demo', clinic({ chen: ['Dog', 'Cat'], lee: [] }));
+    const mixed = await slots('Kiwi');
+    expect(mixed.animal).toBeNull();
+    expect(vetsIn(mixed)).toEqual(['prov_chen', 'prov_lee']);
     await saveClinic(api.t.db, 'org_demo', clinic(MAPLE, { matchAnimal: false }));
     const off = await slots('Kiwi');
     expect(off.animal).toBeNull();
