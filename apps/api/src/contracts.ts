@@ -438,6 +438,8 @@ export const Task = z.object({
   followUp: z.string().nullable(),
   /** The clinic's own details on the request (Settings, Fields and lists). */
   custom: z.record(z.string(), z.string()),
+  /** The request's latest text, when it was not sent: its state and why, as codes (note 2026-11-16, demo findings 3). */
+  textProblem: z.object({ status: z.string(), failureReason: z.string().nullable(), errorCode: z.string().nullable(), at: z.iso.datetime() }).nullable().optional(),
   notes: z.array(z.object({ id: z.number(), author: z.string().nullable(), authorAvatarUrl: AvatarUrl, at: z.iso.datetime(), body: z.string() })),
   /** One of the clinic's own kinds of request, by name, when the request is one; null for a built-in kind. Sent where the details are not (a viewer); with the details it is their `topic`. */
   kind: z.string().nullable().optional(),
@@ -461,6 +463,11 @@ export const TaskHistory = z.object({
   })),
 });
 export const TaskCount = z.object({ open: z.number() });
+/** Texts about requests that were not sent, lately: request number and type, the text's state and why. No patient data. */
+export const TextProblems = z.object({
+  problems: z.array(z.object({ textId: z.string(), taskId: z.string(), number: z.number().int(), type: z.string(), taskStatus: z.enum(['open', 'done']), status: z.string(), failureReason: z.string().nullable(), errorCode: z.string().nullable(), at: z.iso.datetime() })),
+});
+export type TextProblems = z.infer<typeof TextProblems>;
 
 const isoDate = day();
 const instant = z.iso.datetime({ offset: true });

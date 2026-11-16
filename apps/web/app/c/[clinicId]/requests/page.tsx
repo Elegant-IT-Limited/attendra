@@ -3,7 +3,7 @@
 import type { Task, TaskAssignees, TaskHistory, TaskList, TextList } from '@attendra/api/contracts';
 import { type CustomField, isRefillDecision, localDateOf, multiValues, REFILL_NO_TEXT, refillText } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ChevronDown, ChevronRight, Flag, Hand, History, Info, Phone, PhoneCall, Pill, Plus, RotateCcw, Search, Siren, SlidersHorizontal, UserCheck, Voicemail, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Flag, Hand, History, Info, MessageSquareWarning, Phone, PhoneCall, Pill, Plus, RotateCcw, Search, Siren, SlidersHorizontal, UserCheck, Voicemail, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
@@ -419,6 +419,8 @@ function RequestRow({ task: t, patientWord, tz, today, meId, selected, onOpen }:
       <span className="flex flex-wrap justify-end gap-1.5 md:order-5" data-testid="row-status">
         {open && t.urgent && <Badge tone="danger"><AlertTriangle /> {t.origin === 'emergency' ? 'Emergency' : 'Urgent'}</Badge>}
         {open && t.dueOn && <Badge tone={t.dueOn <= today ? 'warn' : 'neutral'}>{t.dueOn < today ? 'Overdue' : 'Due'} {t.dueOn === today ? 'today' : dayTitle(t.dueOn, 'short')}</Badge>}
+        {/* the request's text was not sent: said on its row too, whenever it failed (demo findings 3) */}
+        {t.textProblem && <Badge tone="danger" title={requestTextLine(t.textProblem, t.details.callback_number)} data-testid="text-not-sent"><MessageSquareWarning /> Text not sent</Badge>}
         {!open ? <Badge tone="ok">{t.outcome ? TASK_OUTCOMES[t.outcome] : 'Done'}</Badge>
           : t.assigneeUserId ? <Badge tone="accent"><Hand /> {t.assigneeUserId === meId ? 'You have it' : `${t.assigneeName === null ? 'Someone' : personName(t.assigneeName)} has it`}</Badge> : <Badge tone="warn">Unclaimed</Badge>}
       </span>

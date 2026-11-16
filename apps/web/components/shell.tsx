@@ -35,6 +35,7 @@ import { SHORTCUTS, useShortcuts } from '@/lib/shortcuts';
 import { type ThemeChoice, useTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import { roleLabel } from '@attendra/core';
+import { TextProblemNotice } from '@/components/text-problem-notice';
 
 
 // A workstation left open at the front desk signs itself out.
@@ -256,6 +257,8 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
       </Panel>
 
       <EmergencyAlerts clinicId={clinicId} />
+      {/* a text about a request that was not sent, said wherever the person is (demo findings 3) */}
+      <TextProblemNotice clinicId={clinicId} enabled={!!clinic && can('tasks:read')} />
       <CommandPalette clinicId={clinicId} open={palette} onOpenChange={setPalette} pages={pages} clinics={clinics.filter((c) => c.id !== clinicId)} onClinic={toClinic}
         canSearchPatients={can('patients:read')} canSearchCalls={can('calls:read')} canSearchRequests={can('tasks:read')} canBook={can('schedule:write')} canTestCall={can('calls:test') && !!me?.testCalls} onShortcuts={() => setHelp(true)} />
       <Panel open={help} onOpenChange={setHelp} title="Keyboard shortcuts" description="Letters work when you are not typing in a field.">
