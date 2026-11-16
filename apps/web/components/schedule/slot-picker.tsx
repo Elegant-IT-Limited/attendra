@@ -15,6 +15,21 @@ import { cn } from '@/lib/utils';
 export interface PickedSlot { providerId: string; startsAt: string }
 
 /**
+ * The open-times request, one place for it: the picker shows the times, and New booking reads the same answer (one
+ * request, shared by its key) for which vets see the pet's kind of animal.
+ */
+export function slotsQuery(clinicId: string, q: { visitTypeId: string; providerId: string | null; from: string; days: number; excluding?: string; patientId?: string }) {
+  return {
+    queryKey: ['slots', clinicId, q.visitTypeId, q.providerId, q.from, q.excluding, q.patientId],
+    queryFn: () => api<SlotList>(`/clinics/${clinicId}/appointments/slots?${new URLSearchParams({
+      visitTypeId: q.visitTypeId, from: q.from, days: String(q.days), ...(q.providerId ? { providerId: q.providerId } : {}), ...(q.excluding ? { excluding: q.excluding } : {}), ...(q.patientId ? { patientId: q.patientId } : {}),
+    })}`),
+  };
+}
+/** The picker's week. */
+export const SLOT_DAYS = 7;
+
+/**
  * Open times for one visit type, a week at a time, from the same search the
  * assistant uses. Only real openings are offered, so a pick is bookable unless
  * someone takes it first.
@@ -32,15 +47,10 @@ export function SlotPicker({ clinicId, clinic, visitTypeId, providerId, from, on
   /** Who the visit is for: "anyone" then means anyone who sees them. */
   patientId?: string;
 }) {
-  const days = 7;
+  const days = SLOT_DAYS;
   const pets = usePets(clinicId);
   const today = localDateOf(new Date(), clinic.timezone);
-  const slots = useQuery({
-    queryKey: ['slots', clinicId, visitTypeId, providerId, from, excluding, patientId],
-    queryFn: () => api<SlotList>(`/clinics/${clinicId}/appointments/slots?${new URLSearchParams({
-      visitTypeId, from, days: String(days), ...(providerId ? { providerId } : {}), ...(excluding ? { excluding } : {}), ...(patientId ? { patientId } : {}),
-    })}`),
-  });
+  const slots = useQuery(slotsQuery(clinicId, { visitTypeId, providerId, from, days, excluding, patientId }));
   const byDay = new Map<string, SlotList['slots']>();
   // never a time sooner than the lead time, however long ago the list loaded (the desk was offered 10:00 AM at 10:20)
   const shown = upcomingSlots(slots.data?.slots ?? [], new Date(), slots.data?.leadMinutes ?? 0);

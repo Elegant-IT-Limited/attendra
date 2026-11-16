@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { toMinutes } from './time';
-import { type ClinicConfig, genderWord, localName, type Provider, type VisitType } from './clinic';
+import { bookingOf, type ClinicConfig, genderWord, localName, type Provider, type VisitType } from './clinic';
 import { sharedCustomFacts } from './custom-fields';
 import { windowsOn } from './hours';
 import { phoneDigits } from './identity';
@@ -160,6 +160,34 @@ export function seesAnimal(p: Pick<Provider, 'categories'>, species: string): bo
   const want = wordsOf(species).flatMap((w) => [w, ...(KINDS[one(w)] ?? KINDS[w] ?? [])]).map(one);
   const have = p.categories.flatMap(wordsOf).map(one);
   return want.length > 0 && want.some((w) => have.some((h) => near(w, h)));
+}
+
+/** "birds", "guinea pigs", "mice": a kind of animal said for many, lower case, as the desk reads it. */
+export function animalsWord(kind: string): string {
+  const k = kind.trim().toLowerCase();
+  const same: Record<string, string> = { fish: 'fish', sheep: 'sheep', deer: 'deer', cattle: 'cattle', mouse: 'mice', goose: 'geese', ox: 'oxen' };
+  if (same[k]) return same[k];
+  if (/(s|x|z|ch|sh)$/.test(k)) return `${k}es`;
+  if (/[^aeiou]y$/.test(k)) return `${k.slice(0, -1)}ies`;
+  return `${k}s`;
+}
+
+/**
+ * The vets a pet may be offered for its kind of animal, the one rule the staff's open times and New booking's vet list
+ * follow (note 2026-11-16 K1: a bird was offered the dogs-and-cats vet first). With the clinic's "Match the kind of
+ * animal" rule on and at least one vet listing the pet's kind (a rabbit under "Exotics" too): those vets, and every vet
+ * who lists no animals (they see them all); a vet who lists other animals only is left out. Null when nothing narrows,
+ * and everyone is offered as before: the rule is off, the pet has no kind, no vet lists its kind, or every vet sees it.
+ * The owner's rule, 2026-11-16: only vets with animals listed are filtered by the pet's kind.
+ */
+export function animalFit(clinic: Pick<ClinicConfig, 'providers' | 'booking'>, species: string | null | undefined): { kind: string; seeIds: string[] } | null {
+  const kind = species?.trim();
+  if (!kind || !bookingOf(clinic).matchAnimal) return null;
+  const all = bookableProviders(clinic.providers);
+  if (!all.some((p) => listsAnimals(p) && seesAnimal(p, kind))) return null;
+  const see = all.filter((p) => seesAnimal(p, kind));
+  if (see.length === all.length) return null;
+  return { kind: kind.toLowerCase(), seeIds: see.map((p) => p.id) };
 }
 
 /**

@@ -1,0 +1,38 @@
+id: vet-bird-only-the-vet-who-sees-birds
+title: "K1: one vet sees dogs and cats, the other rabbits, birds and reptiles; a new bird is offered only the vet who sees birds, and booked with her"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, new-pet, providers, vets-by-animal]
+caller_number: "+17205550185"
+settings:
+  providers:
+    - { id: prov_ruiz, name: Dr. Elena Ruiz, gender: female, specialty: General practice, categories: [Dog, Cat], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new] }
+    - { id: prov_sato, name: Dr. Hana Sato, gender: female, specialty: Exotic pets, categories: [Rabbit, Bird, Reptile, Guinea pig, Ferret], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new] }
+facts: "You are Jamie Park, calling from your own mobile. Kiwi is your female bird, a budgie, two years old, and she has never been to this clinic. Any vet and any time are fine. Say yes to the first time offered and to the read-back."
+turns:
+  - caller: Hi, I'm Jamie Park. I'd like to bring in my bird Kiwi, she's new to you.
+    reply: "Welcome, Jamie. I can add Kiwi. How old is she?"
+    delegate:
+      - verify_caller: { owner_name: Jamie Park, pet_name: Kiwi }
+  - caller: She's two.
+    reply: "Thanks. Kiwi is added. For a new patient exam I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Kiwi, owner_name: Jamie Park, species: bird, sex: female, birthday_or_age: two years old, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Kiwi is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [pet_is_new]
+  bookings_created: 1
+  sms_sent: 1
+  offered_with: [prov_sato]
+  booked_with: prov_sato
+forbid_spoken: ["Dr. Elena Ruiz", "Dr Ruiz"]

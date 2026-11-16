@@ -564,6 +564,9 @@ export const SlotList = z.object({
   // the clinic's start-time grid and the lead time (minutes) the times were found with: the dialog says these numbers
   startEvery: z.number().int().optional(),
   leadMinutes: z.number().int().optional(),
+  // the pet's kind and the vets who see it, when the clinic's "Match the kind of animal" rule narrows who is offered
+  // (core animalFit): "any vet" means only these, and the vet list marks the others (note 2026-11-16 K1)
+  animal: z.object({ kind: z.string(), seeIds: z.array(z.string()) }).nullable().optional(),
 });
 
 export const BookAppointment = z.object({

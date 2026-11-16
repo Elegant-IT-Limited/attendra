@@ -1,0 +1,29 @@
+id: vet-es-dog-any-vet-who-sees-dogs
+title: "K1, in Spanish: a dog with no vet asked for is offered times with either vet who sees dogs, never the exotics vet"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, providers, vets-by-animal, language, es]
+caller_number: "+17205550174"
+facts: "Eres Carmen Ortiz y hablas español. Luna, tu perra, necesita un chequeo. Cualquier veterinario y cualquier hora están bien. Di que sí a la primera hora y a la confirmación."
+turns:
+  - caller: Hola, soy Carmen Ortiz. Luna necesita un chequeo, con cualquier veterinario.
+    reply: "Puedo ver a Luna {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo. Luna tiene cita {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  bookings_created: 1
+  sms_sent: 1
+  offered_with: [prov_ruiz, prov_bell]
+forbid_spoken: ["Dr. Hana Sato", "Dr Sato"]

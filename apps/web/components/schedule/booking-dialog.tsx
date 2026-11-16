@@ -2,10 +2,10 @@
 'use client';
 import type { AppointmentChange } from '@attendra/api/contracts';
 import { type ClinicConfig, industryPack, localDateOf, providerName, shownProviders, zonedInstant } from '@attendra/core';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
-import { type PickedSlot, SlotPicker } from '@/components/schedule/slot-picker';
+import { type PickedSlot, SLOT_DAYS, SlotPicker, slotsQuery } from '@/components/schedule/slot-picker';
 import { Button } from '@/components/ui/button';
 import { Panel } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/controls';
@@ -65,8 +65,10 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
 
   // never the stand-in a new clinic starts with once anyone else is listed, as on a call
   const providers = shownProviders(clinic.providers).filter((p) => p.visitTypeIds.includes(visitTypeId));
-  // the vet list: everyone, those who do not do this visit greyed out with why
-  const choices = vetChoices(clinic, visitTypeId);
+  // the vet list: everyone, those who do not do this visit or do not see the pet's kind of animal greyed out with why;
+  // the kind and who sees it come with the open times below (the same request, shared by its key)
+  const times = useQuery({ ...slotsQuery(clinicId, { visitTypeId, providerId, from, days: SLOT_DAYS, patientId: patient?.id }), enabled: open && step === 1 && !!patient && !override.on, placeholderData: (prev) => prev });
+  const choices = vetChoices(clinic, visitTypeId, times.data?.animal);
   // a squeezed-in visit goes to someone who does this visit type: the one the dropdown shows
   const overrideProvider = providers.some((p) => p.id === override.providerId) ? override.providerId : providers[0]?.id ?? '';
   useEffect(() => {

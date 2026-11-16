@@ -4,6 +4,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (vets by animal, 2026-11-16)
+
+- **New booking offers a pet only the vets who see its kind of animal**, as the assistant already did on calls. With "Match the kind of animal" on (the default), the open times for "Any veterinarian" come only from vets listed for the pet's kind (a rabbit under "Exotics" too) or listing no animals at all, and the vet list greys out the others with why: "Dr. Elena Ruiz (doesn't see birds)". Only vets with animals listed are filtered: a vet who lists none sees every kind. When no vet lists the pet's kind, or the rule is off, everyone is offered as before. One rule in core (`animalFit`), returned by the open-times API as `animal`, so the list says what the server decided; Reschedule's "any vet" follows it too.
+
 ### Fixed (visit types and Settings, 2026-11-16)
 
 - **A visit the clinic does not offer is said plainly, never booked as another.** Asked to book grooming, a boarding stay or laser therapy, the assistant says the clinic doesn't book that, names the visits it does (up to five, the closest to what was asked first, in the caller's language) and offers a request for the team. When one of the clinic's common questions covers it ("We do not offer grooming"), that answer wins. `find_slots` carries the answer itself, so the planner path and the tools path (`not_offered` in its visit list) say the same thing, at any hour.

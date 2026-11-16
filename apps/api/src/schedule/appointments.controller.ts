@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ageOn, bookingOf, type BusyInterval, ClinicConfig, DESK_LEAD_MINUTES, DESK_STATUS_REFUSED, type EventSink, localDateOf, normalizeName, strandedReason, zonedInstant } from '@attendra/core';
+import { addDays, ageOn, animalFit, bookingOf, type BusyInterval, ClinicConfig, DESK_LEAD_MINUTES, DESK_STATUS_REFUSED, type EventSink, localDateOf, normalizeName, strandedReason, zonedInstant } from '@attendra/core';
 import { appointmentFacts, type Database, type FrontDeskRepository, nameMatches, type ScheduleEntry, type ScheduleRepository } from '@attendra/db';
 import { openSlots, type SlotProblem, type StaffChange, type StaffScheduler, type StatusChange } from '@attendra/scheduling';
 import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
@@ -116,13 +116,17 @@ export class AppointmentsController {
     if (q.patientId) {
       for (const v of await this.desk.patientBusy(clinicId, q.patientId, range)) for (const p of clinic.providers) busy.push({ providerId: p.id, start: v.start, end: v.end });
     }
+    // a pet goes to the vets who see its kind of animal, as on a call (note 2026-11-16 K1: a bird was offered the
+    // dogs-and-cats vet first); a vet the desk names is theirs to choose, and the dialog marks the others
+    const animal = fit ? animalFit(clinic, fit.species) : null;
     // every opening in the days asked for: the picker shows them by day, and a cap would drop the last days
     const slots = openSlots(clinic, busy, { visitTypeId: q.visitTypeId, providerId: q.providerId, from, days: q.days, partOfDay: q.partOfDay, now, limit: 5000,
       patient: fit ? { age: ageOn(fit.dob, today), isNew: fit.isNew } : undefined })
-      .filter((s) => !own || s.providerId !== own.providerId || s.start.getTime() !== own.start.getTime());
+      .filter((s) => !own || s.providerId !== own.providerId || s.start.getTime() !== own.start.getTime())
+      .filter((s) => q.providerId || !animal || animal.seeIds.includes(s.providerId));
     // the grid and the lead time the times were found with, so the dialog says the same numbers
     return { slots: slots.map((s) => ({ providerId: s.providerId, visitTypeId: s.visitTypeId, startsAt: s.start.toISOString(), endsAt: s.end.toISOString(), ...(s.outsideClinicHours ? { outsideClinicHours: true } : {}) })),
-      startEvery: bookingOf(clinic).startEvery, leadMinutes: DESK_LEAD_MINUTES };
+      startEvery: bookingOf(clinic).startEvery, leadMinutes: DESK_LEAD_MINUTES, animal };
   }
 
   /**

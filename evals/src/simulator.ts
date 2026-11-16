@@ -483,6 +483,11 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     for (const phrase of e.appointment_note_contains) check(notes.some((n) => n.toLowerCase().includes(phrase.toLowerCase())), `no appointment note says "${phrase}" (notes: ${JSON.stringify(notes)})`);
   }
   if (e.appointment_note_empty) check(createdRows.every((a) => !a.noteEnc), 'an appointment made on the call carries a note, expected none');
+  if (e.offered_with) {
+    const offered = [...state.offered.values()];
+    const others = offered.filter((s) => !e.offered_with!.includes(s.providerId));
+    check(offered.length > 0 && others.length === 0, `offered ${others.length} of ${offered.length} time(s) with ${JSON.stringify([...new Set(others.map((s) => s.providerId))])}, expected only ${JSON.stringify(e.offered_with)}`);
+  }
   for (const date of e.not_offered_on) {
     const on = [...state.offered.values()].filter((s) => localDateOf(s.start, clinic.timezone) === date);
     check(on.length === 0, `offered ${on.length} time(s) on ${date}, a day it must not offer`);

@@ -1,4 +1,4 @@
-import { bookingOf, ClinicConfig, DESK_LEAD_MINUTES, RIVERBEND_CLINIC } from '@attendra/core';
+import { animalFit, bookingOf, ClinicConfig, DESK_LEAD_MINUTES, RIVERBEND_CLINIC } from '@attendra/core';
 import { describe, expect, it } from 'vitest';
 import { gridLabel, upcomingSlots, vetChoices } from '../lib/booking';
 import { outsideDesk } from '../lib/schedule-lanes';
@@ -26,6 +26,24 @@ describe('the New booking dialog (2026-11-15)', () => {
     const choices = vetChoices(RIVERBEND_CLINIC, 'vt_vaccines');
     expect(choices.find((c) => c.id === 'prov_ruiz')).toEqual({ id: 'prov_ruiz', label: 'Dr. Elena Ruiz', disabled: false });
     expect(choices.find((c) => c.id === 'prov_sato')).toEqual({ id: 'prov_sato', label: 'Dr. Hana Sato (doesn\'t do vaccine appointment)', disabled: true });
+  });
+
+  it('for a pet, greys out with why the vets who do not see its kind of animal, from the server\'s answer (K1)', () => {
+    // the server's open-times answer carries animalFit: the same function, so the label says what the server decided
+    const bird = animalFit(RIVERBEND_CLINIC, 'bird');
+    expect(bird).toEqual({ kind: 'bird', seeIds: ['prov_sato'] });
+    const choices = vetChoices(RIVERBEND_CLINIC, 'vt_wellness', bird);
+    expect(choices.find((c) => c.id === 'prov_ruiz')).toEqual({ id: 'prov_ruiz', label: 'Dr. Elena Ruiz (doesn\'t see birds)', disabled: true });
+    expect(choices.find((c) => c.id === 'prov_bell')).toEqual({ id: 'prov_bell', label: 'Dr. Marcus Bell (doesn\'t see birds)', disabled: true });
+    expect(choices.find((c) => c.id === 'prov_sato')).toEqual({ id: 'prov_sato', label: 'Dr. Hana Sato', disabled: false });
+    // a dog: both dog vets open, the exotics vet greyed out
+    const dog = vetChoices(RIVERBEND_CLINIC, 'vt_wellness', animalFit(RIVERBEND_CLINIC, 'dog'));
+    expect(dog.filter((c) => !c.disabled).map((c) => c.id)).toEqual(['prov_ruiz', 'prov_bell']);
+    expect(dog.find((c) => c.id === 'prov_sato')!.label).toBe('Dr. Hana Sato (doesn\'t see dogs)');
+    // not doing the visit says that first, whatever the animal
+    expect(vetChoices(RIVERBEND_CLINIC, 'vt_vaccines', bird).find((c) => c.id === 'prov_sato')!.label).toBe('Dr. Hana Sato (doesn\'t do vaccine appointment)');
+    // nothing narrows: every vet as before
+    expect(vetChoices(RIVERBEND_CLINIC, 'vt_wellness', null).every((c) => !c.label.includes('see'))).toBe(true);
   });
 });
 
