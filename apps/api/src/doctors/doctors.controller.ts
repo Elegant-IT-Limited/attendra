@@ -73,6 +73,8 @@ function handoverReason(reason: HandoverProblem | 'cancelled' | 'just_cancelled'
     case 'away': return chosen ? `This ${vet} is away then.` : `Every ${vet} who does it is away then.`;
     case 'holiday': return 'The clinic is closed that day.';
     case 'too_soon': return `It starts in less than ${DESK_LEAD_MINUTES} minutes: move it on the Schedule, with Override if needed.`;
+    case 'notice': return 'It is inside the visit type\'s notice: move it on the Schedule, with Override if needed.';
+    case 'too_far_ahead': return 'It is past the visit type\'s furthest date: move it on the Schedule, with Override if needed.';
     case 'past': return 'It has already started.';
     case 'no_vet': return `There is no other ${vet} to take it.`;
     case 'unknown_provider': return `There is no such ${vet} at this clinic.`;

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ageOn, animalFit, bookingOf, type BusyInterval, ClinicConfig, DESK_LEAD_MINUTES, DESK_STATUS_REFUSED, type EventSink, localDateOf, normalizeName, strandedReason, zonedInstant } from '@attendra/core';
+import { addDays, ageOn, animalFit, bookingOf, bookingPolicy, type BusyInterval, ClinicConfig, DESK_LEAD_MINUTES, DESK_STATUS_REFUSED, type EventSink, localDateOf, normalizeName, strandedReason, zonedInstant } from '@attendra/core';
 import { appointmentFacts, type Database, type FrontDeskRepository, nameMatches, type ScheduleEntry, type ScheduleRepository } from '@attendra/db';
 import { openSlots, type SlotProblem, type StaffChange, type StaffScheduler, type StatusChange } from '@attendra/scheduling';
 import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
@@ -26,6 +26,9 @@ const REFUSED: Record<SlotProblem | 'cancelled' | 'just_cancelled', string> = {
   away: 'The provider is away then. The front desk can squeeze it in with Override.',
   past: 'That time has already passed.',
   too_soon: `That time starts in less than ${DESK_LEAD_MINUTES} minutes. The front desk can squeeze it in with Override.`,
+  // the assistant's rules only (core bookingPolicy): the desk never gets these, but every reason has its words
+  notice: 'That time is inside the visit type\'s notice. The front desk can squeeze it in with Override.',
+  too_far_ahead: 'That time is past the visit type\'s furthest date. The front desk can squeeze it in with Override.',
   not_offered: 'This provider does not do that visit type.',
   unknown_provider: 'There is no such provider at this clinic.',
   unknown_visit_type: 'There is no such visit type at this clinic.',
@@ -93,11 +96,12 @@ export class AppointmentsController {
 
   @Get('slots')
   @Requires('schedule:read')
-  @ApiOperation({ summary: 'Open times for one visit type, by the same rules the assistant books with. No patient data.' })
+  @ApiOperation({ summary: 'Open times for one visit type: the search the assistant books with, by the front desk\'s booking rule (every start on the grid). No patient data.' })
   @ApiOkResponse({ schema: schemaOf(SlotList) })
   async slots(@Param('clinicId') clinicId: string, @Query(new ZodPipe(SlotQuery)) q: z.infer<typeof SlotQuery>): Promise<SlotList> {
     const clinic = await this.clinic(clinicId);
-    if (!clinic.visitTypes.some((v) => v.id === q.visitTypeId)) throw this.invalid('visitTypeId', 'unknown visit type');
+    const visitType = clinic.visitTypes.find((v) => v.id === q.visitTypeId);
+    if (!visitType) throw this.invalid('visitTypeId', 'unknown visit type');
     if (q.providerId && !clinic.providers.some((p) => p.id === q.providerId)) throw this.invalid('providerId', 'unknown provider');
     const now = this.now();
     const today = localDateOf(now, clinic.timezone);
@@ -120,13 +124,13 @@ export class AppointmentsController {
     // dogs-and-cats vet first); a vet the desk names is theirs to choose, and the dialog marks the others
     const animal = fit ? animalFit(clinic, fit.species) : null;
     // every opening in the days asked for: the picker shows them by day, and a cap would drop the last days
-    const slots = openSlots(clinic, busy, { visitTypeId: q.visitTypeId, providerId: q.providerId, from, days: q.days, partOfDay: q.partOfDay, now, limit: 5000,
+    const slots = openSlots(clinic, busy, { visitTypeId: q.visitTypeId, providerId: q.providerId, from, days: q.days, partOfDay: q.partOfDay, now, actor: 'desk', limit: 5000,
       patient: fit ? { age: ageOn(fit.dob, today), isNew: fit.isNew } : undefined })
       .filter((s) => !own || s.providerId !== own.providerId || s.start.getTime() !== own.start.getTime())
       .filter((s) => q.providerId || !animal || animal.seeIds.includes(s.providerId));
     // the grid and the lead time the times were found with, so the dialog says the same numbers
     return { slots: slots.map((s) => ({ providerId: s.providerId, visitTypeId: s.visitTypeId, startsAt: s.start.toISOString(), endsAt: s.end.toISOString(), ...(s.outsideClinicHours ? { outsideClinicHours: true } : {}) })),
-      startEvery: bookingOf(clinic).startEvery, leadMinutes: DESK_LEAD_MINUTES, animal };
+      startEvery: bookingOf(clinic).startEvery, leadMinutes: bookingPolicy(visitType, 'desk').leadMinutes, animal };
   }
 
   /**

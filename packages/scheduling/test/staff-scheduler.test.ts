@@ -80,7 +80,7 @@ describe('the booking rules, shared with the assistant', () => {
 
   it('offers the front desk every start on the clinic\'s grid from the desk\'s own lead, and nothing the rules refuse', () => {
     const morning = at('2026-09-29', '08:05');
-    const slots = openSlots(DEMO_CLINIC, [], { visitTypeId: 'vt_sick', providerId: 'prov_okafor', from: '2026-09-29', days: 1, now: morning });
+    const slots = openSlots(DEMO_CLINIC, [], { visitTypeId: 'vt_sick', providerId: 'prov_okafor', from: '2026-09-29', days: 1, now: morning, actor: 'desk' });
     // 8:05 plus DESK_LEAD_MINUTES, on the 10-minute grid; every start, not only times a visit apart
     expect(slots[0]!.start).toEqual(at('2026-09-29', '08:10'));
     expect(slots[1]!.start).toEqual(at('2026-09-29', '08:20'));
@@ -92,7 +92,7 @@ describe('the booking rules, shared with the assistant', () => {
     const clinic = { ...DEMO_CLINIC, providers: DEMO_CLINIC.providers.map((p) => (p.id === 'prov_okafor' ? { ...p, hours: { 2: [{ open: '10:04', close: '17:00' }] } } : p)) };
     const ten = at('2026-09-29', '10:00');
     expect([DESK_LEAD_MINUTES, BOOKING_LEAD_MINUTES]).toEqual([5, 120]);
-    expect(openSlots(clinic, [], { visitTypeId: 'vt_sick', providerId: 'prov_okafor', from: '2026-09-29', days: 1, now: ten })[0]!.start).toEqual(at('2026-09-29', '10:10'));
+    expect(openSlots(clinic, [], { visitTypeId: 'vt_sick', providerId: 'prov_okafor', from: '2026-09-29', days: 1, now: ten, actor: 'desk' })[0]!.start).toEqual(at('2026-09-29', '10:10'));
     const req = (time: string) => ({ providerId: 'prov_okafor', visitTypeId: 'vt_sick', start: at('2026-09-29', time) });
     expect(slotProblem(clinic, [], req('10:04'), ten)).toBe('too_soon');
     expect(slotProblem(clinic, [], req('10:04'), ten, { override: true })).toBeNull();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEMO_CLINIC, demoHolidays, hoursSummary, isOpen, localParts, openMinutes, todayLine, todaysHoursLine, weekHours, zonedInstant } from '../src';
+import { callFacts, DEMO_CLINIC, demoHolidays, hoursSummary, isOpen, localParts, openMinutes, todayLine, todaysHoursLine, weekHours, zonedInstant } from '../src';
 
 describe('clinic-local time', () => {
   it('turns a Denver wall-clock time into the right UTC instant, on both sides of DST', () => {
@@ -43,11 +43,11 @@ describe('opening hours', () => {
     const clinic = { ...DEMO_CLINIC, holidays: ['2026-11-26'] };
     const thanksgiving = zonedInstant('2026-11-26', '10:00', 'America/Denver');
     expect(isOpen(clinic, thanksgiving)).toBe(false);
-    expect(todaysHoursLine(clinic, thanksgiving)).toBe('The clinic is closed today for a holiday.');
+    expect(todaysHoursLine(callFacts(clinic, thanksgiving, null))).toBe('The clinic is closed today for a holiday.');
   });
 
   it('describes a split day in one line', () => {
-    expect(todaysHoursLine(DEMO_CLINIC, zonedInstant('2026-09-29', '07:00', 'America/Denver')))
+    expect(todaysHoursLine(callFacts(DEMO_CLINIC, zonedInstant('2026-09-29', '07:00', 'America/Denver'), null)))
       .toBe('Today the clinic is open 08:00 to 12:00 and 13:00 to 17:00.');
   });
 });
@@ -69,7 +69,7 @@ describe('open minutes between two moments', () => {
 describe('the date and the week, for the planner', () => {
   const at = zonedInstant('2026-09-29', '10:14', 'America/Denver');
   it('says what day it is in the clinic', () => {
-    expect(todayLine(DEMO_CLINIC, at)).toBe('Today is Tuesday, 2026-09-29, 10:14 clinic time.');
+    expect(todayLine(callFacts(DEMO_CLINIC, at, null))).toBe('Today is Tuesday, 2026-09-29, 10:14 clinic time.');
   });
   it('lists seven days from today, weekends closed', () => {
     const week = weekHours(DEMO_CLINIC, at).split('; ');

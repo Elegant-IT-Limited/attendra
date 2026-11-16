@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, DEMO_BUSY_LINE, defaultTalkStyle, emergencyHospitalsOf, greetingFor, industryPack, isOpen, openingWords, PACKS, type TalkStyle, textingOf, todaysHoursLine } from '@attendra/core';
+import { callerIdOf, callFacts, type ClinicConfig, DEMO_BUSY_LINE, defaultTalkStyle, emergencyHospitalsOf, greetingFor, industryPack, openingWords, PACKS, type TalkStyle, textingOf, todaysHoursLine } from '@attendra/core';
 
 /** Who a transfer reaches, in the words the voice uses for it. */
 const TRANSFER_TO: Record<string, string> = { front_desk: 'the front desk', billing: 'billing', on_call: 'the on-call vet or doctor, for an emergency' };
@@ -61,7 +61,7 @@ function onlyForAVisit(question: string): string {
  */
 export function callerIdLine(clinic: ClinicConfig, callerNumber: string): string | null {
   if (industryPack(clinic.industry).identity !== 'pet') return null;
-  const last4 = callerNumber.replace(/\D/g, '').slice(-4);
+  const last4 = callerIdOf(callerNumber)?.last4 ?? null;
   const asks = clinic.languages.map((l) => `"${PACKS[l].profileNumberQuestion({ last4 })}"`).join(' or ');
   return `Caller ID shows the number they are calling from, ending ${last4}. ${onlyForAVisit(asks)}`;
 }
@@ -147,7 +147,9 @@ export function callerContext(history: string | null, industry?: string): string
 }
 
 export function conversationPrompt(clinic: ClinicConfig, now: Date): string {
-  const open = isOpen(clinic, now);
+  // the call's facts (core callFacts), as every path has them: here today's hours and open or closed now
+  const facts = callFacts(clinic, now, null);
+  const open = facts.open;
   const others = clinic.languages.filter((l) => l !== clinic.primaryLanguage);
   const { terms, prompt } = industryPack(clinic.industry);
   return [
@@ -160,7 +162,7 @@ export function conversationPrompt(clinic: ClinicConfig, now: Date): string {
     ...others.map((l) => `If the caller speaks ${PACKS[l].name}, switch to it and introduce yourself once with exactly: "${greetingFor(clinic, l)}"`),
     ...talkLines(clinic.talk, clinic.industry),
     ...clinic.languages.flatMap((l) => PACKS[l].prompt),
-    `${todaysHoursLine(clinic, now)} The ${terms.business} is ${open ? 'open' : 'closed'} right now.${!open && clinic.afterHours === 'requests' ? ` While it is closed nothing is booked: never offer times; the ${terms.business}'s team books in the morning from a request.` : ''}`,
+    `${todaysHoursLine(facts)} The ${terms.business} is ${open ? 'open' : 'closed'} right now.${!open && clinic.afterHours === 'requests' ? ` While it is closed nothing is booked: never offer times; the ${terms.business}'s team books in the morning from a request.` : ''}`,
     // OpenAI's Live prompting guide: these three policies under their own headings
     ...LISTENING,
     'Delegation policy:',

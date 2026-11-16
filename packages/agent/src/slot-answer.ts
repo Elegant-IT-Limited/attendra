@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
-  addDays, awayOn, bookableProviders, bookableWindows, type ClinicConfig, type Language, localDateOf, localName, localParts, PACKS, type Provider,
+  addDays, awayOn, BOOKING_LEAD_MINUTES, bookableProviders, bookingPolicy, earliestStart, bookableWindows, type ClinicConfig, type Language, localDateOf, localName, localParts, PACKS, type Provider,
   providerName, type Slot, specialDayOf, toMinutes, weekdayOf, windowsOn, ownHours, type VisitType,
 } from '@attendra/core';
 
@@ -31,8 +31,8 @@ export function dayReason(clinic: ClinicConfig, q: { date: string | null; provid
   const pack = PACKS[q.lang].slots;
   if (q.found.some((s) => localDateOf(s.start, clinic.timezone) === q.date)) return null;
   // a visit that needs notice: the first day it can be booked
-  if (q.noticeHours && q.noticeHours > 2) {
-    const first = localDateOf(new Date(q.now.getTime() + q.noticeHours * 3_600_000), clinic.timezone);
+  if (q.noticeHours && q.noticeHours * 60 > BOOKING_LEAD_MINUTES) {
+    const first = localDateOf(earliestStart(bookingPolicy({ noticeHours: q.noticeHours }, 'assistant'), q.now), clinic.timezone);
     if (q.date < first) return { code: 'notice', line: pack.notice({ visit: q.visit, hours: q.noticeHours, firstDate: first }) };
   }
   const open = q.providers.filter((p) => !awayOn(p, q.date!) && bookableWindows(clinic, p, q.date!).windows.length);

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, type Backend, CallAgent, CallCache, cachedBackend, CallState, type Outbound, type Planner } from '@attendra/agent';
-import { ClinicConfig, DEMO_BUSY_LINE, DEMO_GOODBYE_LINE, DEMO_LIMITS, DEMO_WRAP_UP_LINE, type DemoLimitCode, isDemoClinic, isVapiTestClinic, maxGapMs, repeatedQuestions, vapiAlertAt } from '@attendra/core';
+import { callFacts, ClinicConfig, DEMO_BUSY_LINE, DEMO_GOODBYE_LINE, DEMO_LIMITS, DEMO_WRAP_UP_LINE, type DemoLimitCode, isDemoClinic, isVapiTestClinic, maxGapMs, repeatedQuestions, vapiAlertAt } from '@attendra/core';
 import { type Alerter, isVapiCreditEnd, isVapiOpenAiQuotaEnd, type Logger } from '@attendra/observability';
-import { type CallRecorder, callFacts, VAPI_EVENTS_PATH, VAPI_SECRET_HEADER } from '@attendra/voice-engine';
+import { type CallRecorder, callFactsNote, VAPI_EVENTS_PATH, VAPI_SECRET_HEADER } from '@attendra/voice-engine';
 import type { FastifyInstance } from 'fastify';
 import { createHash, timingSafeEqual } from 'node:crypto';
 
@@ -84,8 +84,9 @@ interface Session {
   /** Set once the call is over: a transfer or hang-up still waiting is dropped. */
   closed: boolean;
   /**
-   * This call's own facts (the clinic's date, the caller ID and the number question; callFacts, as on path A), until
-   * they are sent into the call: the assistant's prompt is the same on every call of the location.
+   * This call's own facts (core callFacts: the clinic's date and time, open or closed, the caller ID and the number
+   * question; in path A's words, callFactsNote), until they are sent into the call: the assistant's prompt is the same
+   * on every call of the location.
    */
   facts: string | null;
   /** A demo call turned away by a limit: its tool calls are refused, and it is ended. */
@@ -303,7 +304,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
     agent.state.answersAcrossPieces = true;
     // the caller ID reaches every tool as on path A (the agent's callerNumber), and the voice hears it with the date
     const s: Session = { agent, clinicId: clinic.id, callId, fed: [], startedAt: Date.now(), notes: [], controlUrl: controlUrlOf(m), closed: false,
-      facts: demoLimit ? null : callFacts(clinic, deps.now(), from), refused: !!demoLimit, pending: [] };
+      facts: demoLimit ? null : callFactsNote(clinic, callFacts(clinic, deps.now(), from)), refused: !!demoLimit, pending: [] };
     sessions.set(vapiId, s);
     if (demoLimit) {
       // over a limit: the one fixed line over whatever Vapi's assistant began, then the end; recorded with the limit's code

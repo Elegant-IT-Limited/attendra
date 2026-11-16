@@ -454,7 +454,7 @@ describe('"Call as": a browser test call with a caller ID, never a phone call', 
     const seen: { callerNumber?: string | null; transfer?: unknown; text?: unknown } = {};
     const planner: Planner = {
       plan: async (input, execute) => {
-        seen.callerNumber = input.callerNumber ?? null;
+        seen.callerNumber = input.facts.caller?.number ?? null;
         seen.transfer = await execute('transfer_call', { target: 'front_desk' });
         // the caller has said yes to a text of the hours
         input.state.textOffer = { kind: 'hours', ref: null, to: 'this', offeredAtMs: 0, askedAtMs: 0 };
