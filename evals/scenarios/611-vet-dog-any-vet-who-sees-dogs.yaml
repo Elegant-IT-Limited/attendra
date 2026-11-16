@@ -1,0 +1,28 @@
+id: vet-dog-any-vet-who-sees-dogs
+title: "K1: a dog with no vet asked for is offered times with either vet who sees dogs, never the exotics vet"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, providers, vets-by-animal]
+caller_number: "+17205550174"
+facts: "You are Carmen Ortiz. Luna, your dog, needs a check-up. Any vet and any time are fine. Say yes to the first time offered and to the read-back."
+turns:
+  - caller: Hi, Carmen Ortiz. Luna needs a check-up, any vet is fine.
+    reply: "I can see Luna {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Luna is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  offered_with: [prov_ruiz, prov_bell]
+forbid_spoken: ["Dr. Hana Sato", "Dr Sato"]

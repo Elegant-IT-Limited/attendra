@@ -762,14 +762,17 @@ export class FrontDeskRepository {
   }
 
   /**
-   * Who a patient may be booked with: their date of birth and whether they are new, for
-   * the open-slot search. Nothing of it leaves the API, so no audit row (opening the
+   * Who a patient may be booked with: their date of birth, whether they are new and a pet's kind of animal, for the
+   * open-slot search. Only the kind leaves the API (the vets who see it are named by it), so no audit row (opening the
    * patient to book them is audited already).
    */
-  async bookingFit(clinicId: string, patientId: string): Promise<{ dob: string; isNew: boolean } | null> {
+  async bookingFit(clinicId: string, patientId: string): Promise<{ dob: string; isNew: boolean; species: string | null } | null> {
     return withClinic(this.db, clinicId, async (tx) => {
-      const [r] = await tx.select({ dobEnc: patients.dobEnc, status: patients.status }).from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId)));
-      return r ? { dob: this.cipher.decrypt(r.dobEnc, phiContext(clinicId, 'patients.dob')), isNew: r.status === 'new' } : null;
+      const [r] = await tx.select({ dobEnc: patients.dobEnc, status: patients.status, speciesEnc: patients.speciesEnc }).from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId)));
+      return r ? {
+        dob: this.cipher.decrypt(r.dobEnc, phiContext(clinicId, 'patients.dob')), isNew: r.status === 'new',
+        species: r.speciesEnc ? this.cipher.decrypt(r.speciesEnc, phiContext(clinicId, 'patients.species')) : null,
+      } : null;
     });
   }
 

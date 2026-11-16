@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, providerName, shownProviders } from '@attendra/core';
+import { animalsWord, type ClinicConfig, providerName, shownProviders } from '@attendra/core';
 
 /**
  * The New booking dialog's vet list for one visit type: everyone listed, those who do not do it greyed out with why,
- * so the desk never picks a vet the booking would refuse (2026-11-15).
+ * so the desk never picks a vet the booking would refuse (2026-11-15). For a pet, those who do not see its kind of
+ * animal are greyed out the same way (note 2026-11-16 K1), from the open-times answer (`animal`, the server's
+ * animalFit): none is when nothing narrows.
  */
-export function vetChoices(clinic: Pick<ClinicConfig, 'providers' | 'visitTypes'>, visitTypeId: string): { id: string; label: string; disabled: boolean }[] {
+export function vetChoices(clinic: Pick<ClinicConfig, 'providers' | 'visitTypes'>, visitTypeId: string, animal?: { kind: string; seeIds: string[] } | null): { id: string; label: string; disabled: boolean }[] {
   const visit = clinic.visitTypes.find((v) => v.id === visitTypeId)?.name.toLowerCase() ?? 'this visit';
   return shownProviders(clinic.providers).map((p) => {
     const does = p.visitTypeIds.includes(visitTypeId);
-    return { id: p.id, label: does ? providerName(p) : `${providerName(p)} (doesn't do ${visit})`, disabled: !does };
+    if (!does) return { id: p.id, label: `${providerName(p)} (doesn't do ${visit})`, disabled: true };
+    if (animal && !animal.seeIds.includes(p.id)) return { id: p.id, label: `${providerName(p)} (doesn't see ${animalsWord(animal.kind)})`, disabled: true };
+    return { id: p.id, label: providerName(p), disabled: false };
   });
 }
 

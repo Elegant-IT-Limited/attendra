@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bookingOf, DEMO_CLINIC, findSlots, listsAnimals, seesAnimal, speakSlot, usualProviderOf, zonedInstant } from '../src';
+import { animalFit, animalsWord, bookingOf, ClinicConfig, DEMO_CLINIC, findSlots, listsAnimals, RIVERBEND_CLINIC, seesAnimal, speakSlot, usualProviderOf, zonedInstant } from '../src';
 
 const tz = DEMO_CLINIC.timezone;
 const now = zonedInstant('2026-09-28', '20:00', tz);
@@ -45,5 +45,41 @@ describe('the booking rules', () => {
     // without the rule: the list's order, and the same time twice
     const plain = findSlots(DEMO_CLINIC, busy, { visitType: sick, providers: two, from: '2026-09-29', days: 1, now });
     expect(plain.map((s) => s.providerId)).toEqual(['prov_okafor', 'prov_lindqvist', 'prov_okafor']);
+  });
+});
+
+describe('the vets a pet may be offered for its kind of animal (note 2026-11-16 K1)', () => {
+  const vets = (providers: { id: string; categories: string[] }[], booking?: object) => ClinicConfig.parse({
+    ...RIVERBEND_CLINIC, ...(booking ? { booking } : {}),
+    providers: providers.map((p) => ({ ...RIVERBEND_CLINIC.providers[0]!, id: p.id, name: `Dr. ${p.id}`, categories: p.categories })),
+  });
+  const maple = vets([{ id: 'chen', categories: ['Dog', 'Cat'] }, { id: 'lee', categories: ['Rabbit', 'Bird', 'Reptile', 'Guinea pig', 'Ferret'] }]);
+
+  it('only the vets who see it when some do: a bird to the exotics vet, a dog to the dogs-and-cats vet', () => {
+    expect(animalFit(maple, 'bird')).toEqual({ kind: 'bird', seeIds: ['lee'] });
+    expect(animalFit(maple, 'Bird')).toEqual({ kind: 'bird', seeIds: ['lee'] });
+    expect(animalFit(maple, 'dog')).toEqual({ kind: 'dog', seeIds: ['chen'] });
+    expect(animalFit(maple, 'guinea pig')).toEqual({ kind: 'guinea pig', seeIds: ['lee'] });
+    // a parrot is a bird, a puppy a dog, in Spanish too
+    expect(animalFit(maple, 'parrot')?.seeIds).toEqual(['lee']);
+    expect(animalFit(maple, 'perro')?.seeIds).toEqual(['chen']);
+  });
+
+  it('a vet who lists no animals sees them all, as the booking rules say', () => {
+    const mixed = vets([{ id: 'chen', categories: ['Dog', 'Cat'] }, { id: 'lee', categories: ['Bird'] }, { id: 'gray', categories: ['Dentistry'] }]);
+    expect(animalFit(mixed, 'bird')?.seeIds).toEqual(['lee', 'gray']);
+  });
+
+  it('nothing narrows when no vet lists the kind, no vet lists animals, the pet has no kind, or the rule is off', () => {
+    expect(animalFit(maple, 'horse')).toBeNull();
+    expect(animalFit(vets([{ id: 'a', categories: [] }, { id: 'b', categories: ['Dentistry'] }]), 'bird')).toBeNull();
+    expect(animalFit(maple, null)).toBeNull();
+    expect(animalFit(maple, '  ')).toBeNull();
+    expect(animalFit(vets([{ id: 'chen', categories: ['Dog', 'Cat'] }, { id: 'lee', categories: ['Bird'] }], { matchAnimal: false }), 'bird')).toBeNull();
+  });
+
+  it('says the kind for many, as the desk reads it', () => {
+    expect(['bird', 'Dog', 'guinea pig', 'fish', 'ferret', 'canary', 'mouse', 'box turtle', 'finch'].map(animalsWord))
+      .toEqual(['birds', 'dogs', 'guinea pigs', 'fish', 'ferrets', 'canaries', 'mice', 'box turtles', 'finches']);
   });
 });
