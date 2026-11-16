@@ -329,7 +329,11 @@ describe('provisioning', () => {
     expect((await api.request('GET', `${P}/clinics/clinic_none/overview`, { authorization: auth })).statusCode).toBe(404);
     const glance = await api.request('GET', `${P}/clinics/${location.clinicId}/overview`, { authorization: auth });
     expect(glance.statusCode).toBe(200);
-    expect(glance.json()).toEqual({ name: 'Cedar Row Downtown', phoneNumber: '+13125550108', city: null, callsToday: 0, openRequests: 0 });
+    // no assistant number yet: the number in the settings is the clinic's own line (note 2026-11-16 N1)
+    expect(glance.json()).toEqual({ name: 'Cedar Row Downtown', phoneNumber: '+13125550108', assistantNumber: null, ownLine: '+13125550108', city: null, callsToday: 0, openRequests: 0 });
+    // with one, each by its name: the assistant's from provisioning, the clinic's own line from its settings
+    expect((await api.request('PUT', `${P}/clinics/${location.clinicId}/numbers/${encodeURIComponent('+13125550109')}`, { authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('GET', `${P}/clinics/${location.clinicId}/overview`, { authorization: auth })).json()).toMatchObject({ assistantNumber: '+13125550109', ownLine: '+13125550108' });
     // the rename: under the field when it is too short, 204 and everywhere otherwise
     const short = await api.request('PUT', `${P}/clinics/${location.clinicId}/name`, { body: { name: 'C' }, authorization: auth });
     expect(short.statusCode).toBe(422);
