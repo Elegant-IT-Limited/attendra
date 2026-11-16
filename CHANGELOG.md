@@ -23,6 +23,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **Demo emergency wording:** the emergency flow runs as usual, then the demo line ("This is a demo line, so I can't send you to a real hospital. If your pet needs help right now, please call your own vet or the nearest emergency hospital.", Spanish too) in place of the route. Nothing is texted and nobody is put through, whatever the clinic's emergency setting holds.
 - **A baseline and a nightly reset** (migration 0058 `demo_baselines`): "Set demo baseline now" keeps the clinic's pets with their owners, visits, requests and notes, encrypted; every night at 03:30 clinic time (the worker's `demo-reset` job), or on "Reset demo now", exactly that is put back in one transaction held to the clinic by row-level security. Calls, transcripts, texts, settings, vets, visit types, common questions and documents are never touched. Slack hears every reset with counts only. Provisioning routes: `GET/PUT /provisioning/clinics/:id/demo`, `POST .../demo/baseline`, `POST .../demo/reset` (with a dry run), each audited with the operator's email.
 
+### Fixed (demo findings 2, 2026-11-16)
+
+- A request of the clinic's own kind ("Boarding booking") is labelled by its name on Today's "Needs attention" and in the read-only (viewer) Requests list too, as everywhere else; both said "Callback", the type it is stored as. The waiting list and the viewer's list now send the kind's name (`kind`), read from the request on the server; nothing else of its details. No migration.
+
 ### Added (the handoff review loop, 2026-11-11)
 
 - **Every handoff is recorded, as codes.** Each time the assistant hands a call to the clinic's team (a request, a callback, a transfer, an emergency) or has no answer, a `handoffs` row (migration 0057) keeps the kind, a fixed reason (caller asked for a person, identity not verified, no answer in clinic info, policy refusal, tool error, out of scope, language, emergency), the tool steps before it with their result codes, the fixed line's id, the engine and the channel. No caller words. Same Row Level Security as the call; the row goes with the call.

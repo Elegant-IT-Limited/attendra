@@ -773,7 +773,7 @@ function ViewerRequests({ clinicId, tz, patientWord }: { clinicId: string; tz: s
                 <li key={t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
                   <Icon className="size-4 shrink-0 text-primary" aria-hidden />
                   <span className="font-medium">{requestNumber(t.number)}</span>
-                  <span>{taskType(t.type, patientWord)}</span>
+                  <span data-testid="request-kind">{requestKind(t, patientWord)}</span>
                   {t.urgent && <Badge tone="danger">{t.origin === 'emergency' ? 'Emergency' : 'Urgent'}</Badge>}
                   <span className="text-text-muted">came in {clinicTime(t.createdAt, tz)}</span>
                   <span className="ml-auto text-text-muted">{t.status === 'done' ? `Done${t.doneByName ? ` by ${personName(t.doneByName)}` : ''}` : t.assigneeName ? `With ${personName(t.assigneeName)}` : 'Nobody has it yet'}{t.dueOn ? ` · due ${dayTitle(t.dueOn)}` : ''}</span>
