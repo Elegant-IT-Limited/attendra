@@ -53,6 +53,21 @@ describe('the OpenAI webhook', () => {
     expect(engine.attach).toHaveBeenCalledWith('live_abc');
   });
 
+  it('keeps the call\'s event log: the sideband\'s events go to it, and it is written out when the call ends (foundation A)', async () => {
+    const added: unknown[] = [];
+    const logs: { clinicId: string; callId: string; path: string }[] = [];
+    let closed = 0;
+    const { d, engine } = deps({ callEventsFor: (clinicId, callId, path) => { logs.push({ clinicId, callId, path }); return { add: (e) => { added.push(e); }, close: async () => { closed++; return { written: added.length, dropped: 0 }; } }; } });
+    engine.attach.mockReturnValue({ send: vi.fn(), onEvent: vi.fn(), onError: vi.fn(), onClose: (h) => void setTimeout(() => h(1000), 0), close: vi.fn(),
+      onTrace: (h) => { h({ type: 'input_audio_buffer.speech_stopped', itemId: 'item_1' }); h({ type: 'gate.sent.reply' }); } });
+    const app = buildServer(d);
+    await post(app, incoming('wh_events', '+13035550100'));
+    await vi.waitFor(() => expect(closed).toBe(1));
+    await app.close();
+    expect(logs).toEqual([{ clinicId: DEMO_CLINIC.id, callId: 'call_1', path: 'fake/planner' }]);
+    expect(added).toEqual([{ type: 'input_audio_buffer.speech_stopped', itemId: 'item_1' }, { type: 'gate.sent.reply' }]);
+  });
+
   it('handles a retried delivery once', async () => {
     const { d, engine } = deps();
     const app = buildServer(d);

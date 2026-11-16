@@ -279,6 +279,52 @@ export const QualityWeek = z.object({
 export const Quality = z.object({ weeks: z.array(QualityWeek), costPerMinute: z.number() });
 export const QualityQuery = z.object({ weeks: z.coerce.number().int().min(1).max(26).default(8) });
 
+/**
+ * The QA export (foundation A): one clinic day of calls, read-only, for quality review, with a key that has qa:read or
+ * an owner's or practice manager's session. `day` is the clinic's own day; the default is yesterday by its clock.
+ */
+export const QaExportQuery = z.object({
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected a day as YYYY-MM-DD').refine(realDate, 'not a real day').optional(),
+});
+const DayMetric = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('measured'), value: z.number().int(), callsMeasured: z.number().int(), source: z.string(), definition: z.string() }),
+  z.object({ status: z.literal('not_measured'), reason: z.string() }),
+]);
+const ReplyTimes = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('measured'), p50: z.number(), p90: z.number(), n: z.number().int(), callsMeasured: z.number().int(), source: z.string(), definition: z.string() }),
+  z.object({ status: z.literal('not_measured'), reason: z.string() }),
+]);
+export const QaPathNumbers = z.object({
+  path: z.string(), calls: z.number().int(), testCalls: z.number().int(), callsWithEventLog: z.number().int(),
+  stalls: DayMetric, replyMs: ReplyTimes, yesDisagreements: DayMetric,
+  refusalLoops: z.union([
+    z.object({ status: z.literal('measured'), value: z.number().int(), callsMeasured: z.number().int(), source: z.string(), definition: z.string(), loops: z.array(z.object({ tool: z.string(), code: z.string(), calls: z.number().int() })).optional() }),
+    z.object({ status: z.literal('not_measured'), reason: z.string() }),
+  ]),
+  internalTalk: DayMetric,
+});
+export const QaCall = z.object({
+  id: z.uuid(), path: z.string(), startedAt: z.iso.datetime(), endedAt: z.iso.datetime().nullable(), durationS: z.number().int().nullable(),
+  endReason: z.string().nullable(), outcome: z.string().nullable(), testCall: z.boolean(),
+  requests: z.array(z.object({ number: z.number().int(), kind: z.string(), status: z.string(), urgent: z.boolean(), origin: z.string().nullable(), outcome: z.string().nullable() })),
+  bookings: z.array(z.object({ change: z.enum(['booked', 'cancelled']), status: z.string(), visitTypeId: z.string(), startsAt: z.iso.datetime() })),
+  texts: z.array(z.object({ template: z.string(), kind: z.string(), status: z.string(), errorCode: z.string().nullable() })),
+  /** The call's event log, summed up: null when it has none (calls before foundation A, or older than 7 days). */
+  events: z.object({
+    count: z.number().int(), callerTurns: z.number().int(), stalls: z.number().int(), replyMs: z.array(z.number().int()),
+    gate: z.record(z.string(), z.number().int()), errors: z.record(z.string(), z.number().int()),
+  }).nullable(),
+  /** The words as said, with every run of 4+ digits, written date, date of birth and email masked; null when the call has none (nobody spoke, or the clinic's retention cleared it). */
+  transcript: z.array(z.object({ speaker: z.enum(['caller', 'assistant']), startMs: z.number().int(), endMs: z.number().int(), text: z.string() })).nullable(),
+});
+export const QaExport = z.object({
+  day: z.string(), timezone: z.string(),
+  /** More calls than one answer holds (1,000): the first ones, oldest first. */
+  truncated: z.boolean(),
+  calls: z.array(QaCall),
+  numbers: z.array(QaPathNumbers),
+});
+
 export const ApiKeyView = z.object({
   id: z.string(), name: z.string(), prefix: z.string(), scopes: z.array(z.enum(API_SCOPES)), expiresAt: z.iso.datetime(),
   createdBy: z.string().nullable(), createdAt: z.iso.datetime(), lastUsedAt: z.iso.datetime().nullable(), revokedAt: z.iso.datetime().nullable(),
@@ -996,6 +1042,7 @@ export type CallList = z.infer<typeof CallList>;
 export type CallDetail = z.infer<typeof CallDetail>;
 export type CallSummaryCard = z.infer<typeof CallSummaryCard>;
 export type LiveCall = z.infer<typeof LiveCall>;
+export type QaExport = z.infer<typeof QaExport>;
 export type ApiKeyView = z.infer<typeof ApiKeyView>;
 export type ApiKeys = z.infer<typeof ApiKeys>;
 export type ApiKeyCreated = z.infer<typeof ApiKeyCreated>;

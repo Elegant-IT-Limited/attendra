@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type PlannerSpeed, ResponsesPlanner } from '@attendra/agent';
 import {
-  CallRepository, CallSummaryRepository, claimDelivery, clinicById, clinicForNumber, type Database, demoUsage, type PhiCipher,
+  CallEventLog, CallRepository, CallSummaryRepository, claimDelivery, clinicById, clinicForNumber, type Database, demoUsage, type PhiCipher,
   PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, throttledNotify, vapiCallEnded, vapiCallLive, vapiSecretHashOf, vapiSecretMatches,
   recordHandoff,
 } from '@attendra/db';
@@ -129,6 +129,11 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeMod
     demoUsage: (clinicId, from, day, at) => demoUsage(db, cipher, clinicId, from, day, at),
     // how a phone call ended, from Twilio's call status (note 48): a caller's hang-up is not a drop
     ...(rt.twilio ? { phoneLine: new TwilioPhoneLine(rt.twilio.accountSid, rt.twilio.authToken) } : {}),
+    // the call's event log (foundation A): written every few seconds and at the end; a failed write is logged by name
+    // and code only, and never reaches the call
+    callEventsFor: (clinicId, callId, path) => new CallEventLog(db, clinicId, callId, path, {
+      onError: (err) => rt.log.warn({ call_id: callId, err: { name: (err as Error).name, code: (err as { code?: string }).code } }, 'call events not written'),
+    }),
     recorderFor: (clinicId, callId) => ({
       appendSegment: (s) => calls.appendSegment(clinicId, callId, s),
       close: async (c) => {

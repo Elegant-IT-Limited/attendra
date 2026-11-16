@@ -1,0 +1,2 @@
+# docs/qa-export.md in 19f5041e: a documentation placeholder (atk_REPLACE_WITH_YOUR_KEY) in a curl example, not a key; the line now reads the key from an environment variable.
+19f5041ef1d93b68da6d8cb640326acc5e69d7a1:docs/qa-export.md:curl-auth-header:21

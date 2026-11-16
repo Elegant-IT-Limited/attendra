@@ -29,6 +29,8 @@
     "db:visit-type-coverage": "pnpm --filter @attendra/db run visit-type-coverage",
     "db:call-timeline": "pnpm --filter @attendra/db run call-timeline",
     "db:call-stats": "pnpm --filter @attendra/db run call-stats",
+    "db:call-events": "pnpm --filter @attendra/db run call-events",
+    "db:call-numbers": "pnpm --filter @attendra/db run call-numbers",
     "db:seed-bakeoff": "pnpm --filter @attendra/db run seed-bakeoff",
     "db:emergency-settings": "pnpm --filter @attendra/db run emergency-settings",
     "db:reindex-knowledge": "pnpm --filter @attendra/worker run reindex-knowledge",
