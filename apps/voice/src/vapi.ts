@@ -92,6 +92,8 @@ interface Session {
   refused: boolean;
   /** Commands waiting for the call's control URL (none in the first message): sent as soon as it is known. */
   pending: Record<string, unknown>[];
+  /** Vapi said the call ended (its status): no longer live for a restart's drain, though its report may still come. */
+  over?: boolean;
 }
 
 /** Vapi's own times, in ms from the call's start: when a line began and ended. */
@@ -177,7 +179,12 @@ const SESSION_TTL_MS = 2 * 3_600_000;
 const digest = (s: string) => createHash('sha256').update(s).digest();
 const CLINIC_ID = /^clinic_[A-Za-z0-9_]{1,60}$/;
 
-export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
+/**
+ * The route, and the Vapi calls live now for a restart's drain (drain.ts). A new Vapi call during a drain is still
+ * served: Vapi has already answered it, and refusing our tools would leave the caller with an assistant that cannot
+ * look anything up. A call cut by the restart carries on at Vapi; its next message opens a new session here.
+ */
+export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(): number } {
   const sessions = new Map<string, Session>();
   const refused = new Set<string>();
   const testSecret = deps.testSecret ? digest(deps.testSecret) : null;
@@ -361,7 +368,11 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
 
     // the calls live at once, for Vapi's limit: from the call's status, or its first tool call if the status was missed
     if (vapiId && m.type === 'status-update' && m.status === 'in-progress') await live(vapiId);
-    if (vapiId && ((m.type === 'status-update' && m.status === 'ended') || m.type === 'end-of-call-report')) await ended(vapiId);
+    if (vapiId && ((m.type === 'status-update' && m.status === 'ended') || m.type === 'end-of-call-report')) {
+      const known = sessions.get(vapiId);
+      if (known) known.over = true;
+      await ended(vapiId);
+    }
     // money: Vapi has no API for its credit, so a call it would not start for credit is how we hear it ran out (P0)
     if (isVapiCreditEnd(m.endedReason)) deps.alerts?.alert('vapi_credit_low', `Vapi would not start a call (${m.endedReason}): the Vapi credit is used up or billing is frozen. Calls to Vapi locations go to Twilio's fallback.`, { clinicId });
     else if (isVapiOpenAiQuotaEnd(m.endedReason)) deps.alerts?.alert('openai_quota', `A Vapi call ended because OpenAI refused it (${m.endedReason}): the credit or quota is used up.`, { clinicId });
@@ -410,6 +421,14 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
     }
     return reply.code(200).send({});
   });
+
+  return {
+    liveCalls: () => {
+      let n = 0;
+      for (const s of sessions.values()) if (!s.over && !s.closed && Date.now() - s.startedAt <= SESSION_TTL_MS) n++;
+      return n;
+    },
+  };
 }
 
 function safeJson(s: string): unknown {

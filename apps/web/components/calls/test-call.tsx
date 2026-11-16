@@ -19,6 +19,7 @@ export const FAILURES: Record<string, string> = {
   voice_not_configured: 'Test calls are not set up on this server. The voice service needs an OpenAI API key.',
   voice_unavailable: 'The voice service could not start the call. Check the OpenAI API key and its credit, then try again.',
   test_call_limit: 'This clinic already has two test calls open. End one, or wait for it to finish.',
+  voice_restarting: 'Attendra is restarting for an update, so the test call did not start. Try again in a minute or two.',
   test_minutes_used: 'This clinic has used all its test-call minutes.',
   connection: 'The audio connection dropped.',
 };

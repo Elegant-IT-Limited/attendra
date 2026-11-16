@@ -85,6 +85,8 @@ services:
     profiles: [voice]
     command: ["pnpm", "--filter", "@attendra/voice", "start"]
     ports: ["127.0.0.1:8080:8080"]
+    # a restart lets the live calls finish, at most 10 minutes (apps/voice/src/drain.ts): Docker must not kill it sooner
+    stop_grace_period: 11m
     depends_on: { seed: { condition: service_completed_successfully } }
     restart: unless-stopped
 
