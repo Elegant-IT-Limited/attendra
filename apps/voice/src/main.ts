@@ -5,7 +5,9 @@ import { createAlerter, createLogger } from '@attendra/observability';
 import { bossQueue, createBoss } from '@attendra/worker/queue';
 import { embedderFromEnv } from '@attendra/worker/runtime';
 import { loadEnv } from './config';
+import { drainForRestart } from './drain';
 import { createVoiceApp } from './runtime';
+import { drainOf } from './server';
 
 const env = loadEnv();
 const log = createLogger({ name: 'voice', level: env.LOG_LEVEL });
@@ -52,7 +54,26 @@ log.info({ port: env.PORT, phone: !!env.OPENAI_WEBHOOK_SECRET, sms: !!env.TWILIO
 // a restart is worth knowing: a deploy, or a crash the container came back from
 alerts.note(`Voice service started: phone calls ${env.OPENAI_WEBHOOK_SECRET ? 'on' : 'OFF'}, texts ${env.TWILIO_ACCOUNT_SID ? 'on' : 'off'}.`);
 
+// A restart lets the calls finish (drain.ts): new calls go to the backup route, the live ones end on their own, at most
+// 10 minutes; a second signal or the deadline cuts what is left, with a goodbye. Docker must wait longer than that
+// before it kills the container (stop_grace_period 11m in the production compose file).
+const drain = drainOf(app);
+let stopping = false;
+async function stop(signal: string) {
+  await drainForRestart(drain, { log, alerts, signal });
+  // the calls are over; a close that hangs on a call cut a moment ago does not hold the exit
+  await Promise.race([app.close(), new Promise((resolve) => setTimeout(resolve, 5000).unref())]);
+  await alerts.flush();
+  await boss.stop({ graceful: true });
+}
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-  // let in-progress calls finish writing before the process exits
-  process.on(signal, () => { void app.close().then(() => alerts.flush()).then(() => boss.stop({ graceful: true })).then(() => process.exit(0)); });
+  process.on(signal, () => {
+    if (stopping) {
+      log.warn({ signal, live_calls: drain.liveCalls() }, 'restart: a second signal, the live calls are cut now');
+      drain.force();
+      return;
+    }
+    stopping = true;
+    void stop(signal).catch((err: unknown) => log.error({ err: { message: (err as Error).message } }, 'restart: stopping failed')).finally(() => process.exit(0));
+  });
 }

@@ -152,7 +152,7 @@ To switch a service back, remove `ATTENDRA_SERVICE_DATABASE_URL` from it and res
 
 ## 4. Check it
 
-- `GET /healthz` on the voice service and `GET /api/v1/health` on the dashboard return `ok: true`. The dashboard's check asks the database too: with Postgres down or slower than a second it answers 503 with `ok: false`.
+- `GET /healthz` on the voice service and `GET /api/v1/health` on the dashboard return `ok: true`. The voice service's also says `draining` and `liveCalls`: on SIGTERM it stops taking new calls (a new phone call is rejected with SIP 503, so a Twilio trunk's disaster recovery URL answers it), lets the live calls finish, at most 10 minutes, then exits. Give its container a stop grace period above that (`stop_grace_period: 11m`, as `infra/docker-compose.yml` does), and restart it when `GET /internal/drain` (with `VOICE_INTERNAL_TOKEN`) says `liveCalls: 0`. The dashboard's check asks the database too: with Postgres down or slower than a second it answers 503 with `ok: false`.
 - A call to the number is answered with the demo greeting. The service logs `call accepted` with the session id; no caller details appear in the log.
 - After the call, it is at the top of **Calls** in the dashboard with its transcript, outcome and length, and within a few seconds its summary. If the summary never comes, check the worker's log: a job that failed every retry is logged with its ids as `dead-lettered`.
 

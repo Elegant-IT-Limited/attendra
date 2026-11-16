@@ -9,6 +9,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { type ActionResult, LiveRegistry, type Numbered } from './live';
+import { Drain, DRAIN_CUT_GOODBYE_MS, DRAIN_CUT_TEXT, DRAINING_ERROR, type DrainResult } from './drain';
 import { mintToolToken, readToolToken, TOOL_TOKEN_MAX_MS } from './tool-tokens';
 import { registerVapi, type VapiOptions } from './vapi';
 
@@ -76,6 +77,8 @@ export interface VoiceDeps {
   lookupAhead?: boolean;
   /** Browser test calls one clinic may have open at once. Defaults to 2. */
   browserCallsPerClinic?: number;
+  /** A restart's drain (drain.ts): how often it looks at the live calls, and how long a cut call's goodbye may take. Tests shorten them. */
+  drainTiming?: { pollMs?: number; goodbyeMs?: number };
   /** Open calls and their events, for staff watching live. One is created when none is passed. */
   live?: LiveRegistry;
   /** Seconds between heartbeats on a live stream. Defaults to 15. */
@@ -156,6 +159,26 @@ const sessionOf = (e: IncomingCall) => e.data.session_id ?? e.data.call_id ?? ''
 // One phone call can arrive twice, once per engine (live_u1_X and rtc_u1_X): the part after the prefix is the call
 const callKey = (sessionId: string) => sessionId.replace(/^(?:live|rtc)_/, '');
 
+/** A restart's drain (drain.ts), as main.ts and the deploy see it. */
+export interface VoiceDrain {
+  readonly draining: boolean;
+  /** Calls this process is running now: phone calls (with those being set up), browser test, simulated and Vapi calls. */
+  liveCalls(): number;
+  /** New calls turned away since the drain began: phone calls sent to the backup route, and browser test calls refused. */
+  turnedAway(): number;
+  /** Stops new calls and waits for the live ones to end, at most `maxMs`; then cuts what is left. */
+  start(maxMs?: number): Promise<DrainResult>;
+  /** A second signal: cut what is still live now. */
+  force(): void;
+}
+const drains = new WeakMap<FastifyInstance, VoiceDrain>();
+/** The drain of a server built by buildServer. */
+export function drainOf(app: FastifyInstance): VoiceDrain {
+  const d = drains.get(app);
+  if (!d) throw new Error('not a voice server');
+  return d;
+}
+
 /**
  * The voice service's HTTP surface: the webhook, a health check, and the internal
  * route the API uses to start browser test calls. The webhook
@@ -172,13 +195,37 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
   const streams = new Set<{ end(): void }>();
   /** The tools-path calls running now, by call id: the tools API's HTTP surface answers their tool calls (batch 1a). */
   const toolLines = new Map<string, { clinicId: string; runner: CallRunner; token: string }>();
+  /** Each call running now, by call id: what ends it with a goodbye when a restart cannot wait any longer. */
+  const cutters = new Map<string, () => void>();
+  /** Browser test calls past the limit check and not yet running (the OpenAI session is being made). */
+  let starting = 0;
+  let turnedAway = 0;
+  /** The phone calls turned away during the drain, by call (both twins of one call count once). */
+  const refusedKeys = new Set<string>();
+  let vapiLive = () => 0;
+  const liveCalls = () => running.size + starting + vapiLive();
+  const goodbyeMs = deps.drainTiming?.goodbyeMs ?? DRAIN_CUT_GOODBYE_MS;
+  const drain = new Drain({
+    liveCalls,
+    pollMs: deps.drainTiming?.pollMs,
+    cut: async () => {
+      for (const cut of cutters.values()) cut();
+      // the goodbyes are said and the lines closed; a call that does not end by then is left to the exit
+      await new Promise<void>((resolve) => {
+        const bound = setTimeout(resolve, goodbyeMs + 4000);
+        void Promise.allSettled([...running]).then(() => { clearTimeout(bound); resolve(); });
+      });
+    },
+  });
 
   // keep the exact bytes: the signature is computed over the raw body
   app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => done(null, body));
   // Twilio posts forms; the signature is over the decoded fields
   app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_req, body, done) => done(null, Object.fromEntries(new URLSearchParams(body as string))));
 
-  app.get('/healthz', async () => ({ ok: true }));
+  // answers through a restart's drain too: a deploy sees it draining and how many calls are still live (not public:
+  // the proxy sends only /webhooks/* here)
+  app.get('/healthz', async () => ({ ok: true, draining: drain.draining, liveCalls: liveCalls() }));
 
   // Only deliveries that fail their signature are limited, per address: behind a proxy
   // every request comes from one address, and a flood of forged ones must never turn a
@@ -311,6 +358,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         } catch {
           return reply.code(400).send({ error: 'invalid body' });
         }
+        // restarting: a test call started now would be cut, so it is refused with a reason the dashboard says
+        if (drain.draining) { turnedAway++; return reply.code(503).send({ error: DRAINING_ERROR }); }
         const stored = await deps.clinicById(body.clinicId);
         if (!stored) return reply.code(404).send({ error: 'no such clinic' });
         const parsed = ClinicConfig.safeParse(stored);
@@ -322,41 +371,47 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         if ((openPerClinic.get(clinic.id) ?? 0) >= perClinic) return reply.code(429).send({ error: 'test_call_limit' });
 
         hold(clinic.id, 1); // before any await, so two requests at once cannot both pass the limit
-        const marks = new CallMarks();
-        let started: { sessionId: string; sdpAnswer: string };
+        // a live call from here on, for a restart's drain: it is being set up
+        starting++;
         try {
-          marks.mark('accept_sent');
-          // with a number to call as, the voice has caller ID: its number line, not "there is no caller ID"
-          started = await deps.engine.startBrowserCall(clinic, body.sdp, now(), { callerNumber: body.callAs ?? null, flow: flowOf(clinic) });
-          marks.mark('accepted');
-        } catch (err) {
-          hold(clinic.id, -1);
-          deps.log.error({ clinic_id: clinic.id, err }, 'browser call could not start');
-          return reply.code(502).send({ error: 'voice_unavailable' });
+          const marks = new CallMarks();
+          let started: { sessionId: string; sdpAnswer: string };
+          try {
+            marks.mark('accept_sent');
+            // with a number to call as, the voice has caller ID: its number line, not "there is no caller ID"
+            started = await deps.engine.startBrowserCall(clinic, body.sdp, now(), { callerNumber: body.callAs ?? null, flow: flowOf(clinic) });
+            marks.mark('accepted');
+          } catch (err) {
+            hold(clinic.id, -1);
+            deps.log.error({ clinic_id: clinic.id, err }, 'browser call could not start');
+            return reply.code(502).send({ error: 'voice_unavailable' });
+          }
+          const { sessionId } = started;
+          let callId: string;
+          try {
+            // the call row never holds the number: a client's calls from it must not fill with tests
+            const engine = deps.engine instanceof EngineRouter ? deps.engine.engineFor(clinic) : deps.engine;
+            callId = await deps.openCall(clinic.id, sessionId, null, 'web', body.userId, body.callAs?.slice(-4), { engine: engineName(engine), voiceFlow: flowOf(clinic) });
+          } catch (err) {
+            deps.log.error({ session_id: sessionId, err }, 'browser call setup failed');
+            await deps.engine.hangup(sessionId).catch(() => {});
+            deps.engine.release?.(sessionId);
+            hold(clinic.id, -1);
+            return reply.code(500).send({ error: 'setup_failed' });
+          }
+          marks.mark('call_opened');
+          webCalls.set(callId, { clinicId: clinic.id, sessionId });
+          // the API may ask for less than the usual limit: the clinic's test time left
+          const limit = Math.min(body.maxSeconds ?? maxSeconds, maxSeconds);
+          track(runCall(clinic, sessionId, callId, body.callAs ?? null, 'web', { maxSeconds: limit, marks }).finally(() => {
+            webCalls.delete(callId);
+            webRunners.delete(callId);
+            hold(clinic.id, -1);
+          }));
+          return reply.code(201).send({ callId, sdp: started.sdpAnswer, maxSeconds: limit, calledAsLast4: body.callAs ? body.callAs.slice(-4) : null });
+        } finally {
+          starting--;
         }
-        const { sessionId } = started;
-        let callId: string;
-        try {
-          // the call row never holds the number: a client's calls from it must not fill with tests
-          const engine = deps.engine instanceof EngineRouter ? deps.engine.engineFor(clinic) : deps.engine;
-          callId = await deps.openCall(clinic.id, sessionId, null, 'web', body.userId, body.callAs?.slice(-4), { engine: engineName(engine), voiceFlow: flowOf(clinic) });
-        } catch (err) {
-          deps.log.error({ session_id: sessionId, err }, 'browser call setup failed');
-          await deps.engine.hangup(sessionId).catch(() => {});
-          deps.engine.release?.(sessionId);
-          hold(clinic.id, -1);
-          return reply.code(500).send({ error: 'setup_failed' });
-        }
-        marks.mark('call_opened');
-        webCalls.set(callId, { clinicId: clinic.id, sessionId });
-        // the API may ask for less than the usual limit: the clinic's test time left
-        const limit = Math.min(body.maxSeconds ?? maxSeconds, maxSeconds);
-        track(runCall(clinic, sessionId, callId, body.callAs ?? null, 'web', { maxSeconds: limit, marks }).finally(() => {
-          webCalls.delete(callId);
-          webRunners.delete(callId);
-          hold(clinic.id, -1);
-        }));
-        return reply.code(201).send({ callId, sdp: started.sdpAnswer, maxSeconds: limit, calledAsLast4: body.callAs ? body.callAs.slice(-4) : null });
       });
 
       // The usual time limit for one test call, so the dashboard can say it before the call. This config is its one source.
@@ -382,6 +437,13 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
           else deps.log.warn({ session_id: call.sessionId, err }, 'ending a test call failed');
         });
         return reply.code(202).send({ ending: true });
+      });
+
+      // Whether a restart is draining and how many calls are still live, for the deploy (deploy.sh waits for 0 before
+      // it restarts voice). Counts only, nothing about any call.
+      internal.get('/internal/drain', async (req, reply) => {
+        if (!authorised(req.headers.authorization)) return reply.code(401).send({ error: 'unauthorized' });
+        return { draining: drain.draining, liveCalls: liveCalls() };
       });
 
       // The calls running now, for one clinic. The API strips the caller's name for roles that may not read calls.
@@ -449,6 +511,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         const simulator = deps.simulator;
         internal.post('/internal/simulated-calls', async (req, reply) => {
           if (!authorised(req.headers.authorization)) return reply.code(401).send({ error: 'unauthorized' });
+          if (drain.draining) { turnedAway++; return reply.code(503).send({ error: DRAINING_ERROR }); }
           const body = Simulate.safeParse(jsonBody(req.body));
           if (!body.success) return reply.code(400).send({ error: 'invalid body' });
           const stored = await deps.clinicById(body.data.clinicId);
@@ -568,6 +631,12 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         timers.push(setTimeout(() => { void hangup(); }, DEMO_LIMITS.callSeconds * 1000 + DEMO_GOODBYE_MS + 9000));
       }
       const a = agent;
+      // a restart that cannot wait any longer: a goodbye, then the line closes, whatever the model does
+      cutters.set(callId, () => {
+        deps.log.warn({ session_id: sessionId, call_id: callId }, 'restart: the call is cut');
+        void runner.act([{ type: 'instructions', delegationId: null, content: DRAIN_CUT_TEXT }, { type: 'hangup', afterMs: goodbyeMs }]).catch(() => hangup());
+        timers.push(setTimeout(() => { void hangup(); }, goodbyeMs + 2000));
+      });
       // a tools-path call can be answered over HTTP too, with its own token (the tools API's second surface)
       if (tools && deps.internalToken) toolLines.set(callId, { clinicId: clinic.id, runner, token: mintToolToken(deps.internalToken, { callId, clinicId: clinic.id, expiresAt: Date.now() + TOOL_TOKEN_MAX_MS }) });
       // staff watching live see every event; their actions go through the runner like the agent's own
@@ -607,6 +676,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       await Promise.resolve().then(hangup);
     } finally {
       timers.forEach(clearTimeout);
+      cutters.delete(callId);
       toolLines.delete(callId);
       live.end(callId, agent?.state.outcome ?? 'abandoned');
       frontDesk.delete(callId);
@@ -644,8 +714,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
   }
 
   /**
-   * Never leaves a caller in dead air: a failure before accepting rejects the call
-   * with SIP 503 (the carrier plays its own message), a failure after accepting hangs up.
+   * Never leaves a caller in dead air: a failure before accepting rejects the call with SIP 503 (Twilio's trunk then
+   * asks the backup route, packages/telephony/src/fallback.ts), a failure after accepting hangs up.
    */
   async function handleIncoming(event: IncomingCall, receivedAt = Date.now()) {
     const marks = new CallMarks(receivedAt);
@@ -660,6 +730,21 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
     let setupClinic: ClinicConfig | null = null;
     let setupCallId: string | undefined;
     try {
+      // restarting (drain.ts): the call goes to the backup route instead of a process about to exit. SIP 503 is what
+      // makes Twilio's trunk try its disaster recovery URL; a 4xx or 6xx would end the call with an error tone. Both
+      // twins of a call (one per engine) are rejected at once, so neither is left waiting for an answer.
+      if (drain.draining) {
+        const key = callKey(sessionId);
+        if (!refusedKeys.has(key)) {
+          if (refusedKeys.size > 10_000) refusedKeys.clear();
+          refusedKeys.add(key);
+          turnedAway++;
+          deps.log.warn({ session_id: sessionId, engine: came }, 'restarting: a new call is turned away with 503, to the backup route');
+        }
+        await (via ?? deps.engine).reject(sessionId, 503).catch((err: unknown) =>
+          deps.log.warn({ session_id: sessionId, err: { message: (err as Error).message } }, 'restarting: rejecting a new call failed'));
+        return;
+      }
       if (!via) {
         deps.log.error({ session_id: sessionId, engine: came }, 'a call came in for an engine this server does not run; rejecting with 503');
         deps.alerts?.alert('call_rejected', `A call came in for the ${came} engine, which this server does not run: turned away (SIP 503).`);
@@ -724,10 +809,17 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
   }
 
   if (deps.vapi) {
-    registerVapi(app, { ...deps.vapi, clinicById: deps.clinicById, openCall: deps.openCall, recorderFor: deps.recorderFor, callEventsFor: deps.callEventsFor, actionsFor: deps.actionsFor, backend: deps.backend, planner: deps.planner, log: deps.log, alerts: deps.alerts, now, demoLimitFor });
+    vapiLive = registerVapi(app, { ...deps.vapi, clinicById: deps.clinicById, openCall: deps.openCall, recorderFor: deps.recorderFor, callEventsFor: deps.callEventsFor, actionsFor: deps.actionsFor, backend: deps.backend, planner: deps.planner, log: deps.log, alerts: deps.alerts, now, demoLimitFor }).liveCalls;
   }
   // tests read a live tools-path call's token here; nothing else does, and it is never logged
   app.decorate('toolTokenFor', (callId: string) => toolLines.get(callId)?.token ?? null);
+  drains.set(app, {
+    get draining() { return drain.draining; },
+    liveCalls,
+    turnedAway: () => turnedAway,
+    start: (maxMs) => drain.start(maxMs),
+    force: () => drain.force(),
+  });
   app.addHook('onClose', async () => {
     for (const s of streams) s.end();
     await Promise.allSettled(running);

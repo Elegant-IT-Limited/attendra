@@ -27,6 +27,7 @@ describe('Vapi calling our tools', () => {
   const redirectModes: (string | undefined)[] = [];
   const alerts: string[] = [];
   const allAlerts: string[] = [];
+  let vapi: ReturnType<typeof registerVapi>;
   /** The call's clock: a test that needs a known moment sets it, then clears it. */
   let clock: Date | null = null;
 
@@ -39,7 +40,7 @@ describe('Vapi calling our tools', () => {
     await t.owner.execute(`insert into clinics (id, org_id, name, timezone, config) select '${OAK}', org_id, name, timezone, config from clinics where id = '${DEMO_CLINIC.id}'`);
     await saveVapiSecret(t.db, cipher, OAK, LOCATION_SECRET);
     const calls = new CallRepository(t.db, cipher);
-    registerVapi(app, {
+    vapi = registerVapi(app, {
       testSecret: TEST_SECRET,
       secretMatches: async (id, presented) => vapiSecretMatches(cipher, id, presented, await vapiSecretHashOf(t.db, id)),
       calls: { live: (id, at, alertAt) => vapiCallLive(t.db, id, at, alertAt), ended: (id, at) => vapiCallEnded(t.db, id, at) },
@@ -279,6 +280,17 @@ describe('Vapi calling our tools', () => {
     const after = await vapiConcurrency(t.db, new Date());
     expect(after.live).toBe(now.live - 4);
     expect(after.todayPeak).toBe(now.todayPeak);
+  });
+
+  it('counts its live calls for a restart\'s drain: from the call\'s start to Vapi\'s end, a call that ended no longer', async () => {
+    const before = vapi.liveCalls();
+    for (const id of ['drain-1', 'drain-2']) await post({ type: 'status-update', status: 'in-progress', call: { id } }, LOCATION_SECRET, OAK);
+    expect(vapi.liveCalls()).toBe(before + 2);
+    await post({ type: 'status-update', status: 'ended', call: { id: 'drain-1' } }, LOCATION_SECRET, OAK);
+    expect(vapi.liveCalls()).toBe(before + 1);
+    await post({ type: 'end-of-call-report', call: { id: 'drain-2' }, endedReason: 'customer-ended-call', durationSeconds: 5 }, LOCATION_SECRET, OAK);
+    expect(vapi.liveCalls()).toBe(before);
+    await post({ type: 'end-of-call-report', call: { id: 'drain-1' }, endedReason: 'customer-ended-call', durationSeconds: 5 }, LOCATION_SECRET, OAK);
   });
 
   it('reads a transfer target and a script the way Vapi\'s control URL takes them', () => {

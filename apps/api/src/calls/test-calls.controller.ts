@@ -58,6 +58,8 @@ export class TestCallsController {
   private failed(clinicId: string, err: unknown, action: 'start' | 'end'): never {
     const status = (err as { status?: number }).status;
     if (status === 429) throw new HttpException({ error: 'test_call_limit' }, 429);
+    // the voice service is restarting (a deploy): it takes no new test call until it is back, in a minute or two
+    if (status === 503 && action === 'start') throw new HttpException({ error: 'voice_restarting' }, 503);
     // on start, a 404 means the voice service is misconfigured (no internal token, wrong URL)
     if (status === 404 && action === 'end') throw new HttpException({ error: 'not_found' }, 404);
     this.log.warn({ clinic_id: clinicId, name: (err as Error).name, code: (err as { code?: string }).code }, 'test call request failed');

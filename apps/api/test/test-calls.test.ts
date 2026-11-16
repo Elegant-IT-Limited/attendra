@@ -116,6 +116,12 @@ describe('browser test calls', () => {
     const down = await api.request('POST', `${C}/test-calls`, { cookie: staff, body: { sdp: 'v=0 offer' } });
     expect([down.statusCode, down.json()]).toEqual([502, { error: 'voice_unavailable' }]);
   });
+
+  it('says the voice service is restarting when it refuses a new test call during a deploy', async () => {
+    voice.startTestCall.mockRejectedValueOnce(Object.assign(new Error('refused'), { status: 503 }));
+    const restarting = await api.request('POST', `${C}/test-calls`, { cookie: staff, body: { sdp: 'v=0 offer' } });
+    expect([restarting.statusCode, restarting.json()]).toEqual([503, { error: 'voice_restarting' }]);
+  });
 });
 
 it('answers 503 on a deployment without a voice service, and /me says test calls are off', async () => {
