@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { ROLE_IDS, twoFactorRoles } from '@attendra/core';
-import { type Database, holdsRole, passwordState, type StaffRole, staffRole } from '@attendra/db';
+import { type ApiScope, ROLE_IDS, twoFactorRoles } from '@attendra/core';
+import { type ApiCaller, authenticateApiKey, type Database, holdsRole, passwordState, type StaffRole, staffRole, withClinic } from '@attendra/db';
 import {
   type CanActivate, createParamDecorator, type ExecutionContext, ForbiddenException, Inject, Injectable,
   NotFoundException, SetMetadata, UnauthorizedException,
@@ -9,7 +9,8 @@ import { Reflector } from '@nestjs/core';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { can, type Permission } from '../access';
 import type { Auth } from '../auth';
-import { API_OPTIONS, type ApiOptions, AUTH, DB } from './tokens';
+import { sql } from 'drizzle-orm';
+import { API_OPTIONS, type ApiOptions, AUTH, CLOCK, DB } from './tokens';
 
 export interface Staff {
   userId: string;
@@ -25,7 +26,9 @@ export interface Staff {
   role?: StaffRole;
 }
 
-type StaffRequest = FastifyRequest & { staff?: Staff };
+type StaffRequest = FastifyRequest & { staff?: Staff; apiKey?: ApiCaller };
+/** The clinic's API key that made this request, on a route that takes one (KeyScope); undefined on a session's request. */
+export const apiKeyOf = (req: FastifyRequest) => (req as StaffRequest).apiKey;
 
 /**
  * Whether this person must have two-step sign-in on (ATTENDRA_TWO_FACTOR): everyone, nobody, or
@@ -49,6 +52,14 @@ export const Requires = (permission: Permission) => SetMetadata(PERMISSION, perm
 export const BeforeTwoFactor = () => SetMetadata(BEFORE_TWO_FACTOR, true);
 /** No session needed. Only the health check, which carries no data. */
 export const Public = () => SetMetadata(PUBLIC, true);
+const KEY_SCOPE = 'attendra:key-scope';
+/**
+ * A clinic's API key with this scope may read the route instead of a session (the QA export: foundation A). Only a GET,
+ * only its own clinic, only while the key is live. Every other route refuses a key: it takes a dashboard session.
+ */
+export const KeyScope = (scope: ApiScope) => SetMetadata(KEY_SCOPE, scope);
+/** A clinic API key in an Authorization header ("Bearer atk_..."), or null. */
+const bearerKey = (h: unknown) => (typeof h === 'string' && /^Bearer atk_/.test(h) ? h.slice(7).trim() : null);
 
 export const CurrentStaff = createParamDecorator((_: unknown, ctx: ExecutionContext): Staff => {
   const staff = ctx.switchToHttp().getRequest<StaffRequest>().staff;
@@ -79,12 +90,15 @@ export class StaffGuard implements CanActivate {
     @Inject(DB) private readonly db: Database,
     @Inject(API_OPTIONS) private readonly options: ApiOptions,
     @Inject(Reflector) private readonly reflector: Reflector,
+    @Inject(CLOCK) private readonly now: () => Date,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest<StaffRequest>();
     const meta = <T>(key: string) => this.reflector.getAllAndOverride<T | undefined>(key, [ctx.getHandler(), ctx.getClass()]);
     if (meta<boolean>(PUBLIC)) return true;
+    const key = bearerKey(req.headers.authorization);
+    if (key !== null) return this.keyRequest(req, key, meta<ApiScope>(KEY_SCOPE));
     if (req.method !== 'GET' && req.method !== 'HEAD' && req.headers.origin !== new URL(this.options.publicUrl).origin) {
       throw new ForbiddenException({ error: 'cross_origin_write' });
     }
@@ -120,6 +134,27 @@ export class StaffGuard implements CanActivate {
     if (!can(role, permission)) throw new ForbiddenException({ error: 'forbidden', message: `a ${role} cannot ${permission}` });
     req.staff.clinicId = clinicId;
     req.staff.role = role;
+    return true;
+  }
+
+  /**
+   * A request with an API key: only on a route that takes one, to read, for the key's own clinic (another clinic's id
+   * answers 404, like a clinic someone does not belong to), with the route's scope. A live key without the scope is
+   * refused with 403 and the refusal audited under the key.
+   */
+  private async keyRequest(req: StaffRequest, key: string, scope: ApiScope | undefined): Promise<boolean> {
+    if (!scope) throw new UnauthorizedException({ error: 'api_key_not_accepted', message: 'This route takes a dashboard session, not an API key.' });
+    if (req.method !== 'GET' && req.method !== 'HEAD') throw new ForbiddenException({ error: 'read_only', message: 'An API key only reads here.' });
+    const caller = await authenticateApiKey(this.db, key, this.now());
+    if (!caller) throw new UnauthorizedException({ error: 'invalid_key', message: 'The key is unknown, revoked or expired.' });
+    const clinicId = (req.params as { clinicId?: string }).clinicId;
+    if (!clinicId || clinicId !== caller.clinicId) throw new NotFoundException({ error: 'not_found' });
+    if (!caller.scopes.includes(scope)) {
+      await withClinic(this.db, caller.clinicId, (tx) => tx.execute(sql`insert into audit_logs (clinic_id, actor, action, entity, entity_id)
+        values (${caller.clinicId}, ${`api_key:${caller.keyId}`}, ${`api_key.refused.${scope}`}, 'api_key', ${caller.keyId})`));
+      throw new ForbiddenException({ error: 'forbidden', message: `this key does not have ${scope}` });
+    }
+    req.apiKey = caller;
     return true;
   }
 }

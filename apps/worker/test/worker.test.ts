@@ -1,5 +1,5 @@
 import { DEMO_CLINIC, Texting, zonedInstant } from '@attendra/core';
-import { CallRepository, CallSummaryRepository, clinicById, createPhiCipher, FrontDeskRepository, invitationsFor, inviteToTeam, KnowledgeRepository, PostgresPatientDirectory, PostgresTaskQueue, phiContext, purgeCallRecords, purgeWebhookRecords, saveClinic, schema, seedDemo, WebhookRepository, withClinic, workerJobs } from '@attendra/db';
+import { CallEventLog, CallRepository, CallSummaryRepository, clinicById, createPhiCipher, FrontDeskRepository, invitationsFor, inviteToTeam, KnowledgeRepository, PostgresPatientDirectory, PostgresTaskQueue, phiContext, purgeCallRecords, purgeWebhookRecords, saveClinic, schema, seedDemo, WebhookRepository, withClinic, workerJobs } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { and, eq, sql } from 'drizzle-orm';
@@ -210,6 +210,19 @@ describe('the retention purge', () => {
     await event('evt_old_4', 40);
     const results = await handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log, now: () => new Date() }).purgeRetention();
     expect(results.find((r) => r.clinicId === OTHER.id)).toMatchObject({ webhookEvents: 1, webhookAttempts: 1 });
+  });
+
+  it('deletes call events after 7 days, whatever the clinic\'s own retention, and audits how many (foundation A)', async () => {
+    const callId = await closedCall(DEMO_CLINIC.id);
+    const events = new CallEventLog(t.db, DEMO_CLINIC.id, callId, 'gpt-realtime/tools', { flushMs: 60_000 });
+    for (const type of ['input_audio_buffer.speech_stopped', 'output_audio_buffer.started']) events.add({ type });
+    await events.close();
+    await t.owner.execute(sql`update call_events set created_at = now() - interval '8 days' where call_id = ${callId} and type = 'input_audio_buffer.speech_stopped'`);
+    const results = await handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log, now: () => new Date() }).purgeRetention();
+    // the demo clinic keeps its transcripts a year, and its call events a week
+    expect(results.find((r) => r.clinicId === DEMO_CLINIC.id)).toMatchObject({ transcriptLines: 0, callEvents: 1 });
+    expect(((await t.owner.execute(sql`select type from call_events where call_id = ${callId}`)).rows as { type: string }[]).map((r) => r.type)).toEqual(['output_audio_buffer.started']);
+    expect((await audits(DEMO_CLINIC.id, 'retention.purged')).at(-1)).toMatchObject({ actor: 'worker', counts: { callEvents: 1 } });
   });
 
   it('works through old calls in batches, each its own transaction', async () => {

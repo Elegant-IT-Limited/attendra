@@ -41,6 +41,7 @@ A tools-path call reads the clinic's schedule for 14 days as it starts, and a pe
 ## Measuring
 
 - `pnpm db:call-stats <clinic ids> --since <ISO> --calls`: per clinic, channel, engine and flow: empty calls, first audio, voice-only turns, the lookup answer time (from `answer_timing` rows), filler lines, repeated questions, cost.
+- `pnpm db:call-events <call id>`: one call's event log (foundation A): each provider event and turn-gate decision with its offset, type and response id, gaps over 2 s marked. Kept 7 days; no words. `pnpm db:call-numbers <clinic id> [day]`: the day's stalls, reply time p50/p90, refusal loops and internal-talk lines per call path ([qa-export.md](qa-export.md)).
 - `pnpm --filter @attendra/evals real-audio`: real browser test calls with a voiced caller (see `evals/real-audio/`).
 - `call_costs`: what each call cost, by the rates table in `packages/core/src/call-costs.ts`.
 

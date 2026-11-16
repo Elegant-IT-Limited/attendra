@@ -24,13 +24,15 @@ const SCOPES: { scope: ApiKeyView['scopes'][number]; label: string; hint: string
   { scope: 'requests:read', label: 'Read requests', hint: 'The open refill and callback requests, with their details.' },
   { scope: 'requests:write', label: 'Close requests', hint: 'Mark a request done, with its outcome.' },
   { scope: 'quality:read', label: 'Read quality numbers', hint: 'The last 7 days from the Quality page. Counts only.' },
+  { scope: 'qa:read', label: 'Daily call export for quality review', hint: 'Read-only daily export of calls for quality review: times, outcomes, what each call did, and transcripts with numbers masked. Read over HTTPS, not MCP.' },
 ];
 const STATUS: Record<ApiKeyView['status'], { label: string; tone: 'ok' | 'neutral' | 'danger' }> = { active: { label: 'Active', tone: 'ok' }, expired: { label: 'Expired', tone: 'neutral' }, revoked: { label: 'Revoked', tone: 'danger' } };
 
 /**
  * Settings > API keys: keys for another AI agent, such as a desktop MCP client, to work with
  * the front desk over MCP. It can find open times, read the schedule and requests,
- * close requests and read quality numbers. It can never book or cancel.
+ * close requests and read quality numbers. It can never book or cancel. A key with qa:read
+ * reads the daily call export for quality review over HTTPS (docs/qa-export.md).
  */
 export default function ApiKeysPage() {
   const { clinicId } = useParams<{ clinicId: string }>();
@@ -64,8 +66,9 @@ export default function ApiKeysPage() {
   return (
     <>
       <SettingsHeader clinicId={clinicId} />
-      <SettingsIntro>Keys for another AI agent to work with the front desk over MCP. It can read and close requests, but it can never book or cancel.{' '}
-        <a href="https://github.com/Elegant-IT-Limited/attendra/blob/main/docs/mcp.md" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-2">How to connect an MCP client</a></SettingsIntro>
+      <SettingsIntro>Keys for another AI agent to work with the front desk over MCP, or for a reviewer to read the daily call export. A key can read and close requests, but it can never book or cancel.{' '}
+        <a href="https://github.com/Elegant-IT-Limited/attendra/blob/main/docs/mcp.md" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-2">How to connect an MCP client</a>{' · '}
+        <a href="https://github.com/Elegant-IT-Limited/attendra/blob/main/docs/qa-export.md" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-2">How the daily call export works</a></SettingsIntro>
       {list.data?.mcpUrl && (
         <Card className="mb-6">
           <CardHeader><CardTitle>Where an MCP client connects</CardTitle></CardHeader>
@@ -102,7 +105,7 @@ export default function ApiKeysPage() {
         </Card>
         <Card>
           <CardHeader><CardTitle>Keys</CardTitle></CardHeader>
-          {list.isPending ? <Skeleton className="m-5 h-24" /> : !list.data?.keys.length ? <Empty title="No keys yet" icon={<KeyRound />}>A key lets another AI agent read the schedule and requests.</Empty> : (() => {
+          {list.isPending ? <Skeleton className="m-5 h-24" /> : !list.data?.keys.length ? <Empty title="No keys yet" icon={<KeyRound />}>A key lets another AI agent read the schedule and requests, or a reviewer read each day's calls for quality review.</Empty> : (() => {
             // the keys in use first; revoked and expired ones stay on record, out of the way
             const inUse = list.data.keys.filter((k) => k.status === 'active');
             const past = list.data.keys.filter((k) => k.status !== 'active');
@@ -141,6 +144,11 @@ export default function ApiKeysPage() {
           <code className="block break-all rounded-md border border-border bg-surface-sunken px-3 py-2 font-mono text-sm" data-testid="api-key-value">{shown?.key}</code>
           <Button variant="outline" size="sm" onClick={() => { void navigator.clipboard?.writeText(shown?.key ?? '').then(() => toast({ tone: 'success', message: 'Key copied.' }), () => {}); }}><Copy /> Copy key</Button>
           <p className="text-sm text-text-muted">Every use is recorded in the audit log with this key.</p>
+          {shown?.apiKey.scopes.includes('qa:read') && (
+            <p className="text-sm text-text-muted" data-testid="qa-export-how">
+              The daily call export is at <span className="break-all font-mono">{typeof window === 'undefined' ? '' : window.location.origin}/api/v1/clinics/{clinicId}/qa/export?day=YYYY-MM-DD</span> (the clinic&apos;s day; leave out <span className="font-mono">day</span> for yesterday), with the key in the Authorization header as <span className="font-mono">Bearer atk_…</span>.
+            </p>
+          )}
         </div>
       </Panel>
       <Panel open={!!revoking} onOpenChange={(o) => !o && setRevoking(null)} title={`Revoke ${revoking?.name ?? 'this key'}?`} description="It stops working at once, for whatever is using it."
