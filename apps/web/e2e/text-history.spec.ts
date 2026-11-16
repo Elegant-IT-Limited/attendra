@@ -12,7 +12,7 @@ async function call<T>(page: Page, path: string): Promise<T> {
   return (await res.json()) as T;
 }
 const STATUS: Record<string, RegExp> = { delivered: /^Delivered$/, sent: /^Sent$/, queued: /^Waiting$/, not_sent: /^Not sent: /, failed: /^Not sent: the carrier refused it/, undelivered: /^Not sent: the carrier refused it/ };
-const KIND: Record<string, string> = { booking_confirmed: 'Booking confirmed', request_ready: 'Refill ready to pick up', directions: 'Address and directions', reminder: 'Reminder before a visit' };
+const KIND: Record<string, string> = { booking_confirmed: 'Booking confirmed', request_ready: 'Refill ready to pick up', directions: 'Address and directions', reminder: 'Reminder before a visit', hours: 'Opening hours' };
 const noSideways = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 
 test.describe.serial('text history', () => {

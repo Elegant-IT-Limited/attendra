@@ -52,9 +52,10 @@ export async function seedDemoWorkspace(db: Database, cipher: PhiCipher, auth: A
 
 /**
  * A few texts at the vet demo clinic, made up, so its text history has something to show (2026-11-16): a booking
- * confirmed and delivered (with the visit it confirms), a refill's ready text the carrier refused, a texted address that
- * was not sent (the number opted out) and a reminder to another household. The demo's calls play against a messenger
- * that records nothing, so these are written here, as the real messenger writes them: number hashed, words encrypted.
+ * confirmed and delivered (with the visit it confirms), a refill's ready text (with its request), opening hours the
+ * carrier refused, a texted address that was not sent (the number opted out) and a reminder to another household.
+ * The demo's calls play against a messenger that records nothing, so these are written here, as the real messenger
+ * writes them: number hashed, words encrypted. None is a request's failed text, which would raise the dashboard's notice.
  */
 async function seedDemoTexts(db: Database, cipher: PhiCipher, pets: Record<string, string>, now: Date) {
   const clinicId = RIVERBEND_CLINIC.id;
@@ -66,7 +67,9 @@ async function seedDemoTexts(db: Database, cipher: PhiCipher, pets: Record<strin
   const body = (words: string) => cipher.encrypt(words, phiContext(clinicId, 'sms_messages.body'));
   const rows = [
     { template: 'booking_confirmed', to: '+17205550172', status: 'delivered', hours: 50, patientId: pets.biscuit, appointmentId: visit?.id ?? null, bodyEnc: body(`${RIVERBEND_CLINIC.name}: Biscuit's wellness exam is booked. To change or cancel, call (720) 555-0170. Reply STOP to opt out.`) },
-    { template: 'request_ready', to: '+17205550172', status: 'failed', errorCode: '30006', failureReason: 'carrier', hours: 26, patientId: pets.biscuit, taskId: refill?.id ?? null, bodyEnc: body(`${RIVERBEND_CLINIC.name}: Hi Linh, Biscuit's request is ready to pick up. Questions? Call (720) 555-0170. Reply STOP to opt out.`) },
+    { template: 'request_ready', to: '+17205550172', status: 'delivered', hours: 26, patientId: pets.biscuit, taskId: refill?.id ?? null, bodyEnc: body(`${RIVERBEND_CLINIC.name}: Hi Linh, Biscuit's request is ready to pick up. Questions? Call (720) 555-0170. Reply STOP to opt out.`) },
+    // refused by the carrier, and about no request: the dashboard's "a text was not sent" notice is for requests' texts
+    { template: 'hours', to: '+17205550172', status: 'failed', errorCode: '30006', failureReason: 'carrier', hours: 20, patientId: pets.biscuit, bodyEnc: body(`${RIVERBEND_CLINIC.name}: We're open Monday to Friday, 8 AM to 6 PM. Reply STOP to opt out.`) },
     { template: 'directions', to: '+17205550172', status: 'not_sent', failureReason: 'opted_out', hours: 3, patientId: pets.biscuit },
     { template: 'reminder', to: '+17205550173', status: 'delivered', hours: 2, patientId: pets.pepper, bodyEnc: body(`${RIVERBEND_CLINIC.name}: A reminder: Pepper's visit is tomorrow. Reply C to confirm. Reply STOP to opt out.`) },
   ];
