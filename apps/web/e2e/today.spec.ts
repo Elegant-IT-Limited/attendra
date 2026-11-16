@@ -99,3 +99,23 @@ test('a vet clinic\'s Today leads to its refill queue and its emergency log', as
   await expect(page).toHaveURL(/\/calls\?emergency=true$/);
   await expect(page.getByRole('checkbox', { name: 'Emergencies only' })).toBeChecked();
 });
+
+test('Today fits a phone: no sideways scroll at 360, 390 and 414 px, and every Claim button is on screen', async ({ browser }) => {
+  // the main grid had no column size, so on a phone its one column grew to the widest row (a call row with its badges)
+  // and pushed the page to 464 or 534 px, cutting off the right end of Needs attention
+  for (const label of ['Practice manager', 'Vet clinic manager'] as const) {
+    const page = await signInAgain(browser, label);
+    for (const width of [390, 360, 414]) {
+      await page.setViewportSize({ width, height: 800 });
+      const attention = page.getByRole('list', { name: 'Needs attention' });
+      await expect(attention.getByRole('listitem').first()).toBeVisible();
+      await expect(page.getByRole('list', { name: 'Recent calls' }).getByRole('listitem').first()).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), `${label} at ${width}`).toBeLessThanOrEqual(0);
+      for (const claim of await attention.getByRole('button', { name: 'Claim' }).all()) {
+        const box = await claim.boundingBox();
+        expect(box && box.x + box.width <= width, `${label}: a Claim button at ${width}`).toBe(true);
+      }
+    }
+    await page.close();
+  }
+});
