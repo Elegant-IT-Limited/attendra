@@ -193,7 +193,9 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
         await scroller.evaluate((el) => { el.scrollTo(0, 0); });
         await scroller.focus();
         await page.keyboard.press('End');
-        await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+        // End scrolls with the browser's smooth animation: wait until it reaches the bottom, not just until it starts (a
+        // click measured while it still ran landed on the empty grid above the visit, CI 2026-11-15, 6 of 20 locally)
+        await expect.poll(() => scroller.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeLessThanOrEqual(1);
         // every visit block stays at least a 24-pixel target, and the last one opens
         const blocks = page.getByTestId('appointment');
         for (const b of (await blocks.all()).slice(-6)) { const r = (await b.boundingBox())!; expect(r.width).toBeGreaterThanOrEqual(24); }
@@ -203,8 +205,8 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
         const r = (await blocks.last().boundingBox())!;
         expect(r.x).toBeGreaterThan(card.x + 56);
         expect(r.y).toBeGreaterThan(card.y);
-        const target = { x: r.x + r.width / 2, y: r.y + Math.min(r.height / 2, 12) };
-        await page.mouse.click(target!.x, target!.y);
+        // a click on the block itself: Playwright waits until it stops moving and checks the click lands on it
+        await blocks.last().click({ position: { x: r.width / 2, y: Math.min(r.height / 2, 12) } });
         await expect(page).toHaveURL(/appointment=/, { timeout: 15_000 });
         await expect(page.getByRole('dialog')).toBeVisible({ timeout: 15_000 });
         await page.keyboard.press('Escape');

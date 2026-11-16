@@ -58,7 +58,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     // something that did not work is read in a dialog, never in a note that slides away
     if (t.tone === 'error') { setProblem({ title: 'That did not work', message: t.message }); return; }
     const id = ++next.current;
-    setToasts((all) => [...all.slice(-2), { id, message: t.message, action: t.action }]);
+    // the same note again (two requests added within its 4 seconds) replaces the one showing and starts its time again:
+    // never two identical notes stacked (CI 2026-11-15). A note with an action (Undo) stays: each undoes its own change
+    setToasts((all) => [...all.filter((x) => t.action || x.action || x.message !== t.message).slice(-2), { id, message: t.message, action: t.action }]);
     setTimeout(() => dismiss(id), t.action ? 8000 : 4000);
   }, [dismiss]);
   const confirm = useCallback((c: Confirmation) => new Promise<boolean>((resolve) => {
