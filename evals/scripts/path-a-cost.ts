@@ -17,8 +17,8 @@
  *   pnpm --filter @attendra/evals exec tsx scripts/path-a-cost.ts [--only=id,id] [--tag=tag] [--json=out.json]
  */
 import { shapeForVoice, voiceToolDefinitions } from '@attendra/agent';
-import { CALL_RATES, type ClinicConfig, localDateOf, PACKS } from '@attendra/core';
-import { callFacts, REALTIME_TOOLS_LINES, realtimeTools, sayToolQuestion, toolQuestion, toolRefusalLine, toolsVoicePrompt, toolsVoiceStaticPrompt, TOOLS_TRUNCATION, TURN_NOTE } from '@attendra/voice-engine';
+import { CALL_RATES, callFacts, type ClinicConfig, PACKS } from '@attendra/core';
+import { callFactsNote, REALTIME_TOOLS_LINES, realtimeTools, sayToolQuestion, toolQuestion, toolRefusalLine, toolsVoicePrompt, toolsVoiceStaticPrompt, TOOLS_TRUNCATION, TURN_NOTE } from '@attendra/voice-engine';
 import { encode } from 'gpt-tokenizer/encoding/o200k_base';
 import { writeFileSync } from 'node:fs';
 import { loadScenarios } from '../src/scenario';
@@ -46,7 +46,7 @@ const tok = (t: string) => encode(t).length;
 // ---- the two layouts -----------------------------------------------------------------------------------------------
 /** Batch 1c's per-turn note (dated) and word-for-word wording, as they were. */
 const OLD_TURN_NOTE = 'Reply to the caller now. If you need a tool, call it as the very first thing in your reply, with no words before it: never "let me...", "let\'s...", "okay, let me get that set up", "one moment", or anything about what you are about to do, in any language. When its result comes, say what it gives you, in the caller\'s language. Ask the caller only what a tool\'s result tells you to ask, or a detail a tool needs that they have not given; never a question of your own.';
-const oldTurnNote = (clinic: ClinicConfig, now: Date) => { const today = localDateOf(now, clinic.timezone); return `${OLD_TURN_NOTE} Today at the clinic is ${PACKS.en.fullDay(today)} (${today}): a day the caller names ("Thursday", "tomorrow") is counted from it, and its date comes from clinic_now's days list.`; };
+const oldTurnNote = (clinic: ClinicConfig, now: Date) => { const today = callFacts(clinic, now, null).date; return `${OLD_TURN_NOTE} Today at the clinic is ${PACKS.en.fullDay(today)} (${today}): a day the caller names ("Thursday", "tomorrow") is counted from it, and its date comes from clinic_now's days list.`; };
 const oldTools = (clinic: ClinicConfig) => voiceToolDefinitions(clinic).map(({ type, name, description, parameters }) => ({ type, name, description, parameters }));
 /** The tools the voice needs before anyone is found (an option measured, not used: see the report). */
 const AFTER_FOUND = new Set(['propose_booking', 'commit_pending', 'propose_cancellation', 'list_appointments', 'visit_summary']);
@@ -149,7 +149,7 @@ function simulate(layout: Layout, clinic: ClinicConfig, now: Date, callerNumber:
   };
 
   // the greeting: its own short instructions (the opening), no tools; then it is in the conversation as audio
-  if (layout.staticPrefix) conv.push(item(tok(callFacts(clinic, now, callerNumber)), 'text', 'facts'));
+  if (layout.staticPrefix) conv.push(item(tok(callFactsNote(clinic, callFacts(clinic, now, callerNumber))), 'text', 'facts'));
   const greetSeconds = speechSeconds(greeting);
   usage.audioOut += Math.round(greetSeconds * VOICE_AUDIO_PER_S); usage.textOut += tok(greeting);
   requests++; // the greeting's prompt is short and the same each call: counted as output only

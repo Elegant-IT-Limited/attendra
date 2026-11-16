@@ -1,4 +1,4 @@
-import { ClinicConfig, DEMO_CLINIC, RIVERBEND_CLINIC } from '@attendra/core';
+import { ClinicConfig, DEMO_CLINIC, RIVERBEND_CLINIC, zonedInstant } from '@attendra/core';
 import { CallEventLog, CallRepository, createPhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, saveVapiSecret, seedDemo, seedRiverbend, vapiCallEnded, vapiCallLive, vapiConcurrency, vapiSecretHashOf, vapiSecretMatches } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
@@ -27,6 +27,8 @@ describe('Vapi calling our tools', () => {
   const redirectModes: (string | undefined)[] = [];
   const alerts: string[] = [];
   const allAlerts: string[] = [];
+  /** The call's clock: a test that needs a known moment sets it, then clears it. */
+  let clock: Date | null = null;
 
   beforeAll(async () => {
     t = await openTestDatabase();
@@ -62,7 +64,7 @@ describe('Vapi calling our tools', () => {
       planner: { plan: async () => { throw new Error('the Vapi path never asks the planner'); } }, log,
       // the clinic an alert is about goes beside its text, so a test can check both
       alerts: { alert: (_k, text, where) => { const line = where?.clinicId ? `${text} [${where.clinicId}]` : text; alerts.push(line); allAlerts.push(line); }, resolved: () => {}, note: () => {}, flush: async () => {} },
-      now: () => new Date(),
+      now: () => clock ?? new Date(),
     });
     await app.ready();
   });
@@ -238,6 +240,30 @@ describe('Vapi calling our tools', () => {
     expect(second.say ?? '').not.toContain('Call facts');
     expect(controls).toEqual([]);
     await post({ type: 'end-of-call-report', call: d, endedReason: 'customer-ended-call', durationSeconds: 5 });
+  });
+
+  it('the call facts carry the clinic\'s date, its time and whether it is open, from the one builder every path uses (foundation A, item 5)', async () => {
+    // Monday, March 1, 2027 at the vet test clinic (Denver): 10 AM open, 8 PM closed. A day after this file's other calls,
+    // so the calls live at once (counted back from the call's own clock) are only this test's
+    const factsAt = async (id: string, local: string) => {
+      clock = zonedInstant('2027-03-01', local, clinic.timezone);
+      controls.length = 0;
+      const c = { id, type: 'inboundPhoneCall', customer: { number: '+13035550149' }, monitor: { controlUrl: CONTROL } };
+      await post({ type: 'status-update', status: 'in-progress', call: c });
+      await post({ type: 'conversation-update', call: c, messages: [{ role: 'bot', message: clinic.greeting, secondsFromStart: 0.5, duration: 3000 }] });
+      const [sent] = controls.filter((x) => x.body.type === 'add-message');
+      await post({ type: 'end-of-call-report', call: c, endedReason: 'customer-ended-call', durationSeconds: 5 });
+      clock = null;
+      return String((sent!.body.message as { content: string }).content);
+    };
+    const open = await factsAt('vapi-oak-facts-open', '10:00');
+    expect(open).toContain('Today at the clinic is Monday, March 1 (2027-03-01)');
+    expect(open).toContain('It\'s 10:00 AM on Monday, March 1, clinic time (MST).');
+    expect(open).toContain('The clinic is open until 6:00 PM.');
+    expect(open).toContain('ending 0149');
+    const closed = await factsAt('vapi-oak-facts-closed', '20:00');
+    expect(closed).toContain('It\'s 8:00 PM on Monday, March 1, clinic time (MST).');
+    expect(closed).toContain('The clinic is closed; it opens at 8:00 AM on Tuesday, March 2.');
   });
 
   it('counts the Vapi calls live at once, keeps the day\'s peak and says it once at 70% of the limit', async () => {

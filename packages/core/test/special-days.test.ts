@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ClinicConfig, DEMO_CLINIC, findSlots, hoursSummary, isOpen, speakSlot, todaysHoursLine, weekHours, zonedInstant } from '../src';
+import { callFacts, ClinicConfig, DEMO_CLINIC, findSlots, hoursSummary, isOpen, speakSlot, todaysHoursLine, weekHours, zonedInstant } from '../src';
 
 const tz = DEMO_CLINIC.timezone;
 const sick = DEMO_CLINIC.visitTypes.find((v) => v.id === 'vt_sick')!;
@@ -16,8 +16,8 @@ describe('special days', () => {
   it('uses the day\'s own hours: open, the line the assistant says, the week', () => {
     expect(isOpen(short, at('2026-09-29', '09:30'))).toBe(true);
     expect(isOpen(short, at('2026-09-29', '11:00'))).toBe(false);
-    expect(todaysHoursLine(short, at('2026-09-29', '08:00'))).toBe('Today the clinic is open 09:00 to 10:00 (staff training).');
-    expect(todaysHoursLine(shut, at('2026-09-29', '08:00'))).toBe('The clinic is closed today (flooding).');
+    expect(todaysHoursLine(callFacts(short, at('2026-09-29', '08:00'), null))).toBe('Today the clinic is open 09:00 to 10:00 (staff training).');
+    expect(todaysHoursLine(callFacts(shut, at('2026-09-29', '08:00'), null))).toBe('The clinic is closed today (flooding).');
     expect(weekHours(short, now).split('; ')[1]).toBe('Tuesday 2026-09-29: 09:00 to 10:00 (staff training)');
   });
 

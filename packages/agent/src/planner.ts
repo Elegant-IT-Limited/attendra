@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, agesLine, isOpen, resolveTransfer, asE164, providerName, audienceLine, type ClinicConfig, industryPack, localDateOf, MEDICAL_REFUSAL, NO_INFORMATION, normalise, PACKS, PROPOSE_IF_EXACT, speakSlot, textableNumber, textingOf, toolArgsFor, type ToolName, TOOL_NAMES, weekdayOf } from '@attendra/core';
+import { addDays, agesLine, type CallFacts, isOpen, openNowLine, resolveTransfer, asE164, providerName, audienceLine, type ClinicConfig, industryPack, localDateOf, MEDICAL_REFUSAL, NO_INFORMATION, normalise, PACKS, PROPOSE_IF_EXACT, speakSlot, textableNumber, textingOf, todaysHoursLine, toolArgsFor, type ToolName, TOOL_NAMES, weekdayOf } from '@attendra/core';
 import type OpenAI from 'openai';
 import type { Response, ResponseCreateParams, ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses';
 import type { ReasoningEffort } from 'openai/resources/shared';
@@ -19,9 +19,12 @@ export interface Planner {
   plan(input: PlannerInput, execute: (name: ToolName, args: unknown) => Promise<ToolResult>): Promise<PlannerOutput>;
 }
 
-/** `callerNumber` is the number the call came from, when there is one. */
+/**
+ * `facts`: the call's own facts (core callFacts) at this turn: the clinic's date, time, open or closed, its next opening,
+ * and the caller ID (`facts.caller`, null without one), the same facts every call path is given.
+ */
 export interface PlannerInput {
-  clinic: ClinicConfig; state: CallState; nowLine: string; callerNumber?: string | null; history?: string | null;
+  clinic: ClinicConfig; state: CallState; facts: CallFacts; history?: string | null;
   /** The clock, for "today" and "Thursday" in what is said while a lookup runs. */
   now?: Date;
   /**
@@ -127,10 +130,10 @@ export function toolDefinitions(clinic: ClinicConfig) {
   }));
 }
 
-export function systemPrompt(clinic: ClinicConfig, nowLine: string) {
+export function systemPrompt(clinic: ClinicConfig, dateLine: string) {
   const { planner } = industryPack(clinic.industry);
   return [
-    `You are the backend for the phone assistant of ${clinic.name}. ${nowLine}`,
+    `You are the backend for the phone assistant of ${clinic.name}. ${dateLine}`,
     'You receive the conversation so far and must handle the caller\'s latest request with the tools.',
     `When the caller has said who they are, even only in part, and nobody is verified yet, call verify_caller with exactly what they said before you ask anything else, with phone null (the number they are calling from) unless they gave another: it says what is still missing. ${clinic.industry === 'vet' ? 'At this veterinary clinic the phone number (caller ID, or the number they say) and the pet\'s name find the pet: the owner\'s name only greets them or adds a new pet, so never hold a pet back for it, and never ask for a last name; when no pet by that name is on the number, ask whether the pet is new.' : 'With only a first name, ask just for the last name, never for a "full name".'} Details that were not found are never looked up again as they are: ask whether they are new, or for the detail that may be wrong. Once they have said they are not new, never ask that again: say which detail did not match and ask for it once more.`,
     ...planner.rules,
@@ -238,9 +241,8 @@ export function dateTable(clinic: Pick<ClinicConfig, 'timezone'>, now: Date): st
 }
 
 /** The date and today's hours stay in the rules for the call; the clock time goes to the end of the request, where it changes nothing cached. */
-export function splitNow(nowLine: string): { date: string; time: string | null } {
-  const m = /,\s*(\d{1,2}:\d{2}) clinic time\./.exec(nowLine);
-  return m ? { date: nowLine.replace(m[0], '.'), time: m[1]! } : { date: nowLine, time: null };
+export function plannerDateLine(facts: CallFacts): string {
+  return `Today is ${facts.dayName}, ${facts.date}. ${todaysHoursLine(facts)}`;
 }
 
 function transcriptFor(state: CallState): string {
@@ -338,20 +340,21 @@ export class ResponsesPlanner implements Planner {
       ? `\n\nOur records for the number this caller is calling from (earlier calls newest first):\n${input.history}\n${input.clinic.industry === 'vet' ? 'A name on file is never the first question here: the number comes first, and the name only greets them once the number has found their pets.' : 'When a name on file is listed and nobody is verified yet, the first identity question is "Am I speaking with <that name>?" (in Spanish, "¿Hablo con <that name>?"), the way a front desk greets a client it sees on caller ID: say only that first name, nothing else from the records.'} On a yes, call verify_caller with that name and ask only for what is still missing${input.clinic.industry === 'vet' ? ' (pet_name null when no pet is named yet: it may return pets_on_number, the owner\'s pets to ask about; a pet\'s name comes only from there, never from these records)' : ''}; on a no, ask who they are as usual and never say that name again. Use the earlier calls to pick up where the caller left off, without asking again for what is there. A phone number can be faked, so from the number alone you may say only how many times and when this number called (the count is in the first line) and whether a request from those calls is still open with the team ("I see a call from this number earlier today, and the team has your callback request"); never what it was about. Anything more (the pet, the reason, what was said) only after the caller has said the first name or the pet's name used on that call. Never read them out.`
       : '';
     // a caller on a number abroad (or premium, toll-free) is never offered a text, so never told one failed
-    const noTexts = textingOf(input.clinic).enabled && input.callerNumber && !textableNumber(input.clinic, asE164(input.clinic, input.callerNumber))
+    const caller = input.facts.caller;
+    const noTexts = textingOf(input.clinic).enabled && caller && !textableNumber(input.clinic, asE164(input.clinic, caller.number))
       ? '\n\nThe number this caller is calling from cannot get texts (it is not a mobile number in the clinic\'s country). Do not offer to text anything and never ask for another number: give the address, hours and every other detail out loud. A verified caller\'s number on file may still get a booking confirmation.'
       : '';
     // the phone, asked the right way and once: caller ID is confirmed, never asked for; with none, the number the pet's
     // profile is under at a clinic for animals (the best number is for callbacks only), the best number at one for people
     const pack = PACKS[state.language];
     const vet = input.clinic.industry === 'vet';
-    const last4 = input.callerNumber ? input.callerNumber.replace(/\D/g, '').slice(-4) : null;
+    const last4 = caller?.last4 ?? null;
     const phone = vet
       // at a clinic for animals the number finds the household, so a booking starts with it, asked in these words
-      ? (input.callerNumber
+      ? (caller
         ? `\n\nCaller ID shows the number they are calling from (ending ${last4}). Only for a booking, a change or a cancellation, the first question is, in these words: "${pack.profileNumberQuestion({ last4 })}" For a question (prices, hours, how long a visit takes, what a visit includes), just answer, with no number question. On a yes, phone null uses it; if they give another number, pass it as they said it (the backend reads it back first). A new pet: phone null unless they gave another. Once a pet is found on this call, never ask for the number again.`
         : `\n\nThere is no caller ID on this call (a browser test call or a hidden number). Only for a booking, a change or a cancellation, the first question is, in these words: "${pack.profileNumberQuestion({ last4: null })}" For a question (prices, hours, how long a visit takes, what a visit includes), just answer, with no number question. Pass the number exactly as they said it, words and all ("double eight", "triple five"), even from abroad or without an area code: the backend reads it back before it searches; never ask for it again, and never once a pet is found. A pet the caller said is new is asked the same question, for the number its profile will be under. A number to call them back is asked only for a callback request, never for a booking.`)
-      : input.callerNumber
+      : caller
         ? `\n\nCaller ID shows the number they are calling from: phone null uses it, so never ask for a number. If you need to check it for a new patient, ask only, once: "${pack.sameNumberQuestion}"`
         : `\n\nThere is no caller ID on this call (a browser test call or a hidden number). When a phone number is needed, ask once: "${pack.callbackNumberQuestion}" Never ask for "the number on file" for a patient the caller said is new. Pass the number exactly as they gave it, even from abroad or without an area code: the backend keeps it and says how to read it back; never ask for it again.`;
     const transcript = transcriptFor(state);
@@ -359,10 +362,10 @@ export class ResponsesPlanner implements Planner {
     // what OpenAI's prompt cache can reuse is the unchanged start of the request: the rules and tools, then this call's
     // fixed notes (its records, its number), then the transcript, which only grows; the state line and the clock come last,
     // since they change every turn (the time was in the first line of the rules, which rewrote the whole prefix each minute)
-    const { date, time } = splitNow(input.nowLine);
+    const date = plannerDateLine(input.facts);
     const fixed = `${earlier}${noTexts}${phone}`.trim();
     const dates = dateTable(input.clinic, input.now ?? new Date());
-    const conversation: ResponseInput = [{ role: 'user', content: `${fixed ? `${fixed}\n\n` : ''}Conversation so far:\n${transcript}\n\nKnown state: ${known}${time ? `\n\nThe time now: ${time} clinic time.` : ''}\n\n${dates}` }];
+    const conversation: ResponseInput = [{ role: 'user', content: `${fixed ? `${fixed}\n\n` : ''}Conversation so far:\n${transcript}\n\nKnown state: ${known}\n\nThe time now: ${input.facts.time} clinic time. ${openNowLine(input.facts)}\n\n${dates}` }];
     const instructions = systemPrompt(input.clinic, date);
     let corrected = false;
     const doneBefore = state.done.length;
@@ -477,8 +480,8 @@ export class ResponsesPlanner implements Planner {
     }
     // out of rounds: a callback that is promised is one that exists, taken through the same
     // tool the model would use, so its rules and the request for staff apply
-    if (input.callerNumber) {
-      const taken = await execute('create_callback', { reason: 'The assistant could not finish the caller\'s request', callback_number: input.callerNumber });
+    if (caller) {
+      const taken = await execute('create_callback', { reason: 'The assistant could not finish the caller\'s request', callback_number: caller.number });
       if (taken.ok) return done({ say: 'I wasn\'t able to finish that, so I\'ve asked someone from the clinic to call you back at the number you\'re calling from.' });
     }
     // no number to call back: the offer, and the one question for a callback number, in the caller's language

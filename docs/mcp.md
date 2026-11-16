@@ -22,7 +22,7 @@ A key acts in the name of the person who made it: a request it closes is closed 
 
 | Tool | Scope | What it does |
 |---|---|---|
-| `find_open_slots` | `schedule:read` | Open times for a visit type over the next days, optionally for one provider. No patient data. |
+| `find_open_slots` | `schedule:read` | Open times for a visit type over the next days, optionally for one provider: the times the phone assistant offers and books (the visit type's notice, at least two hours ahead, up to its furthest date, a visit apart), with `earliestStart` and `lastDate` for those limits. An agent offers them to callers, so it never lists a time the phone would refuse; staff see every start in the dashboard. No patient data. |
 | `list_todays_schedule` | `schedule:read` | Today's appointments, with patient names; the audit row records how many were shown. |
 | `list_open_requests` | `requests:read` | Open requests, urgent ones first, then the newest, with the patient, the details, the suggested follow-up, whether staff marked it urgent or gave it a due day, and `createdBy` (the name and role of whoever at the clinic added it by hand, never an email; null when the assistant made it from a call). |
 | `mark_request_done` | `requests:write` | Close a request with `called_back`, `left_message`, `refill_sent` or `not_needed`. It tells the clinic's webhooks, as the dashboard does. |

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { voiceToolDefinitions } from '@attendra/agent';
-import { type CallEventInput, type ClinicConfig, DEFAULT_VOICE, industryPack, PACKS, providerEvent, REALTIME_VOICES, type VoiceFlow } from '@attendra/core';
+import { callFacts, type CallEventInput, type ClinicConfig, DEFAULT_VOICE, industryPack, PACKS, providerEvent, REALTIME_VOICES, type VoiceFlow } from '@attendra/core';
 
 /**
  * What a caller's line becomes when the transcriber wrote it in a script none of the clinic's languages is written in
@@ -19,7 +19,7 @@ import OpenAI from 'openai';
 import { OpenAIRealtimeWS } from 'openai/realtime/ws';
 import type { CallOptions, Sideband, SidebandCommand, SidebandEvent, VoiceEngine } from './engine';
 import { conversationPrompt, openingInstruction } from './prompt';
-import { callFacts, toolsVoiceStaticPrompt } from './tools-prompt';
+import { callFactsNote, toolsVoiceStaticPrompt } from './tools-prompt';
 
 /**
  * The one tool the Realtime model has: ask our backend. It is the same hand-off GPT-Live
@@ -372,7 +372,7 @@ export class RealtimeEngine implements VoiceEngine {
     this.voices.set(callId, voiceFor(clinic.voice));
     this.flows.set(callId, opts.flow ?? 'planner');
     this.languages.set(callId, clinic.languages);
-    if (opts.flow === 'tools') this.facts.set(callId, callFacts(clinic, now, opts.callerNumber));
+    if (opts.flow === 'tools') this.facts.set(callId, callFactsNote(clinic, callFacts(clinic, now, opts.callerNumber)));
   }
 
   sessionInfo(callId: string) {
@@ -393,7 +393,7 @@ export class RealtimeEngine implements VoiceEngine {
     this.voices.set(callId, voiceFor(clinic.voice));
     this.flows.set(callId, opts.flow ?? 'planner');
     this.languages.set(callId, clinic.languages);
-    if (opts.flow === 'tools') this.facts.set(callId, callFacts(clinic, now, opts.callerNumber));
+    if (opts.flow === 'tools') this.facts.set(callId, callFactsNote(clinic, callFacts(clinic, now, opts.callerNumber)));
     return { sessionId: callId, sdpAnswer: await res.text() };
   }
 

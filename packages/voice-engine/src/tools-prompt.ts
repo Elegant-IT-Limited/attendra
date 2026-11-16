@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, greetingFor, industryPack, localDateOf, openingWords, PACKS } from '@attendra/core';
+import { type CallFacts, callerIdOf, type ClinicConfig, clinicNowLine, greetingFor, industryPack, openingWords, PACKS } from '@attendra/core';
 import { VISIT_TYPES_RULE } from '@attendra/agent';
 import { LISTENING, talkLines } from './prompt';
 
@@ -49,23 +49,23 @@ export function toolWork(clinic: ClinicConfig): string[] {
 }
 
 /** The number question for a visit, said by the voice before any tool when the caller wants one (the flow's first step). */
-function numberLine(clinic: ClinicConfig, callerNumber: string | null | undefined): string {
+function numberLine(clinic: ClinicConfig, caller: CallFacts['caller']): string {
   if (industryPack(clinic.industry).identity !== 'pet') return '';
-  const last4 = callerNumber ? callerNumber.replace(/\D/g, '').slice(-4) : null;
+  const last4 = caller?.last4 ?? null;
   const asks = clinic.languages.map((l) => `"${PACKS[l].profileNumberQuestion({ last4 })}"`).join(' or ');
   return `${last4 ? `Caller ID shows the number they are calling from, ending ${last4}.` : 'There is no caller ID on this call.'} When the caller wants to book, move or cancel a visit, the first question is the number, in the caller's language: ${asks} A question about the clinic needs no number.`;
 }
 
 /** The voice's prompt on the tools path when the voice itself calls the tools (gpt-realtime, GPT-Live's voice). */
 export function toolsVoicePrompt(clinic: ClinicConfig, opts: { callerNumber?: string | null } = {}): string {
-  return [...voiceLines(clinic), numberLine(clinic, opts.callerNumber)].filter(Boolean).join('\n');
+  return [...voiceLines(clinic), numberLine(clinic, callerIdOf(opts.callerNumber))].filter(Boolean).join('\n');
 }
 
 /**
  * The same prompt without anything that changes from call to call (the caller ID, the date), for gpt-realtime: the
  * instructions and the tool definitions after them are then the same on every call of a clinic, so OpenAI's prompt
  * cache holds them across calls as well as across turns (batch 1d, cost per call). The call's own facts go in the
- * conversation once, at the start (callFacts).
+ * conversation once, at the start (callFactsNote).
  */
 export function toolsVoiceStaticPrompt(clinic: ClinicConfig): string {
   return [
@@ -79,7 +79,7 @@ export function toolsVoiceStaticPrompt(clinic: ClinicConfig): string {
  * that changes from call to call. The assistant is made once per location, so a caller ID or a date written into it
  * would be the same on every call: the first phone test (2026-11-09) heard "I don't have your phone number unless you
  * give it to me" on a call with caller ID, and a search from a date two years back. Each call's own facts (the clinic's
- * date, the caller ID and the number question) are sent into the call as it opens, as on path A (callFacts).
+ * date, the caller ID and the number question) are sent into the call as it opens, as on path A (callFactsNote).
  */
 export function toolsVapiPrompt(clinic: ClinicConfig): string {
   return [
@@ -124,7 +124,7 @@ export const PATH_A_CUTS: readonly (readonly [RegExp, string])[] = [
   // the server stops a reply the moment the caller talks (TOOLS_TURNS, interrupt_response)
   [/ If the caller starts talking, stop and listen\.$/, ''],
   [/ If the caller starts talking while you speak, stop at once and listen\.$/, ''],
-  // the call facts give the number question word for word, with or without caller ID (callFacts)
+  // the call facts give the number question word for word, with or without caller ID (callFactsNote)
   [/ The number the pet's profile is under is asked in the tool's words \(with caller ID: whether it is the number they are calling from, by its last four digits\)\./, ''],
   // a rule-changing attempt or a claimed role gets the reminder from Delegation.checkSecurity; a leak is corrected by
   // Delegation.onLeakCheck
@@ -167,14 +167,15 @@ function voiceLines(clinic: ClinicConfig): string[] {
 }
 
 /**
- * One call's own facts, said to the model once as the conversation's first item (gpt-realtime): the clinic's date (the
- * model dated "Thursday" from its own calendar, weeks out; batch 1c) and the caller ID with the number question.
+ * One call's own facts (core callFacts), said to the model once as the conversation's first item, on gpt-realtime and
+ * on Vapi alike: the clinic's date (the model dated "Thursday" from its own calendar, weeks out; batch 1c), the clinic's
+ * time and whether it is open as the call starts (in clinic_now's own words), and the caller ID with the number question.
  */
-export function callFacts(clinic: ClinicConfig, now: Date, callerNumber: string | null | undefined): string {
-  const today = localDateOf(now, clinic.timezone);
+export function callFactsNote(clinic: ClinicConfig, facts: CallFacts): string {
   return [
-    `Call facts. Today at the clinic is ${PACKS.en.fullDay(today)} (${today}): a day the caller names ("Thursday", "tomorrow") is counted from it, and its date comes from clinic_now's days list.`,
-    numberLine(clinic, callerNumber),
+    `Call facts. Today at the clinic is ${PACKS.en.fullDay(facts.date)} (${facts.date}): a day the caller names ("Thursday", "tomorrow") is counted from it, and its date comes from clinic_now's days list.`,
+    `As the call starts: ${clinicNowLine(clinic, facts, 'en')}`,
+    numberLine(clinic, facts.caller),
   ].filter(Boolean).join(' ');
 }
 

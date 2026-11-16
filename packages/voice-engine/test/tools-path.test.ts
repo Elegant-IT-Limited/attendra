@@ -1,11 +1,11 @@
 import { type ActionRecorder, CallAgent, CallState, ScriptedPlanner, shapeForVoice, systemPrompt, VISIT_TYPES_RULE } from '@attendra/agent';
-import { DEMO_CLINIC, localDateOf, PACKS, RIVERBEND_CLINIC, zonedInstant } from '@attendra/core';
+import { callFacts, DEMO_CLINIC, localDateOf, PACKS, RIVERBEND_CLINIC, zonedInstant } from '@attendra/core';
 import { createLogger } from '@attendra/observability';
 import { Writable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import {
   CallRunner, fromDelegatedResponse, GO_WAIT_MS, GptLiveEngine, RealtimeEngine, realtimeTools, type RealtimeSocket, type Sideband, type SidebandEvent,
-  type SidebandSocket, toolsBackendInstructions, toolsLivePrompt, toolsVapiPrompt, toolsVoicePrompt, toolsVoiceStaticPrompt, callFacts, compactSchema, TOOLS_TRUNCATION, type VoiceEngine, TURN_NOTE, sayToolQuestion, toolQuestion, sayToolLine, toolRefusalLine,
+  type SidebandSocket, toolsBackendInstructions, toolsLivePrompt, toolsVapiPrompt, toolsVoicePrompt, toolsVoiceStaticPrompt, callFactsNote, compactSchema, TOOLS_TRUNCATION, type VoiceEngine, TURN_NOTE, sayToolQuestion, toolQuestion, sayToolLine, toolRefusalLine,
   PATH_A_CUTS, PATH_A_DROPS, conversationPrompt,
 } from '../src';
 
@@ -237,15 +237,33 @@ describe('path A: what waits for the caller\'s words', () => {
 });
 
 describe('round 2: manual replies on gpt-realtime', () => {
+  it('path A sends the call facts first: the clinic\'s date, its time and whether it is open, from core callFacts (foundation A, item 5)', async () => {
+    const at = async (local: string) => {
+      const s = realtimeSocket();
+      const e = new RealtimeEngine({ realtime: { calls: { accept: vi.fn(async () => {}) } } } as never, 'gpt-realtime-2.1', () => s.ws);
+      await e.accept(`rtc_facts_${local}`, vet, zonedInstant('2026-09-28', local, vet.timezone), undefined, { flow: 'tools', callerNumber: '+17205550172' });
+      e.attach(`rtc_facts_${local}`);
+      return noteText(s.sent[0]!)!;
+    };
+    const open = await at('10:00');
+    expect(open).toContain('Today at the clinic is Monday, September 28 (2026-09-28)');
+    expect(open).toContain('It\'s 10:00 AM on Monday, September 28, clinic time (MDT).');
+    expect(open).toContain('The clinic is open until 6:00 PM.');
+    const closed = await at('20:00');
+    expect(closed).toContain('It\'s 8:00 PM on Monday, September 28, clinic time (MDT).');
+    expect(closed).toContain('The clinic is closed; it opens at 8:00 AM on Tuesday, September 29.');
+  });
+
   it('puts the same short note after each caller turn and never removes one; the call facts go first, once (batch 1d, the cache)', async () => {
     const s = realtimeSocket();
     const e = new RealtimeEngine({ realtime: { calls: { accept: vi.fn(async () => {}) } } } as never, 'gpt-realtime-2.1', () => s.ws);
     await e.accept('rtc_n', vet, NOW, undefined, { flow: 'tools', callerNumber: '+17205550172' });
     e.attach('rtc_n');
     // the call's own facts (the clinic's date, the caller ID) are the conversation's first item
-    expect(noteText(s.sent[0]!)).toBe(callFacts(vet, NOW, '+17205550172'));
-    expect(callFacts(vet, NOW, '+17205550172')).toContain(`Today at the clinic is ${PACKS.en.fullDay(localDateOf(NOW, vet.timezone))}`);
-    expect(callFacts(vet, NOW, '+17205550172')).toContain('ending 0172');
+    const facts = callFactsNote(vet, callFacts(vet, NOW, '+17205550172'));
+    expect(noteText(s.sent[0]!)).toBe(facts);
+    expect(facts).toContain(`Today at the clinic is ${PACKS.en.fullDay(localDateOf(NOW, vet.timezone))}`);
+    expect(facts).toContain('ending 0172');
     s.play({ type: 'response.done', event_id: 'r0' });
     const start = s.sent.length;
     s.play({ type: 'input_audio_buffer.committed', event_id: 'c0', item_id: 'item_0' });

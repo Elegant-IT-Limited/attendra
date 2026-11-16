@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type Language, PACKS } from './locales';
 import { bookingOf, type ClinicConfig, type Provider, type VisitType } from './clinic';
+import { type BookingActor, bookingPolicy, earliestStart, lastBookableDate } from './booking-policy';
 import { bookableWindows, insideWindows } from './hours';
 import { awayOn, awayWindows, providerName } from './providers';
 import { addDays, fromMinutes, localParts, toMinutes, zonedInstant } from './time';
@@ -30,7 +31,11 @@ export interface SlotQuery {
   /** Earliest first, no earlier than this local time of day (HH:MM). */
   fromTime?: string;
   now: Date;
-  leadMinutes?: number; // no same-hour surprises for the front desk
+  /**
+   * Who books (core bookingPolicy): the earliest start (the lead and the visit's notice), the furthest date, and whether
+   * every start on the grid is listed or only times a visit apart. The assistant's rules by default.
+   */
+  actor?: BookingActor;
   limit?: number;
   /** Several free at the same moment: the one with the fewest visits that day ('fewest'), or the list's order (the default). */
   tieBreak?: 'order' | 'fewest';
@@ -42,20 +47,9 @@ export interface SlotQuery {
    * the free time nearest to it on each next working day, one a day, with `days` as the window.
    */
   near?: { date: string; time: string; direction: NearDirection };
-  /** Every free start on the grid (the desk's picker and its checks), not only times a visit apart. */
-  allStarts?: boolean;
   /** The clinic's start-time grid in minutes; by default its booking rules' startEvery. */
   startEvery?: number;
 }
-
-/** How far ahead the assistant books, in minutes: no same-hour surprises for the front desk. */
-export const BOOKING_LEAD_MINUTES = 120;
-/**
- * How far ahead the front desk books, in minutes: someone standing at the desk can take the 2:40, but not a time that
- * has begun by the time it is picked and confirmed (2026-11-15: the New booking dialog offered a time already past).
- * The dialog reads it from the slots API; a sooner walk-in is the desk's Override.
- */
-export const DESK_LEAD_MINUTES = 5;
 
 export const slotId = (providerId: string, start: Date) => `${providerId}@${start.toISOString()}`;
 
@@ -90,7 +84,9 @@ export function gridStarts(open: number, close: number, length: number, every: n
 }
 
 /** Every free start on one date, all providers, in the order found (provider by provider), each with its provider's place in the list. */
-function freeOnDay(clinic: SlotClinic, busy: BusyInterval[], q: SlotQuery, date: string, earliest: number): { slot: Slot; order: number }[] {
+function freeOnDay(clinic: SlotClinic, busy: BusyInterval[], q: SlotQuery, date: string, earliest: number, lastDate: string | null): { slot: Slot; order: number }[] {
+  // past the furthest date the visit type allows (the assistant's rule): nothing that day
+  if (lastDate && date > lastDate) return [];
   const buffer = q.visitType.bufferMinutes ?? 0;
   const every = q.startEvery ?? bookingOf(clinic).startEvery;
   const out: { slot: Slot; order: number }[] = [];
@@ -125,7 +121,10 @@ function freeOnDay(clinic: SlotClinic, busy: BusyInterval[], q: SlotQuery, date:
  */
 export function findSlots(clinic: SlotClinic, busy: BusyInterval[], q: SlotQuery): Slot[] {
   const limit = q.limit ?? 3;
-  const earliest = q.now.getTime() + (q.leadMinutes ?? BOOKING_LEAD_MINUTES) * MINUTE;
+  // the one booking rule for this visit and whoever books it: how soon, how far ahead, and which starts are listed
+  const policy = bookingPolicy(q.visitType, q.actor ?? 'assistant');
+  const earliest = earliestStart(policy, q.now).getTime();
+  const lastDate = lastBookableDate(policy, q.now, clinic.timezone);
   const gap = (q.visitType.minutes + (q.visitType.bufferMinutes ?? 0)) * MINUTE;
   const minutesOf = (s: Slot) => localParts(s.start, clinic.timezone).minutes;
   // the visits each one already has that day, for a tie broken by the fewest
@@ -135,7 +134,7 @@ export function findSlots(clinic: SlotClinic, busy: BusyInterval[], q: SlotQuery
   };
   // a time offered is a visit apart from the ones already offered that day (with that vet, or with anyone when the times are distinct)
   const fits = (chosen: Slot[], slot: Slot) => !chosen.some((c) => (q.distinctTimes ? c.start.getTime() === slot.start.getTime() : false)
-    || (!q.allStarts && (q.distinctTimes || c.providerId === slot.providerId) && localDateOf(c.start, clinic.timezone) === localDateOf(slot.start, clinic.timezone)
+    || (!policy.allStarts && (q.distinctTimes || c.providerId === slot.providerId) && localDateOf(c.start, clinic.timezone) === localDateOf(slot.start, clinic.timezone)
       && Math.abs(c.start.getTime() - slot.start.getTime()) < gap));
 
   if (q.near) {
@@ -143,7 +142,7 @@ export function findSlots(clinic: SlotClinic, busy: BusyInterval[], q: SlotQuery
     const side = (m: number) => (q.near!.direction === 'before' ? m < target : q.near!.direction === 'after' ? m >= target : true);
     const ranked = (date: string) => {
       const load = loadOn(date);
-      return freeOnDay(clinic, busy, q, date, earliest).filter(({ slot }) => side(minutesOf(slot)))
+      return freeOnDay(clinic, busy, q, date, earliest, lastDate).filter(({ slot }) => side(minutesOf(slot)))
         .sort((a, b) => Math.abs(minutesOf(a.slot) - target) - Math.abs(minutesOf(b.slot) - target) || a.slot.start.getTime() - b.slot.start.getTime()
           || load(a.slot.providerId) - load(b.slot.providerId) || a.order - b.order)
         .map((x) => x.slot);
@@ -179,7 +178,7 @@ export function findSlots(clinic: SlotClinic, busy: BusyInterval[], q: SlotQuery
   for (let i = 0; i < q.days && out.length < limit; i++) {
     const date = addDays(q.from, i);
     const load = loadOn(date);
-    const day = freeOnDay(clinic, busy, q, date, earliest).filter(({ slot }) => {
+    const day = freeOnDay(clinic, busy, q, date, earliest, lastDate).filter(({ slot }) => {
       const m = minutesOf(slot);
       if (q.partOfDay === 'morning' && m >= 12 * 60) return false;
       if (q.partOfDay === 'afternoon' && m < 12 * 60) return false;

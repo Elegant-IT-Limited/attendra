@@ -4,7 +4,7 @@ import {
   addDays, EMERGENCY_CHOICES, EMERGENCY_LINES, emergencyHandlingSummary, saysSlot, ageOn, asE164, groupedNumber, heardNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, isPetEmergency, LANGUAGES, normalise, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, inProviderOrder, providerFacts, providerOrderAsked, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
-  toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant, dayShift, offerTimesLine,
+  toolArgsFor, type ToolName, BOOKING_LEAD_MINUTES, bookingPolicy, callFacts, earliestStart, lastBookableDate, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant, dayShift, offerTimesLine,
   bookableWindows, emergencyHospitalsOf, hospitalNow, hoursSummary, textAskOf, textRoute, textSituationOf, type AskedTextKind, type TextTableRefusal, type TextSource, type NearDirection, type Provider, type SmsTemplate, textableNumber, textingOf, bookingOf, seesAnimal, soundsLike, usualProviderOf, awayOn, specialDayOf, weekdayOf, windowsOnDate,
 } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
@@ -333,9 +333,8 @@ export function whyNot(clinic: ClinicConfig, q: { date: string | null; provider?
     const off = q.provider.timeOff.find((t) => !t.start && q.today >= t.from && q.today <= t.to)!;
     reasons.push(`${providerName(q.provider)} is away until ${off.to}${off.note ? ` (${off.note})` : ''}, back on ${addDays(off.to, 1)}.`);
   }
-  if (q.noticeHours && q.noticeHours > 2) {
-    const earliest = new Date(q.now.getTime() + q.noticeHours * 3_600_000);
-    const first = localDateOf(earliest, clinic.timezone);
+  if (q.noticeHours && q.noticeHours * 60 > BOOKING_LEAD_MINUTES) {
+    const first = localDateOf(earliestStart(bookingPolicy({ noticeHours: q.noticeHours }, 'assistant'), q.now), clinic.timezone);
     if (!date || date < first) reasons.push(`This visit needs ${q.noticeHours} hours' notice, so the first day it can be booked for is ${first}.`);
   }
   return reasons.length ? `${reasons.join(' ')} Say this in a few words before the times.` : null;
@@ -620,7 +619,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       // not about the clinic (the weather, how the assistant is made): the one polite line, nothing searched (batch 2)
       const outOfScope = outOfScopeLine(question);
       if (outOfScope && !whichVet) return { ok: true, data: { passages: [], say: `Say exactly: "${outOfScope}"` } };
-      const hours = todaysHoursLine(clinic, ctx.now());
+      const hours = todaysHoursLine(callFacts(clinic, ctx.now(), null));
       const topic = topicOf(question, clinic.name);
       // the clinic's own answers, the specific before the broad, one for each thing asked (note 52 B1)
       const found = answersFromFaqs(clinic.faqs, topic);
@@ -817,18 +816,17 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       }
       const requested = (args.from_date as string | null) ?? today;
       const from = requested < today ? today : requested;
-      // the clinic's booking window for this visit: how far ahead the assistant may book it
-      const lastDay = visitType.maxDaysAhead ? addDays(today, visitType.maxDaysAhead) : null;
+      // the one booking rule for this visit on a call (core bookingPolicy): its notice and the lead, and how far ahead
+      const policy = bookingPolicy(visitType, 'assistant');
+      const lastDay = lastBookableDate(policy, now, clinic.timezone);
       if (lastDay && from > lastDay) {
-        const line = pack.slots.tooFarAhead({ visit: localName(visitType, lang).toLowerCase(), days: visitType.maxDaysAhead!, lastDate: lastDay });
+        const line = pack.slots.tooFarAhead({ visit: localName(visitType, lang).toLowerCase(), days: policy.maxDaysAhead!, lastDate: lastDay });
         return { ok: false, data: { error: 'too_far_ahead', reason: 'too_far_ahead', say_as: line, say: `Say, in these words: "${line}" Offer to look before then, or take a request for the team with create_callback.` } };
       }
       // a day the caller named is looked at up to 60 days on (its nearest times, then the same time on the next working
       // days); with no day, the next two weeks
       let days = args.from_date ? 60 : 14;
       while (lastDay && days > 1 && addDays(from, days - 1) > lastDay) days--;
-      // and how much notice it needs: never under two hours
-      const leadMinutes = Math.max(120, (visitType.noticeHours ?? 0) * 60);
       // busy time must cover the whole search window, however far out it starts
       const busy = await backend.scheduler.busy(clinic.id, providers.map((p) => p.id), now, zonedInstant(addDays(from, days + 1), '00:00', clinic.timezone));
       // and the patient's own visits: a time that overlaps one would only be refused as patient_busy after their yes
@@ -857,7 +855,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const near = fromTime && mode !== 'earliest' ? { date: from, time: fromTime, direction: (mode === 'before' || mode === 'after' ? mode : 'around') as NearDirection } : undefined;
       // a move keeps its vet when they are free then: theirs first, ahead of the clinic's tie-break
       if (moving && !named && providers.some((p) => p.id === moving.providerId)) providers = [...providers.filter((p) => p.id === moving.providerId), ...providers.filter((p) => p.id !== moving.providerId)];
-      const query = { visitType, from, days, now, leadMinutes, partOfDay: (near ? 'any' : args.part_of_day) as 'any', fromTime: near ? undefined : fromTime, near,
+      const query = { visitType, from, days, now, actor: 'assistant' as const, partOfDay: (near ? 'any' : args.part_of_day) as 'any', fromTime: near ? undefined : fromTime, near,
         // the nearest two to a time asked for: "not at 4, but 3:50 or 4:20"
         ...(near ? { limit: 2 } : {}), tieBreak: rules.tieBreak === 'fewest_visits' && !moving ? 'fewest' as const : 'order' as const };
       // with anyone: three different times, each with the vet the clinic's rule picks for it
@@ -871,7 +869,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         ? ` Nothing is free at exactly ${fromTime} on ${PACKS.en.fullDay(from)}; the nearest that day are ${sameDay.map(hhmm).join(' and ')}: say so, then offer them.` : '';
       // why the day or the vet asked for gave nothing: the true reason, said before the times; nothing at all: up to which day
       const one = named || providers.length === 1 ? providers[0] : undefined;
-      const reason = dayReason(clinic, { date: args.from_date as string | null, providers, found: anyone, noticeHours: visitType.noticeHours, visit: localName(visitType, lang).toLowerCase(), now, lang })
+      const reason = dayReason(clinic, { date: args.from_date as string | null, providers, found: anyone, noticeHours: policy.noticeHours, visit: localName(visitType, lang).toLowerCase(), now, lang })
         ?? (anyone.length ? null : nothingFound(clinic, { providers, from, days, lang }));
       let note = anyone.length ? `Offer these as written, in the words of say_as. Do not invent other times.${nearest}` : 'No openings: say say_as as written, then offer a callback.';
       // nobody named: their usual vet first, when that vet is free soon enough
@@ -901,7 +899,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       // them to choose again and again, then took a request or put them through to the desk (batch 1d)
       if (slots.length > 1) note += ` If the caller can't choose ("I don't know which", "any is fine", "no sé"), offer the first time alone, ${when(slots[0]!.start)}, and ask whether to book it; never ask them to pick again.`;
       // what else about the day or the vet asked for (closed, a half day, away, notice), for the planner to say in a few words
-      const why = whyNot(clinic, { date: args.from_date as string | null, provider: one, providers, noticeHours: visitType.noticeHours, now, today });
+      const why = whyNot(clinic, { date: args.from_date as string | null, provider: one, providers, noticeHours: policy.noticeHours, now, today });
       // the answer in the caller's language, the direct one first: "Yes, 4:00 PM ... is free", "Not at 4:00, but 3:50 or 4:20 PM"
       const outside = near && one && !exactSlot ? vetHoursLine(clinic, one, from, near.time, lang, near.direction) : null;
       // a visit they already have, once per call, before anything else, to a caller the record is open to

@@ -1,8 +1,8 @@
-import { PACKS, RIVERBEND_CLINIC } from '@attendra/core';
+import { callFacts, PACKS, RIVERBEND_CLINIC } from '@attendra/core';
 import { seedRiverbend } from '@attendra/db';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { CallState, ResponsesPlanner, simpleTurn } from '../src';
-import { world } from './support';
+import { NOW, world } from './support';
 
 // Riverbend's pets, booking at any hour so a found or added pet can book on the test's clock
 let w: Awaited<ReturnType<typeof world>>;
@@ -147,7 +147,7 @@ describe('the planner, timed, and faster on simple turns when set up', () => {
     const planner = new ResponsesPlanner({ responses: { create } } as never, 'gpt-main', 8, undefined, { effort: 'medium', simple: { model: 'gpt-fast', effort: 'low' } });
     const c = await w.call('+17205550172', { clinic });
     c.caller('Biscuit.');
-    const short = await planner.plan({ clinic, state: c.state, nowLine: '' }, async () => ({ ok: true, data: {} }));
+    const short = await planner.plan({ clinic, state: c.state, facts: callFacts(clinic, NOW, null) }, async () => ({ ok: true, data: {} }));
     expect(create.mock.calls[0]![0]).toMatchObject({ model: 'gpt-fast', reasoning: { effort: 'low' } });
     // with the round's tokens (cached: what the prompt cache held), no first-token time without streaming, no tool time, and each prompt part's size
     expect(short.timing).toEqual({
@@ -158,7 +158,7 @@ describe('the planner, timed, and faster on simple turns when set up', () => {
     expect(short.timing!.prompt.instructions).toBeGreaterThan(5000);
     expect(short.timing!.prompt.tools).toBeGreaterThan(5000);
     c.caller('and I also want to ask about his diet, his weight, his nails and whether he needs a rabies shot this year or next');
-    const long = await planner.plan({ clinic, state: c.state, nowLine: '' }, async () => ({ ok: true, data: {} }));
+    const long = await planner.plan({ clinic, state: c.state, facts: callFacts(clinic, NOW, null) }, async () => ({ ok: true, data: {} }));
     expect(create.mock.calls[1]![0]).toMatchObject({ model: 'gpt-main', reasoning: { effort: 'medium' } });
     expect(long.timing).toMatchObject({ model: 'gpt-main', effort: 'medium', simple: false });
   });
@@ -168,7 +168,7 @@ describe('the planner, timed, and faster on simple turns when set up', () => {
     const planner = new ResponsesPlanner({ responses: { create } } as never, 'gpt-main');
     const c = await w.call('+17205550172', { clinic });
     c.caller('Biscuit.');
-    const out = await planner.plan({ clinic, state: c.state, nowLine: '' }, async () => ({ ok: true, data: {} }));
+    const out = await planner.plan({ clinic, state: c.state, facts: callFacts(clinic, NOW, null) }, async () => ({ ok: true, data: {} }));
     expect(create.mock.calls[0]![0]).not.toHaveProperty('reasoning');
     // still counted as a simple turn, so a run without the faster setting can be compared with one with it
     expect(out.timing).toMatchObject({ model: 'gpt-main', effort: null, simple: true, rounds: 1 });
@@ -190,7 +190,7 @@ describe('the planner, timed, and faster on simple turns when set up', () => {
     const planner = new ResponsesPlanner({ responses: { create } } as never, 'gpt-main', 8, undefined, {}, { firstToken: true });
     const c = await w.call('+17205550172', { clinic });
     c.caller('What time do you open?');
-    const out = await planner.plan({ clinic, state: c.state, nowLine: '' }, async () => { await new Promise((r) => setTimeout(r, 25)); return { ok: true, data: { hours: '9 to 5' } }; });
+    const out = await planner.plan({ clinic, state: c.state, facts: callFacts(clinic, NOW, null) }, async () => { await new Promise((r) => setTimeout(r, 25)); return { ok: true, data: { hours: '9 to 5' } }; });
     expect(out.say).toBe('We open at nine.');
     const [body, options] = create.mock.calls[0]! as unknown as [Record<string, unknown>, Record<string, unknown>];
     expect(body).toMatchObject({ model: 'gpt-main', stream: true, store: false });

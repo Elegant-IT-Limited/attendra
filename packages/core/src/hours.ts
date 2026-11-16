@@ -85,25 +85,7 @@ export function openMinutes(clinic: Days, from: Date, to: Date, stepMinutes = 15
   return open;
 }
 
-/** One short line the voice model can say: "Today we are open 8:00 to 12:00 and 13:00 to 17:00." */
-export function todaysHoursLine(clinic: Days, at: Date): string {
-  const local = localParts(at, clinic.timezone);
-  const special = specialDayOf(clinic, local.date);
-  const why = special?.note ? ` (${special.note})` : '';
-  if (!special && clinic.holidays.includes(local.date)) return 'The clinic is closed today for a holiday.';
-  const windows = windowsOnDate(clinic, local.date);
-  if (!windows.length) return `The clinic is closed today${why}.`;
-  return `Today the clinic is open ${windows.map((w) => `${w.open} to ${w.close}`).join(' and ')}${why}.`;
-}
-
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-/** "Today is Tuesday, 2026-09-29, 10:14 clinic time." The planner needs it to turn "next week" into a date. */
-export function todayLine(clinic: Pick<ClinicConfig, 'timezone'>, at: Date): string {
-  const local = localParts(at, clinic.timezone);
-  const time = `${String(Math.floor(local.minutes / 60)).padStart(2, '0')}:${String(local.minutes % 60).padStart(2, '0')}`;
-  return `Today is ${DAY_NAMES[local.weekday]}, ${local.date}, ${time} clinic time.`;
-}
 
 /** The next seven days of opening hours, today first, holidays marked: for "are you open tomorrow?". */
 export function weekHours(clinic: Days, at: Date): string {
