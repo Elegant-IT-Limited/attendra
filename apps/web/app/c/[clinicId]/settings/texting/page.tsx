@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { EmptyNote, Field, Item, Section } from '@/components/settings/section';
 import { SettingsHeader } from '@/components/settings/settings-nav';
 import { TextsEditor } from '@/components/settings/texts-editor';
+import { RecentTexts } from '@/components/texts/recent-texts';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/controls';
 import { Alert, Skeleton } from '@/components/ui/feedback';
@@ -138,6 +139,8 @@ export default function TextingSettings() {
         </Section>
         <TextsEditor config={c} texting={draft} disabled={!writable} onChange={(wording) => set({ wording })} />
       </fieldset>
+      {/* read-only: the texts that went, for anyone who reads calls and records (text history, 2026-11-16) */}
+      {can('patients:read') && <RecentTexts clinicId={clinicId} timeZone={c.timezone} />}
 
       {writable && dirty && (
         <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur md:left-16 xl:left-60">

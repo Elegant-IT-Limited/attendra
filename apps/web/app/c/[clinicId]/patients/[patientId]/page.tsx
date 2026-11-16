@@ -14,7 +14,7 @@ import { PatientForm } from '@/components/patients/patient-form';
 import { RecordTools } from '@/components/patients/record-tools';
 import { AppointmentPanel } from '@/components/schedule/appointment-panel';
 import { BookingDialog } from '@/components/schedule/booking-dialog';
-import { TextStatus } from '@/components/calls/text-status';
+import { TextHistory } from '@/components/texts/text-history';
 import { MarkedBadge } from '@/components/schedule/visit-status';
 import { Badge } from '@/components/ui/badge';
 import { Tabs } from '@/components/ui/tabs';
@@ -30,6 +30,7 @@ const TABS = [
   { id: 'appointments', label: 'Appointments' },
   { id: 'calls', label: 'Calls' },
   { id: 'requests', label: 'Requests' },
+  { id: 'texts', label: 'Texts' },
   { id: 'details', label: 'Details' },
 ] as const;
 type Tab = (typeof TABS)[number]['id'];
@@ -76,7 +77,7 @@ export default function PatientPage() {
   const now = Date.now();
   const upcoming = p.appointments.filter((a) => a.status === 'booked' && Date.parse(a.startsAt) > now);
   const other = p.appointments.filter((a) => !upcoming.includes(a));
-  const counts: Record<Tab, number | null> = { appointments: upcoming.length, calls: p.calls.length, requests: p.requests.filter((r) => r.status === 'open').length, details: null };
+  const counts: Record<Tab, number | null> = { appointments: upcoming.length, calls: p.calls.length, requests: p.requests.filter((r) => r.status === 'open').length, texts: null, details: null };
 
   return (
     <>
@@ -167,12 +168,10 @@ export default function PatientPage() {
             )}
           </Card>
         )}
-        {tab === 'calls' && (
-          <Card className="mt-4">
-            <CardContent className="py-5">
-              <h2 className="mb-3 text-sm font-semibold">Texts</h2>
-              <TextStatus clinicId={clinicId} filter={{ patientId: p.id }} timeZone={tz} last4 empty={`No texts to ${pet ? 'this owner' : 'this patient'} yet. Booking confirmations and ready-to-pick-up texts appear here, with whether they arrived.`} />
-            </CardContent>
+        {/* every text to this household's number, newest 20 (text history, 2026-11-16) */}
+        {tab === 'texts' && (
+          <Card>
+            <TextHistory clinicId={clinicId} query={{ patientId: p.id }} timeZone={tz} empty={`No texts to ${pet ? 'this owner' : 'this patient'} yet.`} />
           </Card>
         )}
         {tab === 'requests' && (

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { RIVERBEND_CLINIC } from '@attendra/core';
-import { type Database, type PhiCipher, rehashCallLookups, rehashPatientLookups, schema, seedCedarPark, seedDemo, seedDemoSchedule, seedRiverbend } from '@attendra/db';
+import { type Database, type PhiCipher, phiContext, rehashCallLookups, rehashPatientLookups, schema, seedCedarPark, seedDemo, seedDemoSchedule, seedRiverbend, smsNumberHash, withClinic } from '@attendra/db';
 import { LocalEmbedder, seedDemoKnowledge } from '@attendra/knowledge';
 import { createLogger } from '@attendra/observability';
 import { handlers } from '@attendra/worker/runtime';
 import { LocalSummariser } from '@attendra/worker/summarise';
-import { isNotNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
 import { Writable } from 'node:stream';
 import { recordDemoCalls } from '@attendra/evals/demo';
 import type { Auth } from '../src/auth';
@@ -46,7 +46,43 @@ export async function seedDemoWorkspace(db: Database, cipher: PhiCipher, auth: A
   await rehashPatientLookups(db, cipher, { apply: true });
   await rehashCallLookups(db, cipher, { apply: true });
   await summariseDemoCalls(db, cipher);
+  await seedDemoTexts(db, cipher, riverbend.patientIds, now);
   return results;
+}
+
+/**
+ * A few texts at the vet demo clinic, made up, so its text history has something to show (2026-11-16): a booking
+ * confirmed and delivered (with the visit it confirms), a refill's ready text (with its request), opening hours the
+ * carrier refused, a texted address that was not sent (the number opted out) and a reminder to another household.
+ * The demo's calls play against a messenger that records nothing, so these are written here, as the real messenger
+ * writes them: number hashed, words encrypted. None is a request's failed text, which would raise the dashboard's notice.
+ */
+async function seedDemoTexts(db: Database, cipher: PhiCipher, pets: Record<string, string>, now: Date) {
+  const clinicId = RIVERBEND_CLINIC.id;
+  const ago = (hours: number) => new Date(now.getTime() - hours * 3_600_000);
+  const [visit] = await withClinic(db, clinicId, (tx) => tx.select({ id: schema.appointments.id }).from(schema.appointments)
+    .where(and(eq(schema.appointments.clinicId, clinicId), eq(schema.appointments.patientId, pets.biscuit!))).orderBy(desc(schema.appointments.startsAt)).limit(1));
+  const [refill] = await withClinic(db, clinicId, (tx) => tx.select({ id: schema.tasks.id }).from(schema.tasks)
+    .where(and(eq(schema.tasks.clinicId, clinicId), eq(schema.tasks.type, 'refill'))).orderBy(desc(schema.tasks.createdAt)).limit(1));
+  const body = (words: string) => cipher.encrypt(words, phiContext(clinicId, 'sms_messages.body'));
+  const rows = [
+    { template: 'booking_confirmed', to: '+17205550172', status: 'delivered', hours: 50, patientId: pets.biscuit, appointmentId: visit?.id ?? null, bodyEnc: body(`${RIVERBEND_CLINIC.name}: Biscuit's wellness exam is booked. To change or cancel, call (720) 555-0170. Reply STOP to opt out.`) },
+    { template: 'request_ready', to: '+17205550172', status: 'delivered', hours: 26, patientId: pets.biscuit, taskId: refill?.id ?? null, bodyEnc: body(`${RIVERBEND_CLINIC.name}: Hi Linh, Biscuit's request is ready to pick up. Questions? Call (720) 555-0170. Reply STOP to opt out.`) },
+    // refused by the carrier, and about no request: the dashboard's "a text was not sent" notice is for requests' texts
+    { template: 'hours', to: '+17205550172', status: 'failed', errorCode: '30006', failureReason: 'carrier', hours: 20, patientId: pets.biscuit, bodyEnc: body(`${RIVERBEND_CLINIC.name}: We're open Monday to Friday, 8 AM to 6 PM. Reply STOP to opt out.`) },
+    { template: 'directions', to: '+17205550172', status: 'not_sent', failureReason: 'opted_out', hours: 3, patientId: pets.biscuit },
+    { template: 'reminder', to: '+17205550173', status: 'delivered', hours: 2, patientId: pets.pepper, bodyEnc: body(`${RIVERBEND_CLINIC.name}: A reminder: Pepper's visit is tomorrow. Reply C to confirm. Reply STOP to opt out.`) },
+  ];
+  await withClinic(db, clinicId, async (tx) => {
+    for (const [i, r] of rows.entries()) {
+      const at = ago(r.hours);
+      await tx.insert(schema.smsMessages).values({
+        clinicId, template: r.template, toHash: smsNumberHash(cipher, clinicId, r.to), status: r.status, idempotencyKey: `demo-text-${i}`, kind: r.template === 'reminder' ? 'reminder' : 'auto',
+        patientId: r.patientId ?? null, appointmentId: r.appointmentId ?? null, taskId: r.taskId ?? null, errorCode: r.errorCode ?? null, failureReason: r.failureReason ?? null,
+        bodyEnc: r.bodyEnc ?? null, createdAt: at, sentAt: r.status === 'not_sent' ? null : at, deliveredAt: r.status === 'delivered' ? at : null,
+      }).onConflictDoNothing();
+    }
+  });
 }
 
 /**

@@ -5,40 +5,22 @@ import { useQuery } from '@tanstack/react-query';
 import { MessageSquare } from 'lucide-react';
 import { StatusPill } from '@/components/ui/badge';
 import { api } from '@/lib/api';
-import { shortWhen, TEXT_NOT_SENT } from '@/lib/format';
+import { shortWhen } from '@/lib/format';
+import { TEXT_KINDS, textKind, textStatusWords, textTone } from '@/lib/text-kinds';
 import { useTerms } from '@/lib/terms';
 
-/** What each text was, in the front desk's words. */
-export const TEXT_TEMPLATES: Record<string, string> = {
-  booking_confirmed: 'Booking confirmation',
-  request_ready: 'Ready to pick up',
-  refill_sent: 'Refill sent to the pharmacy',
-  refill_not_approved: 'Refill: please call us',
-  change_confirmed: 'Visit moved',
-  cancel_confirmed: 'Visit cancelled',
-  directions: 'Address and map',
-  hours: 'Opening hours',
-  emergency_hospital: 'Emergency hospital',
-  // the clinic's own word for who is booked: "Veterinarian's details" at a vet clinic (note 52 C2)
-  provider: 'Provider\'s details',
-  answer: 'Answer to a question',
-  link: 'Link',
-  reminder: 'Appointment reminder',
-};
-
-const REASONS = TEXT_NOT_SENT;
+/** What each text was: the one table of kinds (lib/text-kinds). */
+export const TEXT_TEMPLATES: Record<string, string> = TEXT_KINDS;
 
 /** One line per text: a status, and what it was with when or why not. */
 export function textLine(t: TextItem, timeZone: string, provider = 'doctor'): { tone: 'ok' | 'warn' | 'danger' | 'neutral'; label: string; detail: string } {
-  const what = t.template === 'provider' ? `${provider.charAt(0).toUpperCase()}${provider.slice(1)}'s details` : TEXT_TEMPLATES[t.template] ?? t.template.replaceAll('_', ' ');
+  const what = textKind(t.template, provider);
   const at = (iso: string | null) => (iso ? ` · ${shortWhen(iso, timeZone)}` : '');
-  switch (t.status) {
-    case 'delivered': return { tone: 'ok', label: 'Delivered', detail: `${what}${at(t.deliveredAt)}` };
-    case 'sent': return { tone: 'ok', label: 'Sent', detail: `${what}${at(t.sentAt)} · delivery not reported yet` };
-    case 'queued': return { tone: 'neutral', label: 'Sending', detail: what };
-    case 'not_sent': return { tone: 'warn', label: 'Not sent', detail: `${what} · ${REASONS[t.failureReason ?? ''] ?? 'reason not recorded'}` };
-    default: return { tone: 'danger', label: t.status === 'undelivered' ? 'Not delivered' : 'Failed', detail: `${what}${t.errorCode ? ` · carrier error ${t.errorCode}` : ''}` };
-  }
+  // the status in the same words as every text list ("Waiting", "Sent", "Delivered", "Not sent: <why>")
+  const words = textStatusWords(t);
+  const [label, why] = words.startsWith('Not sent: ') ? ['Not sent', words.slice('Not sent: '.length)] : [words, ''];
+  const when = t.status === 'delivered' ? at(t.deliveredAt) : t.status === 'sent' ? `${at(t.sentAt)} · delivery not reported yet` : '';
+  return { tone: textTone(t), label, detail: `${what}${when}${why ? ` · ${why}` : ''}` };
 }
 
 /**
@@ -46,7 +28,7 @@ export function textLine(t: TextItem, timeZone: string, provider = 'doctor'): { 
  * and nothing when there are none, unless `empty` says what to show.
  */
 export function TextStatus({ clinicId, filter, timeZone, empty, last4 = false }: {
-  clinicId: string; filter: { callId?: string; taskId?: string; patientId?: string }; timeZone: string; empty?: string; last4?: boolean;
+  clinicId: string; filter: { callId?: string; taskId?: string; patientId?: string; appointmentId?: string }; timeZone: string; empty?: string; last4?: boolean;
 }) {
   const [key, value] = Object.entries(filter).find(([, v]) => !!v) ?? [];
   const terms = useTerms(clinicId);

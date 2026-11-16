@@ -355,8 +355,15 @@ export const TaskSearch = TaskQuery.extend({
   q: z.string().trim().max(SEARCH_MAX).default(''),
 });
 /** Texts about one thing: exactly one of a call, a request, a pet or patient, or a visit. */
-export const TextQuery = z.object({ callId: z.uuid().optional(), taskId: z.uuid().optional(), patientId: z.uuid().optional(), appointmentId: z.uuid().optional() })
-  .refine((q) => [q.callId, q.taskId, q.patientId, q.appointmentId].filter(Boolean).length === 1, 'give exactly one of callId, taskId, patientId, appointmentId');
+/**
+ * Which texts: about one call, request or visit; to one pet's household (patientId: every text to the number on its
+ * record, the newest 20); or the clinic's newest 50 (recent=true), all or only those not sent (status=not_sent).
+ */
+export const TextQuery = z.object({
+  callId: z.uuid().optional(), taskId: z.uuid().optional(), patientId: z.uuid().optional(), appointmentId: z.uuid().optional(),
+  recent: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
+  status: z.enum(['all', 'not_sent']).optional(),
+}).refine((q) => [q.callId, q.taskId, q.patientId, q.appointmentId, q.recent || undefined].filter(Boolean).length === 1, 'give exactly one of callId, taskId, patientId, appointmentId, recent');
 export const TextItem = z.object({
   id: z.string(),
   template: z.string(),
@@ -373,6 +380,17 @@ export const TextItem = z.object({
   consentAtMs: z.number().int().nullable(),
   /** The last four digits, only when the text is about a patient. */
   toLast4: z.string().nullable(),
+  /** The words that went out, while the clinic keeps call records; null for one never sent or past retention. */
+  body: z.string().nullable().optional(),
+  /** What it belongs to, for links: the request (by its number), the visit (and its start), the pet or patient. */
+  taskId: z.string().nullable().optional(),
+  taskNumber: z.number().int().nullable().optional(),
+  taskStatus: z.enum(['open', 'done']).nullable().optional(),
+  appointmentId: z.string().nullable().optional(),
+  appointmentStartsAt: z.iso.datetime().nullable().optional(),
+  patientId: z.string().nullable().optional(),
+  /** The pet's or patient's name, in the clinic's list of recent texts. */
+  patientName: z.string().nullable().optional(),
 });
 export const TextList = z.object({ texts: z.array(TextItem) });
 
