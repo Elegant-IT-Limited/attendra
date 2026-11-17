@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, asE164, ClinicConfig, type EventSink, readCustomValues, zonedInstant } from '@attendra/core';
+import { addDays, asE164, ClinicConfig, type EventSink, localDateOf, readCustomValues, zonedInstant } from '@attendra/core';
 import { approvesRefills, type Database, type FrontDeskRepository, type PhiCipher, PostgresTaskQueue, requestAssignees, staffPeople, staffRole, taskFacts } from '@attendra/db';
 import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
@@ -121,11 +121,15 @@ export class TasksController {
    */
   @Get('text-problems')
   @Requires('tasks:read')
-  @ApiOperation({ summary: 'Texts about requests not sent in the last three days: request number and type, the text\'s state and why. No patient data, not audited.' })
+  @ApiOperation({ summary: 'Texts about requests not sent in the last three days that nobody marked handled (the newest 20, and how many in all): request number and type, the text\'s state and why. No patient data, not audited.' })
   @ApiOkResponse({ schema: schemaOf(TextProblems) })
   async textProblems(@Param('clinicId') clinicId: string): Promise<TextProblems> {
-    const rows = await this.desk.textProblems(clinicId, new Date(Date.now() - TEXT_PROBLEM_DAYS * 86_400_000));
-    return { problems: rows.map((r) => ({ ...r, at: r.at.toISOString() })) };
+    // from the start of the clinic's day three days back: the same days the Texts page's link to them filters by
+    const stored = await this.desk.settings(clinicId);
+    const tz = stored ? ClinicConfig.parse(stored).timezone : 'UTC';
+    const since = zonedInstant(addDays(localDateOf(new Date(), tz), -TEXT_PROBLEM_DAYS), '00:00', tz);
+    const { total, problems } = await this.desk.textProblems(clinicId, since);
+    return { total, problems: problems.map((r) => ({ ...r, at: r.at.toISOString() })) };
   }
 
   @Get('count')

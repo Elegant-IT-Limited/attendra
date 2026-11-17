@@ -359,6 +359,9 @@ export const smsMessages = pgTable('sms_messages', {
   deliveredAt: timestamp('delivered_at', { withTimezone: true }),
   // the words that went out, encrypted; null once the clinic's retention is over (migration 0059)
   bodyEnc: text('body_enc'),
+  /** A text not sent that a person marked handled (they called instead), and who: it leaves Today (migration 0063). */
+  handledAt: timestamp('handled_at', { withTimezone: true }),
+  handledBy: text('handled_by'),
 });
 
 /** A number's standing with a clinic: the latest STOP or START wins. Only the number's hash. */
