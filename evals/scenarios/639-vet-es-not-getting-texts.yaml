@@ -1,0 +1,22 @@
+id: vet-es-not-getting-texts
+title: "In Spanish: \"no me llegan los mensajes\": answered with where texts go and an offer to have the team check it, never with the clinic's address (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-bugs, texts, es]
+turns:
+  - caller: Hola, soy Linh Nguyen, la dueña de Biscuit. No me llegan los mensajes de ustedes.
+    reply: "Los mensajes van al número de la ficha, que termina en 0172, que puede no ser el teléfono desde el que llama, y yo no puedo ver si un mensaje llegó. Si ese número cambió, puedo pedir al equipo que lo actualice y le llame. ¿Quiere que lo haga?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - get_clinic_info: { question: dirección de la clínica }
+  - caller: Sí, por favor.
+    reply: "De acuerdo, se lo paso al equipo y alguien le llamará a este número."
+    delegate:
+      - create_callback: { reason: "Texts not arriving: check or update the number on file", callback_number: null, topic: null }
+expect:
+  outcome: task_created
+  verified: true
+  language: es
+  spoken_contains: ["Los mensajes van al número de la ficha de su mascota"]
+  returned: ["Los mensajes van al número de la ficha, que termina en 0172"]
+  never_returned: ["88 Riverbend Road"]

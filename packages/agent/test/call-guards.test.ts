@@ -2,7 +2,7 @@
 import { RIVERBEND_CLINIC } from '@attendra/core';
 import { seedRiverbend } from '@attendra/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { askedWhy, claimsIn, notInTheClinicsLanguages, recordingLine } from '../src/flow/guards';
+import { askedWhy, claimsIn, notInTheClinicsLanguages, recordingLine, saysTextsNotArriving } from '../src/flow/guards';
 import { world } from './support';
 
 // Batch 1b, the rest of the 11-16 set: the real reason on "why?", no result without a tool, the facts checked again,
@@ -71,6 +71,19 @@ describe('no result without a tool', () => {
     expect(claimsIn('Ya está reservada su cita.')).toEqual(['booked']);
   });
 
+  it('corrects a text said to be sent with none sent, and any text said to have arrived (call bugs, 2026-11-17)', async () => {
+    const c = await w.call('+17205550172', { clinic: open });
+    c.caller('Just send me the text.');
+    const out = c.agent.onAgentTranscript('Yes, a confirmation text has been sent to the number on file.', 5000, 7000);
+    expect(instructions(out)).toContain('Never say a text was sent or arrived');
+    expect(claimsIn('I\'ve sent you a confirmation text.')).toEqual(['texted']);
+    expect(claimsIn('You should have received it by now.')).toEqual(['text_arrived']);
+    expect(claimsIn('Le he enviado un mensaje de confirmación.')).toEqual(['texted']);
+    expect(claimsIn('I\'ll text a confirmation to the number on file.')).toEqual([]);
+    expect(claimsIn('Le enviaré una confirmación por mensaje al número de su ficha.')).toEqual([]);
+    expect(claimsIn('I\'ve sent the refill request to the team.')).toEqual([]);
+  });
+
   it('a vet\'s day said before any lookup is a claim; after a slot search it is the schedule (batch 1c, live runs)', async () => {
     expect(claimsIn('No, Dr. Vance isn\'t in on Tuesday.')).toEqual(['vet_day']);
     expect(claimsIn('Lo siento, la doctora Vance no está disponible el viernes.')).toEqual(['vet_day']);
@@ -96,6 +109,25 @@ describe('no result without a tool', () => {
     plain.caller('What are your hours?');
     const [hours] = (await plain.delegate([{ tool: 'get_clinic_info', args: { question: 'opening hours' } }])).results;
     expect(hours!.data.vet_day).toBeUndefined();
+  });
+});
+
+describe('texts that do not arrive (call bugs, 2026-11-17)', () => {
+  it('hears texts that are not arriving in either language, and nothing else', () => {
+    for (const t of ['I\'m not getting your messages.', "I haven't received the text", 'I never got a confirmation', 'The texts are not coming through', 'No me llegan los mensajes', 'No he recibido ningún mensaje', 'No me llegó el mensaje']) expect(saysTextsNotArriving(t), t).toBe(true);
+    for (const t of ['Can you text me the address?', 'What are your opening hours?', 'I got the text, thanks', 'Mándeme un mensaje, por favor']) expect(saysTextsNotArriving(t), t).toBe(false);
+  });
+
+  it('answers it with where texts go and the next step, never the clinic\'s details', async () => {
+    const c = await w.call('+17205550172', { clinic: open });
+    const heard = c.caller('I never got any texts from you.');
+    expect(instructions(heard)).toContain('Texts go to the number on your pet\'s file');
+    const out = await c.delegate([
+      { tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: 'Biscuit', phone: null } },
+      { tool: 'get_clinic_info', args: { question: 'clinic address' } },
+    ]);
+    expect(out.results[1]!.data.spoken).toContain('Texts go to the number on file, ending 0172');
+    expect(JSON.stringify(out.results[1]!.data)).not.toContain('Riverbend Road');
   });
 });
 

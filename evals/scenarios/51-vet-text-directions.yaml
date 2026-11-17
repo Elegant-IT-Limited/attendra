@@ -10,7 +10,7 @@ turns:
       - send_text: { kind: directions, ref: null, to: null }
   - assistant: "We're at 88 Riverbend Road in Denver. Would you like me to text that to the number you're calling from?"
   - caller: Yes please, that would help.
-    reply: "Done, I've just sent it."
+    reply: "I'm texting it to you now."
     delegate:
       - send_text: { kind: directions, ref: null, to: null }
 expect:

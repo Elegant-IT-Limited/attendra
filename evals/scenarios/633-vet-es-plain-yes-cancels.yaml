@@ -1,0 +1,22 @@
+id: vet-es-plain-yes-cancels
+title: "In Spanish: a cancellation read back, answered \"¿me lo puede confirmar?\": that asks for it to be done, so it is cancelled (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, has-appointment, call-bugs, clear-yes, es]
+turns:
+  - caller: Hola, soy Linh Nguyen. Por favor, cancele la cita del jueves de Biscuit.
+    reply: "Entonces, quiere {readback}. ¿Es correcto?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - list_appointments: {}
+      - propose_cancellation: { appointment_id: "$appointments[0]" }
+  - caller: "¿Me lo puede confirmar?"
+    reply: "Listo, la cita queda cancelada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: cancelled
+  verified: true
+  language: es
+  sms_sent: 1
+  sms_templates: [cancel_confirmed]

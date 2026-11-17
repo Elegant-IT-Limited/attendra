@@ -13,13 +13,44 @@ import { type Language, LANGUAGES, normalise, PACKS } from './locales';
  * because a caller who switches languages to say "wait" still means wait.
  */
 export function isClearYes(callerTextSinceReadback: string, languages: readonly Language[]): boolean {
-  const t = normalise(callerTextSinceReadback).trim();
+  // "is it booked now?" only checks on the change: neither a yes nor a doubt, so it is taken out first (a test call,
+  // 2026-11-16: two plain answers with a check like that in them were refused, and the caller was asked for set words)
+  const t = withoutDoneCheck(normalise(callerTextSinceReadback)).trim();
   if (!t) return false;
-  const whole = t.replace(/[.,!¡]+/g, ' ').replace(/\s+/g, ' ').trim();
-  const yes = languages.some((l) => PACKS[l].yes.test(t) || PACKS[l].yesAlone.test(whole));
+  const whole = t.replace(/[.,!¡?¿]+/g, ' ').replace(/\s+/g, ' ').trim();
+  // "can you confirm it?", "¿me lo puede confirmar?": asking for the change itself, said as a question
+  if (languages.some((l) => CONFIRM_REQUEST[l].test(whole))) return true;
+  const yes = languages.some((l) => PACKS[l].yes.test(t) || PACKS[l].yesAlone.test(whole.replace(/^(?:so|and|then|entonces|pues|y)\s+/, '')));
   const hedge = LANGUAGES.some((l) => PACKS[l].hedge.test(t));
   return yes && !hedge;
 }
+
+/**
+ * A caller checking that the change is done, not answering it: "is it booked now?", "are we all set?", "did it go
+ * through?", "¿ya está?", "¿ya quedó?". With its own question mark. Never a doubt, never a yes. "He's" and "she's" are
+ * there for "it's" as a transcriber may write it.
+ */
+const DONE_CHECK = /¿? ?\b(?:(?:so|and|then|entonces|asi que|y) )?(?:(?:are|is|was) (?:you|we|it|that|this|he|she)|(?:you|we|it|that|this|he|she) (?:are|is|was)|you'?re|we'?re|it'?s|that'?s|he'?s|she'?s)(?: all)? (?:done|finished|set|sorted|booked|moved|confirmed|through)(?: (?:with|now|then))?(?: (?:it|that|this|everything|your work|the work|my (?:visit|appointment|booking)))?\b ?[?.!]?|\bdid (?:it|that) go through\b ?[?.!]?|¿? ?\b(?:(?:entonces|asi que|y) )?(?:ya )?(?:esta|quedo|queda) (?:hech[oa]|list[oa]|confirmad[oa]|reservad[oa]|cambiad[oa])\b ?[?.!]?|¿ ?ya (?:esta|quedo) ?\?/g;
+/** The caller's words (normalised) without a check that the change is done. */
+export function withoutDoneCheck(normalisedText: string): string {
+  // one space between words first: DONE_CHECK matches single spaces only (no unbounded repeats to backtrack on)
+  return trimEdges(normalisedText.replace(/\s+/g, ' ').replace(DONE_CHECK, ' ').replace(/\s+/g, ' '), ' ,.;:', ' ,;:');
+}
+
+/** The text without these characters at its start and end: a loop, not a regex (`[…]+$` backtracks on long runs of spaces). */
+function trimEdges(text: string, start: string, end: string): string {
+  let a = 0;
+  let b = text.length;
+  while (a < b && start.includes(text[a]!)) a++;
+  while (b > a && end.includes(text[b - 1]!)) b--;
+  return text.slice(a, b);
+}
+
+/** Asking for the change to be made, as a question: "can you confirm it?", "could you just book it please?", "¿me lo puede confirmar?". */
+const CONFIRM_REQUEST: Record<Language, RegExp> = {
+  en: /^(?:(?:can|could|will|would) you (?:please )?|please )?(?:just )?(?:go ahead and )?(?:confirm|book|finali[sz]e|do) (?:it|that|this|me)(?: for me)?(?: please| now| then)?$/,
+  es: /^(?:(?:me )?(?:lo |la )?(?:puede|podria) (?:usted )?)?(?:confirmar(?:lo|la|me|melo|mela)?|confirmemelo|confirmemela|confirmelo|confirmela|reservar(?:lo|la)?|hacer(?:lo)?)(?: por favor| ya)?$/,
+};
 
 /**
  * The caller's answer to a question, from everything they said since it was asked, in pieces: the latest piece with
@@ -31,7 +62,8 @@ export function isClearYes(callerTextSinceReadback: string, languages: readonly 
 export function answerAcrossPieces(pieces: readonly string[], languages: readonly Language[]): string {
   void languages;
   for (let i = pieces.length - 1; i >= 0; i--) {
-    const rest = normalise(pieces[i]!).replace(CHECK_INS, ' ').replace(/^[\s,.!?¿¡]+|[\s,]+$/g, '').replace(/\s+/g, ' ').trim();
+    // a check that the change is done ("is it booked now?") is not an answer either: the piece before it decides
+    const rest = withoutDoneCheck(normalise(pieces[i]!).replace(CHECK_INS, ' ')).replace(/^[\s,.!?¿¡]+|[\s,]+$/g, '').replace(/\s+/g, ' ').trim();
     if (rest) return rest;
   }
   return pieces.at(-1) ?? '';

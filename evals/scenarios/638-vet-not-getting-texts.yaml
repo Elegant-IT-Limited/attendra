@@ -1,0 +1,22 @@
+id: vet-not-getting-texts
+title: "\"I never got any texts\": answered with where texts go (the number on file, by its last four digits) and an offer to have the team check it, never with the clinic's address (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-bugs, texts]
+turns:
+  - caller: Hi, Linh Nguyen, Biscuit's owner. I never got any texts from you.
+    reply: "Texts go to the number on file, ending 0172, which may not be the phone you're calling from, and I can't see whether a text has arrived. If that number has changed, I can ask the team to update it and call you back. Would you like that?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      # the test call's mistake: a question about the clinic for it
+      - get_clinic_info: { question: clinic address }
+  - caller: Yes, please.
+    reply: "Okay, I've passed that on to the team, and someone will call you back at this number."
+    delegate:
+      - create_callback: { reason: "Texts not arriving: check or update the number on file", callback_number: null, topic: null }
+expect:
+  outcome: task_created
+  verified: true
+  spoken_contains: ["Texts go to the number on your pet's file"]
+  returned: ["Texts go to the number on file, ending 0172", "can't see whether a text has arrived"]
+  never_returned: ["88 Riverbend Road"]

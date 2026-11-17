@@ -1,0 +1,42 @@
+id: vet-cancel-it-after-booking
+title: "A pet has a visit the team booked today; the owner books a second one on the call, then says \"cancel it\": the visit just booked is cancelled, the team's stays (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, has-appointment-today, call-bugs]
+turns:
+  - caller: Hi, this is Linh Nguyen. Can I book a wellness exam for Biscuit today, after 4?
+    reply: "Biscuit already has a visit booked: wellness exam, today at 2:00 PM, with Dr. Elena Ruiz. Would you like to move that one, or book another as well?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-28", part_of_day: any, from_time: "16:00", time_mode: after }
+  - caller: Another one, please.
+    reply: "Today I have {offered.0}, or {offered.1}."
+    delegate:
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-28", part_of_day: any, from_time: "16:00", time_mode: after }
+  - caller: The first one.
+    reply: "I have {readback}. Shall I book it?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "All set, that's booked."
+    delegate:
+      - commit_pending: {}
+  - caller: On second thought, please cancel it.
+    reply: "So I'd {readback}. Is that right?"
+    delegate:
+      - propose_cancellation: { appointment_id: "$put_forward" }
+      - propose_cancellation: { appointment_id: "$booked" }
+  - caller: "Yes."
+    reply: "Done, that appointment is cancelled."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: cancelled
+  verified: true
+  refusals: [which_visit]
+  bookings_created: 1
+  sms_sent: 2
+  sms_templates: [booking_confirmed, cancel_confirmed]
+  visits_after:
+    - { on: "2026-09-28", at: "14:00", visit: vt_wellness }
+  returned: ["the visit booked on this call", "cancel the appointment on"]
