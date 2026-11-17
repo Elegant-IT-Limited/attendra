@@ -85,6 +85,8 @@ export class CallState {
    * wrong read-backs, or a number with no profile. Asked once; only then may verify_caller search by them.
    */
   lastFourAsked: 'wrong_readbacks' | 'no_profile' | null = null;
+  /** The numbers (digits) the call found no pets on: a pet is never looked up on one again (CB11, 2026-11-17). */
+  readonly numbersWithoutPets = new Set<string>();
   /** The pet was found by the last four digits and its name: the booking tells the team so. */
   foundByLastFour = false;
   /** The digits of a number the caller gave that is not a whole one for the clinic's country: read back once, then kept as given. */

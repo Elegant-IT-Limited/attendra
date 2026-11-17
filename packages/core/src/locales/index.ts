@@ -27,6 +27,46 @@ export function detectLanguage(callerText: string, offered: readonly Language[],
   return best.code;
 }
 
+/** The caller asking for a language by name: "in Spanish, please", "¿habla español?", "en inglés". */
+const ASKS_FOR: Record<Language, RegExp> = {
+  en: /\b(?:(?:in|speak|talk|use|habla|hablar|hablas|hable)\s+(?:english|ingles)|en ingles|english,? please)\b/,
+  es: /\b(?:(?:in|speak|talk|use|habla|hablar|hablas|hable)\s+(?:spanish|espanol)|en espanol|spanish,? please|espanol,? por favor)\b/,
+};
+
+/**
+ * Words that say which language a sentence is in, for switching a call (after `normalise`): common words of each
+ * language that the other does not use. Words both share ("no", "me", "a", "si") are in neither.
+ */
+const SENTENCE_WORDS: Record<Language, Set<string>> = {
+  en: new Set('the my your his her our is are was were i i\'m im it it\'s its this that these and to for of in on at with have has had need want would could can please thanks thank hi hello yes yeah what when where how book appointment dog cat number call today tomorrow about'.split(' ')),
+  es: new Set('el la los las de del que por para con un una unos unas mi mis su sus se le lo les y en es son soy esta estoy esto ese esa tengo tiene quiero quisiera necesito necesita puede puedo podria podemos cita citas gracias hola buenos buenas dias tardes noches senor senora manana hoy usted ustedes ya muy pero como cuando donde porque tambien perro perra gato gata mascota mascotas perros gatos numero termina llama llamar ayuda favor aqui ahora otra otro'.split(' ')),
+};
+
+/**
+ * Whether the call switches language on the caller's latest turn, and to which (2026-11-17, a test call: a few words of
+ * background speech in Spanish turned an English call to Spanish). The call stays in its language unless the caller
+ * asks for one by name, or says a clear sentence in another: at least three words, three or more of them that language's
+ * own (SENTENCE_WORDS; Spanish's ¿ ¡ ñ and accents count as one), and more than of the call's own. Short or stray words never switch.
+ */
+export function languageAfterTurn(turn: string, offered: readonly Language[], current: Language): Language {
+  const text = normalise(turn);
+  // Spanish's own marks (¿ ¡ ñ and accents) count as one more Spanish word: they are gone once the text is normalised
+  const marks = /[¿¡ñáéíóú]/i.test(turn) ? 1 : 0;
+  // asked by name (in either language's words): that one, the call's own included
+  const asked = offered.find((code) => ASKS_FOR[code].test(text));
+  if (asked) return asked;
+  const words = text.split(/[^\p{L}\p{N}']+/u).filter(Boolean);
+  if (words.length < 3) return current;
+  const count = (code: Language) => words.filter((w) => SENTENCE_WORDS[code].has(w)).length + (code === 'es' ? marks : 0);
+  let best: { code: Language; score: number } = { code: current, score: count(current) };
+  for (const code of offered) {
+    if (code === current) continue;
+    const score = count(code);
+    if (score >= 3 && score > best.score) best = { code, score };
+  }
+  return best.code;
+}
+
 // the euro area, by calling code
 const EURO = ['+30', '+31', '+32', '+33', '+34', '+351', '+352', '+353', '+356', '+357', '+358', '+370', '+371', '+372', '+385', '+386', '+39', '+421', '+43', '+49'];
 

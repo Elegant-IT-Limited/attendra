@@ -5,7 +5,7 @@ import { Writable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import {
   CallRunner, fromDelegatedResponse, GO_WAIT_MS, GptLiveEngine, RealtimeEngine, realtimeTools, type RealtimeSocket, type Sideband, type SidebandEvent,
-  type SidebandSocket, toolsBackendInstructions, toolsLivePrompt, toolsVapiPrompt, toolsVoicePrompt, toolsVoiceStaticPrompt, callFactsNote, compactSchema, TOOLS_TRUNCATION, type VoiceEngine, TURN_NOTE, sayToolQuestion, toolQuestion, sayToolLine, toolRefusalLine,
+  type SidebandSocket, toolsBackendInstructions, toolsLivePrompt, toolsVapiPrompt, toolsVoicePrompt, toolsVoiceStaticPrompt, callFactsNote, compactSchema, TOOLS_TRUNCATION, type VoiceEngine, TURN_NOTE, sayToolQuestion, FIRST_WORDS_WAIT_MS, withoutPromptEcho, toolQuestion, sayToolLine, toolRefusalLine,
   PATH_A_CUTS, PATH_A_DROPS, conversationPrompt,
 } from '../src';
 
@@ -267,6 +267,8 @@ describe('round 2: manual replies on gpt-realtime', () => {
     s.play({ type: 'response.done', event_id: 'r0' });
     const start = s.sent.length;
     s.play({ type: 'input_audio_buffer.committed', event_id: 'c0', item_id: 'item_0' });
+    // the caller's first turn is answered once its words are in (call bugs, 2026-11-17)
+    s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 't0', item_id: 'item_0', transcript: 'Hi, I need a check-up for Biscuit.' });
     expect(s.sent.slice(start).map((x) => noteText(x) ?? x.type)).toEqual([TURN_NOTE, 'response.create']);
     expect(TURN_NOTE).toContain('with no words before it');
     s.play({ type: 'response.done', event_id: 'r1' });
@@ -336,9 +338,11 @@ describe('round 2: manual replies on gpt-realtime', () => {
     await e.accept('rtc_1', vet, NOW, undefined, { flow: 'tools' });
     const sideband = e.attach('rtc_1');
     s.play({ type: 'response.done', event_id: 'r0' }); // the greeting's reply is over
-    // before a pet is found, a turn gets its reply at once
+    // before a pet is found, a turn gets its reply at once (the first one once its words are in: call bugs, 2026-11-17)
     const start = s.sent.length;
     s.play({ type: 'input_audio_buffer.committed', event_id: 'c0', item_id: 'item_0' });
+    expect(s.sent.slice(start).filter(notNote)).toEqual([]);
+    s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 't0', item_id: 'item_0', transcript: 'Hi, I need a check-up for Biscuit.' });
     expect(s.sent.slice(start).filter(notNote).map((x) => x.type)).toEqual(['response.create']);
     s.play({ type: 'response.done', event_id: 'r00' });
     sideband.send({ type: 'turns.manual', event_id: 'm1', on: true });
@@ -358,6 +362,33 @@ describe('round 2: manual replies on gpt-realtime', () => {
     sideband.send({ type: 'tool.inject', event_id: 'i2', call_id: 'spec_2', name: 'find_slots', arguments: '{}', output: '{}' });
     expect(s.sent.slice(mid).filter(notNote)).toHaveLength(1);
     vi.useRealTimers();
+  });
+});
+
+describe('noise before the caller\'s first words (call bugs, 2026-11-17)', () => {
+  it('is not answered: no second introduction after the greeting; the first real words are, and a slow transcript is answered anyway', async () => {
+    vi.useFakeTimers();
+    const s = realtimeSocket();
+    const e = new RealtimeEngine({ realtime: { calls: { accept: vi.fn(async () => {}) } } } as never, 'gpt-realtime-2.1', () => s.ws);
+    await e.accept('rtc_q', vet, NOW, undefined, { flow: 'tools' });
+    e.attach('rtc_q');
+    s.play({ type: 'response.done', event_id: 'r0' }); // the greeting is over
+    const start = s.sent.length;
+    s.play({ type: 'input_audio_buffer.committed', event_id: 'c0', item_id: 'item_0' });
+    s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 't0', item_id: 'item_0', transcript: '  ' });
+    vi.advanceTimersByTime(FIRST_WORDS_WAIT_MS);
+    expect(s.sent.slice(start).filter(notNote)).toEqual([]);
+    // the transcriber's own prompt echoed back is not words either
+    s.play({ type: 'input_audio_buffer.committed', event_id: 'c1', item_id: 'item_1' });
+    s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 't1', item_id: 'item_1', transcript: 'A phone call to a clinic.' });
+    expect(s.sent.slice(start).filter(notNote)).toEqual([]);
+    s.play({ type: 'input_audio_buffer.committed', event_id: 'c2', item_id: 'item_2' });
+    vi.advanceTimersByTime(FIRST_WORDS_WAIT_MS);
+    expect(s.sent.slice(start).filter(notNote).map((x) => x.type)).toEqual(['response.create']);
+    vi.useRealTimers();
+    expect(withoutPromptEcho('A phone call to a clinic. ¿Precios?')).toBe('¿Precios?');
+    expect(withoutPromptEcho('Una llamada telefónica.')).toBe('');
+    expect(withoutPromptEcho('Tengo una llamada perdida de este número.')).toBe('Tengo una llamada perdida de este número.');
   });
 });
 
