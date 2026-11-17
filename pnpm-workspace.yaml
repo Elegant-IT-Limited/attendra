@@ -39,3 +39,5 @@ overrides:
   'body-parser@>=2.0.0 <2.4.0': 2.4.0
   'hono@<4.13.16': 4.13.18
   '@hono/node-server@>=2.0.0 <2.1.6': 2.1.8
+  # security (Dependabot, 2026-11-17): vitest's vite, lifted to the first fixed patch
+  'vite@>=8.3.0 <8.3.3': 8.3.3
