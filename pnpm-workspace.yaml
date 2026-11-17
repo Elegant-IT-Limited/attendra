@@ -29,3 +29,9 @@ overrides:
   zod: 4.6.7
   # security (Dependabot, 2026-11-17): better-auth's auto-installed next peer in apps/api had stayed on a vulnerable 16.3.x
   'next@>=16.0.0 <16.4.5': 16.4.6
+  # security (Dependabot, 2026-11-17): only the vulnerable ranges are lifted, to a patch in the same line
+  'fast-uri@>=3.0.0 <3.1.9': 3.1.9
+  'fast-uri@>=4.0.0 <4.2.3': 4.2.3
+  'ip-address@<10.7.4': 10.7.6
+  'follow-redirects@>=1.16.0 <1.16.2': 1.16.3
+  'qs@>=6.7.0 <6.16.1': 6.16.2
