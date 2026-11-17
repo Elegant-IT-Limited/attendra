@@ -35,3 +35,7 @@ overrides:
   'ip-address@<10.7.4': 10.7.6
   'follow-redirects@>=1.16.0 <1.16.2': 1.16.3
   'qs@>=6.7.0 <6.16.1': 6.16.2
+  # security (Dependabot, 2026-11-17): only the vulnerable ranges are lifted, to the latest patch in the same line
+  'body-parser@>=2.0.0 <2.4.0': 2.4.0
+  'hono@<4.13.16': 4.13.18
+  '@hono/node-server@>=2.0.0 <2.1.6': 2.1.8
