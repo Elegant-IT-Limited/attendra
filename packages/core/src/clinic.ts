@@ -294,7 +294,7 @@ export const Texting = z.object({
   reminders: z.object({
     enabled: z.boolean().default(false),
     hoursBefore: z.number().int().min(2).max(168).default(24),
-    // no texts between these clinic-local times; one that would fall in them goes out when they end, if still 2 hours before the visit
+    // no texts between these clinic-local times; one that would fall in them goes out when they end, if the visit is still more than an hour away (core reminderDecision)
     quietFrom: hhmm.default('20:00'),
     quietTo: hhmm.default('08:00'),
     // after a booking, the assistant asks once whether the caller would like one
