@@ -1,0 +1,16 @@
+id: vet-es-we-offer
+title: "In Spanish: a question answered from the clinic's own common questions is said by the clinic, \"we\", never \"they\" (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-bugs, es]
+turns:
+  - caller: Hola, ¿aceptan seguro para mascotas?
+    reply: "Aceptamos tarjeta y efectivo, y le damos una factura detallada para su seguro de mascotas."
+    delegate:
+      - get_clinic_info: { question: pet insurance }
+expect:
+  outcome: info
+  language: es
+  answered_from: faq_payment
+  returned: ["you speak for the clinic"]
+forbid_spoken: ["ellos aceptan"]

@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { TextProblems } from '@attendra/api/contracts';
+import { addDays, localDateOf } from '@attendra/core';
 import { requestNumber, requestTextLine, taskType } from './format';
+
+/** How far back Today and the notice look for texts about requests that were not sent: the API's three days. */
+export const TEXT_PROBLEM_DAYS = 3;
+/**
+ * The Texts page with the texts Today counts (texts polish TX2): refill texts not sent and not handled, from the
+ * clinic-local day three days back.
+ */
+export const textsNotSentHref = (clinicId: string, now: number, timeZone: string) =>
+  `/c/${clinicId}/texts?status=needs_handling&kind=refills&from=${addDays(localDateOf(new Date(now), timeZone), -TEXT_PROBLEM_DAYS)}`;
 
 /**
  * Texts about requests that were not sent (note 2026-11-16, demo findings 3: a refill's "ready to pick up" text failed

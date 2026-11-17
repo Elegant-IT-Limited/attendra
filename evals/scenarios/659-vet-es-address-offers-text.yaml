@@ -1,0 +1,21 @@
+id: vet-es-address-offers-text
+title: "In Spanish: asked where the clinic is, with the directions text on: the address is said, then a text of it offered once, and sent on the yes (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-bugs, texts, es]
+turns:
+  - caller: Hola, ¿cuál es la dirección de la clínica?
+    reply: "Estamos en 88 Riverbend Road, en Denver. ¿Quiere que se lo envíe por mensaje al número desde el que llama?"
+    delegate:
+      - get_clinic_info: { question: dirección de la clínica }
+  - assistant: "¿Quiere que se lo envíe por mensaje al número desde el que llama?"
+  - caller: Sí, por favor.
+    reply: "Se lo envío ahora por mensaje."
+    delegate:
+      - send_text: { kind: directions, ref: null, to: null }
+expect:
+  outcome: info
+  language: es
+  sms_sent: 1
+  sms_templates: [directions]
+  returned: ["send_text with kind directions"]

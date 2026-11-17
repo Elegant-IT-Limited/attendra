@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ClinicConfig, type Language, LANGUAGES, normalise, PACKS } from '@attendra/core';
+import type { CallState } from '../call-state';
 
 /**
  * The rest of the 11-16 set (batch 1b), in code so every engine follows it the same way: the reason behind a refusal
@@ -43,12 +44,17 @@ export const askedWhy = (said: string) => WHY_ASKED.test(normalise(said));
  * Biscuit for Thursday" with no booking on the call is a claim; so is "I couldn't find a file under that number" when no
  * search ran (11-16, a tester clinic: verify_caller had only asked for the read-back).
  */
-export const CLAIMS: Record<'booked' | 'moved' | 'cancelled' | 'not_found' | 'vet_day', RegExp> = {
+export const CLAIMS: Record<'booked' | 'moved' | 'cancelled' | 'not_found' | 'vet_day' | 'texted' | 'text_arrived', RegExp> = {
   booked: /\b(?:i'?ve booked|i have booked|you'?re (?:all )?booked|you are (?:all )?booked|you'?re all set for|is (?:now )?booked|are (?:now )?booked|has been booked|booked (?:you|him|her|them|it) (?:in|for)|(?:le |lo |la )?he reservado|queda reservad[oa]|ya esta reservad[oa]|quedo reservad[oa])\b/,
   moved: /\b(?:i'?ve (?:moved|rescheduled)|i have (?:moved|rescheduled)|has been (?:moved|rescheduled)|is now (?:moved|on)|he cambiado|quedo cambiad[oa]|ya esta cambiad[oa])\b/,
   cancelled: /\b(?:i'?ve cancell?ed|i have cancell?ed|has been cancell?ed|is (?:now )?cancell?ed|he cancelado|queda cancelad[oa]|quedo cancelad[oa])\b/,
   not_found: /\b(?:(?:couldn'?t|could not|can'?t|cannot|didn'?t|did not) find|(?:don'?t|do not) see (?:a|any)|no (?:file|record|profile|pets?|account) (?:under|for|with|on)|not (?:on file|in our (?:system|records))|no (?:encontre|encuentro|aparece)|no tenemos (?:un |ningun )?(?:registro|expediente|perfil))\b/,
   // a vet's day said before any lookup: "Dr. Vance isn't in on Tuesday", "no está disponible el viernes" (batch 1c, live runs)
+  // a text said to be sent or to have arrived (a test call, 2026-11-16: "I've sent you a confirmation text" for a text the
+  // carrier never delivered): sent only when the caller asked for one and it went; arrived, never, since nobody on the
+  // call can see it arrive
+  texted: /\b(?:(?:i'?ve|i have) (?:just )?(?:sent|texted) (?:you |it to you |that to you )?(?:(?:a|the|your) )?(?:confirmation )?(?:text|message|sms)|(?:i'?ve|i have) (?:just )?texted|(?:confirmation )?text(?: message)? (?:has been|was|is) sent|(?:le|se lo) (?:he|acabo de) envia(?:do|r) (?:un |el )?(?:mensaje|texto))\b/,
+  text_arrived: /\b(?:you should (?:have )?(?:received|got(?:ten)?|get) (?:it|the text|a text|the message)|(?:the text|the message|your text) (?:has )?(?:arrived|went through|was delivered|has been delivered)|ya le (?:llego|ha llegado)|le (?:llego|ha llegado) (?:el|un) mensaje)\b/,
   vet_day: /\b(?:(?:isn'?t|is not|won'?t be|will not be|not) (?:in|available|working|there|here|free|seeing patients)|(?:doesn'?t|does not) (?:work|come in|see patients)|is (?:off|away|out))\b[^.?!]{0,30}?\b(?:on |this |next )?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|lunes|martes|miercoles|jueves|viernes|sabado|domingo|hoy|manana)\b|\bno (?:esta|trabaja|atiende|viene|tiene (?:horas|horario|citas))\b[^.?!]{0,30}?\b(?:el |este |los )?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|lunes|martes|miercoles|jueves|viernes|sabado|domingo|hoy|manana)\b/,
 };
 
@@ -121,4 +127,31 @@ export function withoutMeaningAsk(text: string): string {
     const m = MEANING_START.exec(sentence);
     return m && MEANING_WORD.test(sentence.slice(m.index)) ? `${sentence.slice(0, m.index)} ` : sentence;
   }).join('');
+}
+
+/**
+ * The caller says their texts are not arriving: "I never got the text", "the texts aren't coming through", "no me llegan
+ * los mensajes". Answered as that, never with the clinic's details (a test call, 2026-11-16, heard the address).
+ */
+const NO_TEXTS = /\b(?:(?:not|never|haven'?t|didn'?t|did not|have not|don'?t|do not|isn'?t|aren'?t|no)\s+(?:been\s+|even\s+|yet\s+)?(?:get|getting|got|gotten|receiv(?:e|ed|ing)|see|seeing|seen|com(?:e|ing))\s+(?:any(?:thing)?\s+|the\s+|a\s+|your\s+|my\s+|that\s+|those\s+)?(?:texts?|messages?|sms|confirmations?|text messages?|confirmation texts?)|(?:texts?|messages?|confirmations?)\s+(?:(?:is|are|has|have)\s+)?(?:not|never|n'?t)\s+(?:coming|arriving|arrived|come|came|getting through)|no\s+(?:texts?|messages?)\s+(?:came|arrived|come|yet))\b|\bno\s+(?:me\s+)?(?:(?:ha|han)\s+)?(?:llega(?:n|do|ron)?|llego|recib(?:o|i|ido)|veo|he recibido|me ha llegado)\s+(?:ningun\s+|ningunos?\s+|el\s+|los\s+|un\s+|mis\s+|sus\s+)?(?:mensajes?|textos?|sms|confirmacion(?:es)?)\b|\bno\s+(?:he\s+)?recibido\s+(?:ningun\s+)?(?:mensajes?|textos?|sms)\b/;
+export const saysTextsNotArriving = (said: string) => NO_TEXTS.test(normalise(said));
+
+/**
+ * The answer to it, in the caller's language: texts go to the number on file (its last four digits once the pet is
+ * found by its owner's number), which may not be the phone calling; nobody on the call can see whether one arrived;
+ * and the next step, the team checking or updating the number and calling back.
+ */
+export function textsNotArrivingLine(language: Language, last4: string | null, pets: boolean): string {
+  if (language === 'es') {
+    return `${last4 ? `Los mensajes van al número de la ficha, que termina en ${last4}` : `Los mensajes van al número de ${pets ? 'la ficha de su mascota' : 'su ficha'}`}, que puede no ser el teléfono desde el que llama, y yo no puedo ver si un mensaje llegó. Si ese número cambió, puedo pedir al equipo que lo actualice y le llame. ¿Quiere que lo haga?`;
+  }
+  return `${last4 ? `Texts go to the number on file, ending ${last4}` : `Texts go to the number on ${pets ? 'your pet\'s file' : 'your file'}`}, which may not be the phone you're calling from, and I can't see whether a text has arrived. If that number has changed, I can ask the team to update it and call you back. Would you like that?`;
+}
+
+/** What the voice is told when the caller says texts are not arriving: the line, and the request for the team on a yes. */
+export function textsNotArrivingNote(state: Pick<CallState, 'verifiedPatient' | 'memory' | 'language'>, clinic: Pick<ClinicConfig, 'industry'>): string {
+  // the last four digits of the number on file only once the pet is found by its owner's number (or caller ID)
+  const phone = state.memory.verified ? state.verifiedPatient?.phone?.replace(/\D/g, '') ?? '' : '';
+  const line = textsNotArrivingLine(state.language, phone.length >= 4 ? phone.slice(-4) : null, clinic.industry === 'vet');
+  return `The caller says texts are not arriving. Do not answer with the clinic's details. Say, word for word: "${line}" On a yes, call create_callback with the reason "Texts not arriving: check or update the number on file" and the best number to call.`;
 }

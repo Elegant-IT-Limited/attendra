@@ -2,7 +2,7 @@
 'use client';
 import { useProblem } from '@/components/ui/toast';
 import type { CallList, Overview, Schedule, TextProblems, WaitingTasks, WebhookEndpoints } from '@attendra/api/contracts';
-import { bookableWindows, type ClinicConfig, holdsTime, localDateOf, localParts, shownProviders, toMinutes, providerName } from '@attendra/core';
+import { bookableWindows, type ClinicConfig, countOf, holdsTime, localDateOf, localParts, shownProviders, toMinutes, providerName } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ArrowRight, Flag, MessageSquareWarning, PhoneCall, PhoneOff, Pill, Siren, UserCheck, Voicemail, Webhook } from 'lucide-react';
 import Link from 'next/link';
@@ -18,7 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
 import { clinicTime, dayTitle, requestKind, requestNumber, requestTextLine, taskType, timeOf, TOOLS, usd, visitTypeName, zoneLabel } from '@/lib/format';
-import { problemHref } from '@/lib/text-problems';
+import { TEXT_PROBLEM_DAYS, textsNotSentHref } from '@/lib/text-problems';
 import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 import { SAFETY_POLL_MS, SAFETY_POLL_WORDS } from '@/lib/changes';
@@ -120,6 +120,7 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
     queryFn: () => api<TextProblems>(`/clinics/${clinicId}/tasks/text-problems`),
     enabled: can('tasks:read'), refetchInterval: SAFETY_POLL_MS,
   });
+  const texts = { total: textProblems.data?.total ?? 0, problems: textProblems.data?.problems ?? [] };
   const setTaken = (message: string | null) => { if (message) problem({ title: 'Not claimed', message }); };
   const claim = useMutation({
     mutationFn: (id: string) => api<void>(`/clinics/${clinicId}/tasks/${id}/claim`, { method: 'POST' }),
@@ -152,13 +153,17 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
       key: c.id, icon: <Siren className="size-4 text-danger" />, tone: 'danger' as const, title: 'Emergency language on a call', detail: <>{timeOf(c.startedAt, tz)}, <RelativeTime iso={c.startedAt} exact={clinicTime(c.startedAt, tz, 'long')} now={now} /></>,
       action: canOpenCalls ? <Link href={`/c/${clinicId}/calls/${c.id}`} className={LINK}>Review the call</Link> : null,
     })),
-    ...(textProblems.data?.problems ?? []).map((p) => ({
-      key: `text-${p.textId}`, icon: <MessageSquareWarning className="size-4 text-danger" />, tone: 'danger' as const,
-      title: `Text not sent · ${requestNumber(p.number)} · ${taskType(p.type, terms.patient)}`,
-      detail: <>{requestTextLine(p)}. <RelativeTime iso={p.at} exact={clinicTime(p.at, tz, 'long')} now={now} />. Call them instead.</>,
-      action: <Link href={problemHref(clinicId, p)} className={LINK}>Open the request</Link>,
-    })),
+    // requests nobody has claimed come before texts that were not sent (texts polish TX2)
     ...requests.filter((t) => !t.urgent).map(request),
+    // texts about requests that were not sent: one item, however many, to review on Texts and mark handled (TX2)
+    ...(texts.total ? [{
+      key: 'texts-not-sent', icon: <MessageSquareWarning className="size-4 text-danger" />, tone: 'danger' as const,
+      title: `${countOf(texts.total, 'text')} not sent · Review`,
+      detail: texts.total === 1 && texts.problems[0]
+        ? <>{requestNumber(texts.problems[0].number)} · {taskType(texts.problems[0].type, terms.patient)}: {requestTextLine(texts.problems[0])}. <RelativeTime iso={texts.problems[0].at} exact={clinicTime(texts.problems[0].at, tz, 'long')} now={now} />. Call them instead, then mark it handled.</>
+        : <>About requests, in the last {TEXT_PROBLEM_DAYS} days. Call them instead, then mark each one handled.</>,
+      action: <Link href={textsNotSentHref(clinicId, now, tz)} className={LINK} data-testid="texts-not-sent-review">Review</Link>,
+    }] : []),
     ...flagged.filter((c) => !followedUp.has(c.id)).map((c) => ({
       key: c.id, icon: <Flag className="size-4 text-warning" />, title: 'A call flagged for review',
       detail: <>{timeOf(c.startedAt, tz)}, <RelativeTime iso={c.startedAt} exact={clinicTime(c.startedAt, tz, 'long')} now={now} />. The summary says why.</>,
@@ -181,7 +186,7 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
     <Card>
       <CardHeader className="flex-row items-center justify-between">
         <CardTitle>Needs attention</CardTitle>
-        {!loading && <span className="text-sm text-text-muted">{items.length ? `${items.length} item${items.length === 1 ? '' : 's'}` : 'All clear'}</span>}
+        {!loading && <span className="text-sm text-text-muted" data-testid="attention-count">{items.length ? countOf(items.length, 'item') : 'All clear'}</span>}
       </CardHeader>
       {calls.isError && <Alert tone="danger" className="m-5">This list did not load. It tries again every {SAFETY_POLL_WORDS}.</Alert>}
       {loading ? <div className="space-y-3 p-5"><Skeleton className="h-10" /><Skeleton className="h-10" /></div>

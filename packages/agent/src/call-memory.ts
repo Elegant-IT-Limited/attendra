@@ -54,6 +54,8 @@ export class CallMemory {
   pets: string[] = [];
   /** The visit booked (or moved to) on this call, for a time-only move ("make it 4:40") that keeps its day. */
   visit: { appointmentId: string; start: Date; visitTypeId: string; providerId: string } | null = null;
+  /** The call's turn count when that visit was booked or moved to: "it" after it means that visit (flow/visit-pick.ts). */
+  visitAtTurn: number | null = null;
   moved: { from: Date; to: Date } | null = null;
 
   set<K extends keyof MemoryFacts>(key: K, value: MemoryFacts[K], source: FactSource, atTurn = 0) {

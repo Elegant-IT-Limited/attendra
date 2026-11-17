@@ -37,6 +37,12 @@ const ROWS: Row[] = [
   ['isClearYes: sounds good', yes, 'Sounds good', 'Me parece bien', true],
   ['isClearYes: a hedge', yes, 'Yes, actually wait', 'Sí, pero espere', false],
   ['isClearYes: a maybe', yes, 'I think so', 'Creo que sí', false],
+  // call bugs, 2026-11-17: a plain answer with a check that it is done, and asking for it to be done, are yeses
+  ['isClearYes: okay, so all set', yes, "Okay, so we're all set.", 'Claro, ¿ya quedó?', true],
+  ['isClearYes: yes, then is it booked now', yes, 'Yes, I already told you yes. Is it booked now?', 'Sí, ya le dije que sí. ¿Ya está?', true],
+  ['isClearYes: asked to confirm it', yes, 'Could you just confirm it?', '¿Me lo puede confirmar?', true],
+  ['isClearYes: only checking it is done', yes, 'Is it booked now?', '¿Ya está?', false],
+  ['isClearYes: yes with another question', yes, 'Yes. Is that Thursday?', 'Sí. ¿Es el jueves?', false],
   // the pet (or the caller) is new to the clinic, or may be on file after all
   ['newToClinic: said new', newToClinic, "She's new, she's not registered", 'Es nueva, no está registrada', 'new'],
   ['newToClinic: a first check-up', newToClinic, "I'd like to bring my puppy in for a first check-up", 'Quiero traer a mi cachorro a su primera consulta', 'new'],

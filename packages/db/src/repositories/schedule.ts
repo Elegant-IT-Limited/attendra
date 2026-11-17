@@ -3,7 +3,7 @@ import { and, asc, desc, eq, gt, inArray, lt, ne } from 'drizzle-orm';
 import type { VisitStatus } from '@attendra/core';
 import { type Database, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
-import { appointments, auditLogs, patients } from '../schema';
+import { appointments, auditLogs, patients, smsMessages } from '../schema';
 import { patientSetKey, recordView, staffNames } from './audit';
 
 export type BookedBy = { kind: 'assistant'; callId: string } | { kind: 'staff'; userId: string; name: string | null };
@@ -144,17 +144,21 @@ export class ScheduleRepository {
         .where(and(eq(appointments.clinicId, clinicId), eq(appointments.id, appointmentId)));
       if (!row) return null;
       await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'appointment.viewed', entity: 'appointment', entityId: appointmentId, callId: row.a.createdByCallId });
-      return row;
+      // the reminder text's status, once one was tried: a refused one is not "Texted"
+      const [sms] = row.a.reminderSmsId ? await tx.select({ status: smsMessages.status }).from(smsMessages).where(and(eq(smsMessages.clinicId, clinicId), eq(smsMessages.id, row.a.reminderSmsId))) : [];
+      return { ...row, reminderSmsStatus: sms?.status ?? null };
     });
     if (!found) return null;
-    const { a, p } = found;
+    const { a, p, reminderSmsStatus } = found;
     const [entry] = await this.entries(clinicId, [{ a, firstNameEnc: p.firstNameEnc, lastNameEnc: p.lastNameEnc }]);
     const ctx = (col: string) => phiContext(clinicId, col);
     return {
       ...entry!,
       updatedAt: a.updatedAt,
       note: a.noteEnc ? this.cipher.decrypt(a.noteEnc, ctx('appointments.note')) : null,
+      reminderSkip: a.reminderSkip, reminderSmsStatus,
       patient: {
+        textsOk: !!p.smsConsentAt && !p.deletedAt,
         id: p.id,
         firstName: this.cipher.decrypt(p.firstNameEnc, ctx('patients.first_name')),
         lastName: this.cipher.decrypt(p.lastNameEnc, ctx('patients.last_name')),
