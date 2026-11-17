@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { type ClinicConfig, Texting, type TextKind } from '@attendra/core';
+import { type ClinicConfig, REMINDER_MIN_LEAD_MINUTES, spanWords, Texting, type TextKind } from '@attendra/core';
 import { useMutation } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { useParams } from 'next/navigation';
@@ -119,14 +119,14 @@ export default function TextingSettings() {
           </Sortable>
         </Section>
 
-        <Section id="reminders" title="Reminders" description="A text before each visit, to owners who said yes: on a call, on their record, or in an import. They reply C to confirm, and the Schedule shows it.">
+        <Section id="reminders" title="Reminders" description="A text before each visit, booked on a call or at the desk, to owners who said yes: on a call, on their record, or in an import. They reply C to confirm, and the Schedule shows it. A visit that gets none says why in its panel.">
           <Switch id="reminders-on" label="Send appointment reminders" checked={r.enabled} onCheckedChange={(enabled) => rem({ enabled })} />
           {r.enabled && (
             <div className="grid gap-4 sm:grid-cols-3">
-              <Field label="Hours before the visit" htmlFor="reminder-hours" hint="Between 2 and 168. 24 is the day before.">
+              <Field label="Hours before the visit" htmlFor="reminder-hours" hint={`Between 2 and 168. 24 is the day before. A visit booked closer than this gets its reminder at once, if it is more than ${spanWords(REMINDER_MIN_LEAD_MINUTES * 60_000)} away.`}>
                 <Input id="reminder-hours" type="number" inputMode="numeric" min={2} max={168} value={r.hoursBefore} onChange={(e) => rem({ hoursBefore: Number(e.target.value) })} />
               </Field>
-              <Field label="Quiet hours" htmlFor="quiet-from" hint="No texts between these times, in your time zone. One that would fall in them goes out when they end." className="sm:col-span-2">
+              <Field label="Quiet hours" htmlFor="quiet-from" hint={`No texts between these times, in your time zone. One that would fall in them goes out when they end, if the visit is more than ${spanWords(REMINDER_MIN_LEAD_MINUTES * 60_000)} away then.`} className="sm:col-span-2">
                 <div className="flex items-center gap-2">
                   <Input id="quiet-from" aria-describedby="quiet-from-hint" type="time" className="w-32" value={r.quietFrom} onChange={(e) => rem({ quietFrom: e.target.value })} />
                   <span className="text-sm text-text-muted">to</span>
