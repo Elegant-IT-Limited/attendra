@@ -206,6 +206,31 @@ const NO_CALLBACK_NUMBER = (lang: CallState['language']) => refuse('no_callback_
 const MEDICAL = () => refuse('medical_question', `Do not answer it, and do not read anything from the clinic's documents. Say: "${MEDICAL_REFUSAL}" Offer to take a callback.`);
 
 const refuse = (code: string, say: string): ToolResult => ({ ok: false, data: { error: code, say } });
+/** The last four digits alone, once the pet's name is known (CB11). */
+const lastFourOnly = (lang: CallState['language'], pet: string) => (lang === 'es'
+  ? `¿Cuáles son los últimos cuatro dígitos del número de teléfono de la ficha de ${pet}?`
+  : `What are the last four digits of the phone number on ${pet}'s profile?`);
+/** A text the clinic does not send: one short line, and a message for the team instead of the answer read out again. */
+const cantTextLine = (lang: CallState['language']) => (lang === 'es'
+  ? 'No puedo enviarle eso por mensaje desde aquí, pero puedo dejarle un recado al equipo para que se lo hagan llegar. ¿Le parece bien?'
+  : 'I can\'t text that one here, but I can take a message for the team to get it to you. Would you like that?');
+/** "What are your hours?", "are you open Saturday?", "¿a qué hora abren?": the clinic's hours were asked about. */
+const HOURS_ASKED = /\b(?:hours|open|opening|opens|close|closing|closes|closed|horario|horarios|abren|abre|abierto|abiertos|cierran|cierra|cerrado)\b/;
+export const asksHours = (text: string) => HOURS_ASKED.test(normalise(text));
+/**
+ * After the address or the hours are said, the text of them is offered once (a test call, 2026-11-16: both were said and
+ * neither was offered, with both kinds on in Settings > Texting): when that kind is on, the caller's number can get
+ * texts, and nothing of that kind was offered or sent on the call. The voice asks the question; the caller's yes to it
+ * is the consent send_text reads.
+ */
+export function textOfferAfter(kind: 'directions' | 'hours', state: CallState, clinic: ClinicConfig, callerNumber: string | null): { kind: string; ask: string; note: string } | null {
+  const texting = textingOf(clinic);
+  if (!texting.enabled || !texting.kinds[kind] || !callerNumber || state.callerNotTextable || state.emergencyLocked) return null;
+  if (state.textsSent >= MAX_TEXTS_PER_CALL || state.guardsSaid.has(`text_offered:${kind}`)) return null;
+  state.guardsSaid.add(`text_offered:${kind}`);
+  const ask = PACKS[state.language].textOffer({ target: 'this' });
+  return { kind, ask, note: `After the answer, ask once, in these words: "${ask}" On a yes, call send_text with kind ${kind}; on a no, carry on.` };
+}
 
 /**
  * A visit that is none of the clinic's (grooming, a boarding stay, laser therapy; 2026-11-16): never another visit in its
@@ -635,6 +660,9 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       // the clinic's own answer wins when it is about what it offers ("What services do you offer?"), never one that only
       // shares a word ("What should I bring to the first visit?" for "what visits do you have?")
       const ownOffer = !!answer && (asksWhatVisits(answer.question) || /\b(?:services?|servicios?|offer|offers|ofrecen|ofrece)\b/.test(normalise(answer.question)));
+      // the address or the hours asked for: their text offered once after the answer (CB7)
+      const asked = `${question} ${state.lastTurn('caller')}`;
+      const offer = asksWhere(asked) ? textOfferAfter('directions', state, clinic, ctx.callerNumber) : asksHours(asked) ? textOfferAfter('hours', state, clinic, ctx.callerNumber) : null;
       const visitsLine = !ownOffer && bookable.length && asksWhatVisits(`${question} ${state.lastTurn('caller')}`)
         ? PACKS[lang].spoken.visitsWeBook({ visits: bookable.slice(0, 6).map((v) => localName(v, lang)), more: bookable.length > 6 }) : null;
       return {
@@ -648,6 +676,9 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
           // and its shorter days after this week, for "are you open on Christmas Eve?"
           ...(specialHoursAhead(clinic, today).length ? { special_hours_ahead: specialHoursAhead(clinic, today) } : {}),
           answer: answer?.answer ?? null, source: answer?.id ?? null,
+          // the clinic's own answer, said by the clinic: "we ...", never "they ..." (a test call, 2026-11-16)
+          ...(answer ? { answer_voice: 'This is the clinic\'s own answer and you speak for the clinic: say it as "we" and "our" ("Yes, we offer ..."), never "they" or "the clinic".' } : {}),
+          ...(offer ? { text_offer: offer.note } : {}),
           // more than one thing asked ("boarding and grooming?"): each has its own answer, and each is said
           ...(found.length > 1 ? { answers: found.map((f) => ({ question: f.question, answer: f.answer, source: f.id })), answers_note: 'The clinic\'s own answers, one for each thing they asked: answer each from its own answer. Never answer one from another\'s answer or from the visit types.' } : {}),
           ...(clinic.address ? { address: clinic.address } : {}), ...(clinic.website ? { website: clinic.website } : {}),
@@ -1228,9 +1259,13 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if ('refuse' in route) return refuse(route.refuse, TEXT_REFUSALS[route.refuse]);
       const kind = route.kind;
       if (kind !== picked && picked === 'answer') ref = null;
-      if (!texting.enabled) return refuse('texting_off', `The clinic does not text this. Say: "${pack.textRefused({ reason: 'off' })}" Then say it out loud, slowly, and offer to repeat it.`);
-      // the clinic texts, just not this: never "texting isn't set up"
-      if (!texting.kinds[kind]) return refuse('texting_off', 'The clinic does not send this one by text (it sends other things). Say in a few words that you can\'t text that one, then say it out loud, slowly, and offer to repeat it. Never say texting is not set up or not available on this line.');
+      // the clinic does not text this: said once, in one short line, with a message for the team offered; never the
+      // answer again, which the caller just heard (a test call, 2026-11-16, heard a vet's whole bio twice, word for word)
+      if (!texting.enabled || !texting.kinds[kind]) {
+        if (state.guardsSaid.has('texting_off')) return refuse('texting_off', 'You already said this can\'t be texted: do not say it again, and do not repeat the answer they heard. Answer what the caller says now; if they want it sent, take a message for the team with create_callback (what they want, and the best number).');
+        state.guardsSaid.add('texting_off');
+        return refuse('texting_off', `The clinic does not send this one by text. Say, in these words: "${cantTextLine(lang)}" Do not repeat the answer they already heard unless they ask for it again. On a yes, call create_callback with what they want sent and the best number. Never say texting is not set up or not available on this line.`);
+      }
       // the hospital's details go once a call (FRIDAY notes: text once, to a confirmed number)
       if (kind === 'emergency_hospital' && state.emergencyTextSent) return refuse(picked === 'emergency_hospital' ? 'already_sent' : 'emergency_in_progress', 'The hospital\'s details were already texted on this call. Say they are on their phone; do not send them again.');
       // only to the number they are calling from, or the one on their file: never another person's
@@ -1382,6 +1417,12 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
     return refuse('ask_if_new', `Before looking anything up, ask once, in these words: "${PACKS[lang].petNewQuestion({ pet: String(args.pet_name).trim() })}" If they say yes, add it with register_patient; if no, call verify_caller again with the same details.`);
   }
   const pet = String(args.pet_name);
+  // the number they call from has no pets and the last four digits were already asked for: a lookup of the pet on it can
+  // only miss, so no try is spent and only the four digits are asked again (a test call, 2026-11-16, spent a try on it,
+  // then asked whether the name or the number was wrong; it took three tries to find the pet)
+  if (state.lastFourAsked === 'no_profile' && state.numbersWithoutPets.has(phone.replace(/\D/g, '')) && !state.verifiedPatient) {
+    return refuse('last_four_needed', `Ask only for the four digits, in these words: "${lastFourOnly(lang, pet.trim())}" Then call verify_caller with phone_last4 (the four digits as they said them), pet_name ${pet.trim()} and phone null. If they give a whole number instead, call verify_caller with it as phone. Keep everything else they gave; do not ask for it again.`);
+  }
   // the pet already found: nothing to do. Another of the household's pets is checked like any
   const current = state.verifiedPatient;
   if (current && soundsLike(pet, current.firstName)) return { ok: true, data: { verified: true, pet_name: current.firstName } };
@@ -1475,6 +1516,7 @@ async function whichPet(phone: string, state: CallState, ctx: CallContext, backe
   const pets = known ?? await backend.patients.petsOnNumber(ctx.clinic.id, phone, ctx.callId);
   // an unknown number: a new owner and a new pet, the usual way
   if (!pets.names.length) {
+    state.numbersWithoutPets.add(phone.replace(/\D/g, ''));
     // the profile may be under another number: the second way, once, unless the caller said the pet is new (2026-11-15)
     if (!state.lastFourAsked && state.saidNew() !== 'new') {
       state.lastFourAsked = 'no_profile';

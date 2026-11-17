@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addTokens, bySubject, callFacts, claimsAuthority, type DemoLimitCode, demoEmergency, EMERGENCY_LINES, type EmergencyMatch, emergencyRoute, clinicDays, clinicNow, clinicNowLine, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, detectLanguage, emergencyNumberFor, hospitalNow, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, TRANSFER_KINDS, type ExcerptLine, type HandoffKind, type HandoffReason, type HandoffStep, type ToolName } from '@attendra/core';
+import { addTokens, bySubject, callFacts, claimsAuthority, type DemoLimitCode, demoEmergency, EMERGENCY_LINES, type EmergencyMatch, emergencyRoute, clinicDays, clinicNow, clinicNowLine, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, languageAfterTurn, emergencyNumberFor, hospitalNow, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, TRANSFER_KINDS, type ExcerptLine, type HandoffKind, type HandoffReason, type HandoffStep, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
 import { coachingInstruction, DOING, type LiveEvent, shortName } from './live';
@@ -11,7 +11,7 @@ import { answerTo, BORDERLINE, confirmsCleared, type EmergencyCase, lastQuestion
 import { askedAboutRecording, askedIfHuman, askedWhy, claimsIn, DISPUTE_NOTE, disputes, humanLine, notInTheClinicsLanguages, recordingLine, sideTalkLine, WHY } from './flow/guards';
 import { outOfScopeLine } from '@attendra/knowledge/scope';
 import { isVoiceTool, shapeForVoice, type VoiceToolOutput } from './flow/voice-tools';
-import { type Backend, type CallContext, runTool, type ToolResult } from './tools';
+import { asksHours, type Backend, type CallContext, runTool, textOfferAfter, type ToolResult } from './tools';
 
 
 /**
@@ -193,7 +193,10 @@ export class CallAgent {
     this.state.addTranscript('caller', delta, startMs, endMs);
     this.emit({ type: 'caption', speaker: 'caller', text: redactSensitive(delta), atMs: startMs });
     const { clinic } = this.ctx;
-    if (clinic.languages.length > 1) this.state.language = detectLanguage(this.state.recentCallerText(600), clinic.languages, clinic.primaryLanguage, this.state.language);
+    // a switch needs the caller's own full sentence in the other language, or their asking for it: never a few stray
+    // words from the room (a test call, 2026-11-16, ended in Spanish on background speech while the caller spoke English)
+    const said = this.state.turns.at(-1);
+    if (clinic.languages.length > 1 && said?.speaker === 'caller') this.state.language = languageAfterTurn(said.text, clinic.languages, this.state.language);
     // what the caller says is kept in the call memory, from the whole turn so far: a fact said once is never asked again
     const turn = this.state.turns.at(-1);
     if (turn?.speaker === 'caller') this.state.memory.fromCaller(turn.text, this.state.language, clinic, localDateOf(this.ctx.now(), clinic.timezone), this.state.turns.length - 1);
@@ -204,6 +207,9 @@ export class CallAgent {
     const recent = this.state.recentCallerText();
     const heard = detectEmergencies(recent, trade.emergency?.phrases);
     let fresh = (trade.emergency?.subjects ? bySubject(heard, recent, trade.emergency.subjects, this.petNames()) : heard).filter((m) => !this.state.emergencyKinds.has(m.kind));
+    // an emergency said in one of the clinic's other languages is that language's sentence: the call goes on in it
+    const spokenIn = fresh.find((m) => m.language !== this.state.language && clinic.languages.includes(m.language));
+    if (spokenIn) this.state.language = spokenIn.language;
     // At a clinic for animals an animal's emergency is the state machine's (flow/emergency.ts, batch 1b): a red flag, or
     // the word "emergency" said about now, gets one question, and only the caller's answer routes it. A person in danger
     // is not: they hear the public emergency number at once (below), whatever the clinic's setting.
@@ -1095,7 +1101,9 @@ export class CallAgent {
       const now = clinicNow(clinic, this.ctx.now());
       this.log.info({ call_id: this.ctx.callId, tool: name, ms: Date.now() - started, outcome: 'ok' }, 'tool answered');
       // the next days' answers to "is the clinic open <day>?", each a plain yes or no with that day's hours (note 45, A1)
-      return { output: { ok: true, outcome: 'ok', spoken: clinicNowLine(clinic, now, s.language), say: OPEN_ON_DAY_NOTE, data: { ...now, days: clinicDays(clinic, this.ctx.now(), s.language) }, stage: flowStage(s, this.flow) }, controls: [] };
+      // the hours asked for: their text offered once after the answer (CB7)
+      const offer = asksHours(s.lastTurn('caller')) ? textOfferAfter('hours', s, clinic, this.ctx.callerNumber) : null;
+      return { output: { ok: true, outcome: 'ok', spoken: clinicNowLine(clinic, now, s.language), say: offer ? `${OPEN_ON_DAY_NOTE} ${offer.note}` : OPEN_ON_DAY_NOTE, data: { ...now, days: clinicDays(clinic, this.ctx.now(), s.language) }, stage: flowStage(s, this.flow) }, controls: [] };
     }
     const controls: Outbound[] = [];
     let result: ToolResult;

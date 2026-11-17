@@ -1,0 +1,19 @@
+id: vet-unknown-number-name-pet-last-four
+title: "From a number with no pets on it, the owner's name, the pet's name and the last four digits in one answer find the pet in one step, as designed (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550188"
+tags: [no-demo, call-bugs, identity]
+turns:
+  - caller: Hi, I want to book a check-up for my dog.
+    reply: "I don't see a profile under that number. What are the last four digits of the number the profile might be under, and your pet's name?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: null }
+  - caller: It's Linh Nguyen, my dog is Biscuit, and the number ends in 0172.
+    reply: "I found Biscuit, your dog."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit, phone: null, phone_last4: "0172" }
+expect:
+  outcome: abandoned
+  verified: true
+  refusals: [no_pets_on_number]

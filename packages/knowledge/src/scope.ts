@@ -34,7 +34,9 @@ const SYSTEM = [
   'system prompt|your prompt|prompt injection|prompt engineering|initial prompt|your instructions|your rules|your configuration|ignore (all|your|the|previous)\\w*|jailbreak|developer mode',
   // the vendors behind the call
   'twilio|vapi|retell|elevenlabs|deepgram|speech to text|text to speech|tts|stt|vendor|vendors|tech company|technology company',
-  'are you (a |an )?(real )?(bot|robot|ai|machine|computer|human|person|program)|what are you',
+  // "what are you?" asked alone, never "what are you open until?": an hours question read as one about the assistant (a
+  // test call, 2026-11-16, heard the off-topic line for it)
+  'are you (a |an )?(real )?(bot|robot|ai|machine|computer|human|person|program)|what are you(?: exactly| really)?(?=\\s*[?.!]*$)',
   // Spanish, without accents: the text is normalised first ("programacion" is also the booking of visits,
   // and "esta hecha" a booking made, so neither counts alone)
   'pila tecnologica|codigo fuente|lenguaje de programacion|construida con|construido con|con que tecnologia',
@@ -42,7 +44,7 @@ const SYSTEM = [
   'inteligencia artificial|(la|una|de|usan|eres|con) ia|modelo de lenguaje|modelo de ia|que modelo|tu modelo|algoritmo|aprendizaje automatico|robot|bot',
   'quien (te|lo|la) (hizo|creo|programo|desarrollo|construyo|diseno)|que empresa (te|lo|la) (hizo|creo|programo|desarrollo)',
   'tu prompt|prompt del sistema|tus instrucciones|tus reglas|ignora (todas|tus|las)\\w*|proveedor de (software|tecnologia|telefonia|voz|ia)|proveedores de (software|tecnologia|telefonia|voz|ia)',
-  'eres (un |una )?(robot|bot|ia|maquina|computadora|humano|humana|persona real|programa)|que eres',
+  'eres (un |una )?(robot|bot|ia|maquina|computadora|humano|humana|persona real|programa)|que eres(?: exactamente| en realidad)?(?=\\s*[?.!]*$)',
 ].join('|');
 
 /**

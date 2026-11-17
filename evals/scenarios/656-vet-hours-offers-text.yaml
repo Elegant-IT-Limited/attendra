@@ -1,0 +1,20 @@
+id: vet-hours-offers-text
+title: "Asked for the hours, with the hours text on in Settings: the hours are said, then a text of them offered once, and sent on the yes (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-bugs, texts]
+turns:
+  - caller: Hi, what are your hours this week?
+    reply: "We're open 8 to 6 on weekdays and 9 to 1 on Saturday. Would you like me to text that to the number you're calling from?"
+    delegate:
+      - get_clinic_info: { question: opening hours this week }
+  - assistant: "Would you like me to text that to the number you're calling from?"
+  - caller: Yes, please.
+    reply: "I'm texting it to you now."
+    delegate:
+      - send_text: { kind: hours, ref: null, to: null }
+expect:
+  outcome: info
+  sms_sent: 1
+  sms_templates: [hours]
+  returned: ["ask once, in these words", "Would you like me to text that to the number you're calling from?", "send_text with kind hours"]
