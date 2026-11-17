@@ -1,0 +1,20 @@
+id: vet-es-background-words-keep-spanish
+title: "In Spanish: a Spanish call with a few English words from the room (\"okay\", \"who is it?\"): the call stays in Spanish, and the next answer is Spanish (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-bugs, language, es]
+turns:
+  - caller: Hola, ¿la doctora Ruiz trabaja hoy?
+    reply: "Sí, la Dra. Elena Ruiz trabaja hoy."
+    delegate:
+      - get_clinic_info: { question: la doctora Ruiz trabaja hoy }
+  - caller: Okay, okay.
+  - caller: Who is it?
+  - caller: Perdone. ¿Me puede llamar alguien del equipo por la comida de Biscuit?
+    reply: "De acuerdo, se lo paso al equipo y alguien le llamará a este número."
+    delegate:
+      - create_callback: { reason: "Question about Biscuit's food", callback_number: null, topic: null }
+expect:
+  outcome: task_created
+  language: es
+  returned: ["se lo paso al equipo"]

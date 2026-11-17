@@ -1,0 +1,16 @@
+id: vet-es-asks-for-english
+title: "In Spanish: a Spanish call where the caller asks to go on in English: switched at once (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-bugs, language, es]
+turns:
+  - caller: Hola, buenos días. ¿Podemos hablar en inglés, por favor?
+    reply: "Of course. How can I help?"
+  - caller: Thanks. Can someone call me back about Biscuit's food?
+    reply: "Okay, I've passed that on to the team, and someone will call you back at this number."
+    delegate:
+      - create_callback: { reason: "Question about Biscuit's food", callback_number: null, topic: null }
+expect:
+  outcome: task_created
+  language: en
+  returned: ["I've passed that on to the team"]

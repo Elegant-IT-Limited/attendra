@@ -168,10 +168,10 @@ export default function PatientPage() {
             )}
           </Card>
         )}
-        {/* every text to this household's number, newest 20 (text history, 2026-11-16) */}
+        {/* every text to this household's number, newest 20, each about a pet or the household (text history, 2026-11-16; TX4) */}
         {tab === 'texts' && (
           <Card>
-            <TextHistory clinicId={clinicId} query={{ patientId: p.id }} timeZone={tz} empty={`No texts to ${pet ? 'this owner' : 'this patient'} yet.`} />
+            <TextHistory clinicId={clinicId} patientId={p.id} timeZone={tz} empty={`No texts to ${pet ? 'this owner' : 'this patient'} yet.`} />
           </Card>
         )}
         {tab === 'requests' && (

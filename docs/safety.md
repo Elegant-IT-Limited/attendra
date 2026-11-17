@@ -98,7 +98,7 @@ A call asks about "new" once, one way. With the number known, the pick question 
 
 ## Writes
 
-Every booking, reschedule and cancellation is two steps: propose (which produces the read-back) and commit (which runs only if the caller's own words since the read-back are a clear yes: "maybe", "actually" and questions do not count). Every write carries an idempotency key, and the database refuses two overlapping bookings for one provider whatever the application does.
+Every booking, reschedule and cancellation is two steps: propose (which produces the read-back) and commit (which runs only if the caller's own words since the read-back are a clear yes: "maybe", "actually" and questions do not count, except a check that it is done, "yes, is it booked now?", or a request to do it, "could you just confirm it?"). A plain yes is enough: the caller is never asked to repeat set words. When a pet has more than one visit to come, a move or a cancellation is refused unless it is the visit the caller picked: the one they named, or else the one booked on the same call ("move it" right after a booking), or else the one the assistant offered to move; with none of those, the caller is asked which, each visit named. Every write carries an idempotency key, and the database refuses two overlapping bookings for one provider whatever the application does.
 
 ## Abusive callers
 

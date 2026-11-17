@@ -61,7 +61,9 @@ describe('the sentences the tools write', () => {
     c.assistant(proposed.spoken);
     c.caller('Yes please.');
     const booked = await c.delegate([{ tool: 'commit_pending', args: {} }]);
-    expect(booked.results[0]!.data).toMatchObject({ booked: true, spoken: 'All set, that\'s booked. I\'ve sent you a confirmation text. Is there anything else I can help you with?' });
+    // a text handed to the carrier is not one delivered: the caller hears it will come, never that it was sent (2026-11-16)
+    expect(booked.results[0]!.data).toMatchObject({ booked: true });
+    expect((booked.results[0]!.data as { spoken: string }).spoken).toMatch(/^All set, that's booked\. I'll text a confirmation to the number (on file|you're calling from)\. Is there anything else I can help you with\?$/);
     expect(c.state.outcome).toBe('booked');
   });
 
@@ -107,7 +109,7 @@ describe('the sentences the tools write', () => {
     c.assistant(proposed.spoken);
     c.caller('Sí, por favor.');
     const booked = await c.delegate([{ tool: 'commit_pending', args: {} }]);
-    expect(booked.results[0]!.data).toMatchObject({ spoken: 'Listo, la cita queda reservada. Le he enviado un mensaje de confirmación. ¿Hay algo más en lo que le pueda ayudar?' });
+    expect((booked.results[0]!.data as { spoken: string }).spoken).toMatch(/^Listo, la cita queda reservada\. Le enviaré una confirmación por mensaje al número (de su ficha|desde el que llama)\. ¿Hay algo más en lo que le pueda ayudar\?$/);
     c.assistant('¿Hay algo más en lo que le pueda ayudar?');
     c.caller('No, eso es todo. Adiós.');
     const bye = await c.delegate([{ tool: 'end_call', args: { reason: 'goodbye' } }]);

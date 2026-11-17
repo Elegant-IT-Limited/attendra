@@ -2,7 +2,9 @@ id: vet-cancel-then-move
 title: An owner calls to cancel Thursday, then decides to move it to next week instead; the visit is moved, not cancelled
 clinic: riverbend
 local_time: "10:00"
-tags: [has-appointment]
+# no-demo: the demo's one shared calendar gives Biscuit other visits, so the first one listed is not the Thursday visit
+# the caller names, and a pet's visit the caller did not pick is never changed (call bugs, 2026-11-17)
+tags: [has-appointment, no-demo]
 facts: "You are calling from the number on file. When the cancellation is read back, say actually, could you just move it to next week instead. Any day next week and any vet are fine. Say yes to the first time offered next week and to the read-back of the move."
 turns:
   - caller: Hi, Linh Nguyen. I need to cancel Biscuit's appointment on Thursday.
@@ -20,7 +22,7 @@ turns:
     delegate:
       - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: "$appointments[0]" }
   - caller: Yes.
-    reply: "Done, Biscuit's visit is moved to {booked}. I've texted you the new time."
+    reply: "Done, Biscuit's visit is moved to {booked}. I'll text you the new time."
     delegate:
       - commit_pending: {}
 expect:

@@ -1,0 +1,14 @@
+id: vet-hours-question-answered
+title: "\"What are you open until today?\" is a question about the clinic's hours, answered with them: never the line for a question that is not about the clinic (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-bugs]
+turns:
+  - caller: What are you open until today?
+    reply: "Today we're open until 6:00 PM."
+    delegate:
+      - get_clinic_info: { question: opening hours today }
+expect:
+  outcome: info
+  returned: ["18:00"]
+forbid_spoken: ["I can help with questions about the clinic"]

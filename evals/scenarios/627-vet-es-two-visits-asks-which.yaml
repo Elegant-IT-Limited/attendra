@@ -1,0 +1,30 @@
+id: vet-es-two-visits-asks-which
+title: "In Spanish: a pet has two visits coming and the owner says \"cancele la cita de Biscuit\": the assistant names both and asks which, and cancels only the one picked (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, has-appointment, has-appointment-today, call-bugs, es]
+turns:
+  - caller: Hola, soy Linh Nguyen. Necesito cancelar la cita de Biscuit.
+    reply: "Biscuit tiene 2 citas: hoy a las 2:00 PM y el jueves 1 de octubre a las 9:00 AM. ¿Cuál quiere cancelar?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - list_appointments: {}
+      - propose_cancellation: { appointment_id: "$appointments[0]" }
+  - caller: La del jueves.
+    reply: "Entonces, quiere {readback}. ¿Es correcto?"
+    delegate:
+      - propose_cancellation: { appointment_id: "$appointments[1]" }
+  - caller: "Sí."
+    reply: "Listo, la cita queda cancelada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: cancelled
+  verified: true
+  language: es
+  refusals: [which_visit]
+  sms_sent: 1
+  sms_templates: [cancel_confirmed]
+  visits_after:
+    - { on: "2026-09-28", at: "14:00", visit: vt_wellness }
+  returned: ["¿Cuál quiere cancelar?"]

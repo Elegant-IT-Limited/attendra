@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { callUsNumber, type ClinicConfig, emergencyHospitalsOf, renderText, type SmsTemplateName, smsSegments, type Texting, TextWording } from '@attendra/core';
+import { callUsNumber, type ClinicConfig, emergencyHospitalsOf, emergencyNumberFor, type SmsTemplateName, smsSegments, type Texting, TEXT_GROUP_NAMES, TEXT_GROUPS, type TextGroup, textPreview, TextWording } from '@attendra/core';
 import { Fragment, useState } from 'react';
 import { Section } from '@/components/settings/section';
 import { Badge } from '@/components/ui/badge';
@@ -17,21 +17,17 @@ const DURING_CALL = 'During a call, when the caller says yes to a text';
 const refillWhen = (outcome: string) => `When your team closes a refill as "${TASK_OUTCOMES[outcome]}", to a caller who said yes to texts`;
 
 /** When each text goes, so nobody has to guess. */
-const WHEN: Record<SmsTemplateName, string> = {
+const when = (hoursBefore: number): Record<SmsTemplateName, string> => ({
   booking_confirmed: 'Right after the assistant books a visit', change_confirmed: 'Right after a visit is moved', cancel_confirmed: 'Right after a visit is cancelled',
-  reminder: 'The day before a visit, to people who said yes to reminders',
+  reminder: `${hoursBefore === 24 ? 'The day before a visit' : `${hoursBefore} hours before a visit`} (Reminders, above), to people who said yes to texts`,
   vet_changed: 'When your team removes a vet and moves their visits to another vet, only if the team says yes to texting the owners',
   request_ready: refillWhen('refill_ready'), refill_sent: `${refillWhen('refill_sent')}, when a pharmacy is named (picked up at the clinic: no text)`, refill_not_approved: refillWhen('refill_declined'),
   directions: DURING_CALL, hours: DURING_CALL, emergency_hospital: 'In an animal emergency, after the emergency advice', provider: DURING_CALL, answer: DURING_CALL,
   link: 'During a call, when one of your links fits and the caller says yes',
-};
+});
 
 /** The texts in the groups a clinic thinks in. */
-const GROUPS: { title: string; texts: SmsTemplateName[] }[] = [
-  { title: 'Visits', texts: ['booking_confirmed', 'change_confirmed', 'cancel_confirmed', 'reminder', 'vet_changed'] },
-  { title: 'Refills', texts: ['request_ready', 'refill_sent', 'refill_not_approved'] },
-  { title: 'Sent during a call', texts: ['directions', 'hours', 'emergency_hospital', 'provider', 'answer', 'link'] },
-];
+const GROUPS: { title: string; texts: readonly SmsTemplateName[] }[] = (Object.keys(TEXT_GROUPS) as TextGroup[]).map((g) => ({ title: TEXT_GROUP_NAMES[g], texts: TEXT_GROUPS[g] }));
 
 // a part of the text filled in when it is sent: ⟦key⟧ in the rendered template, a labelled tag on screen
 const slot = (key: string) => `⟦${key}⟧`;
@@ -41,7 +37,7 @@ const SLOTS = /⟦(\w+)⟧/g;
 function slotNames(pets: boolean): Record<string, string> {
   return {
     name: pets ? 'Owner\'s first name' : 'Patient\'s first name', pet: 'Pet\'s name', provider: pets ? 'Vet\'s name' : 'Doctor\'s name',
-    visit: 'Visit type', when: 'Day and time', pharmacy: 'Pharmacy', details: pets ? 'What the vet sees' : 'What the doctor sees',
+    visit: 'Visit type', when: 'Day and time', from: 'Old day and time', ref: 'Request number', pharmacy: 'Pharmacy', details: pets ? 'What the vet sees' : 'What the doctor sees',
     answer: 'The answer to their question', hours: 'Opening hours, from your Settings', mapUrl: 'Map link', label: 'Link name', url: 'Link',
     hospital: 'Emergency hospital', hospitalAddress: 'Hospital address', hospitalPhone: 'Hospital phone', address: 'Your address',
     yourLead: 'Your words', yourLine: 'Your line',
@@ -50,14 +46,15 @@ function slotNames(pets: boolean): Record<string, string> {
 
 /**
  * The text as a template: the clinic's own name and number as they are, and every part the
- * call or the team fills in as a tag. The clinic's own words show where they go.
+ * call or the team fills in as a tag. The clinic's own words show where they go. Every part is offered;
+ * core textPreview keeps only those the text is sent with (TEXT_PARTS), so the preview is the text that goes out.
  */
 function templateVars(c: ClinicConfig): Record<string, string> {
   const [h] = emergencyHospitalsOf(c.emergencies);
   const pets = c.industry === 'vet';
   return {
-    clinic: c.name, clinicPhone: callUsNumber(c), emergencyNumber: '911',
-    name: slot('name'), ...(pets ? { pet: slot('pet'), visit: slot('visit') } : {}), provider: slot('provider'), when: slot('when'),
+    clinic: c.name, clinicPhone: callUsNumber(c), emergencyNumber: emergencyNumberFor(c),
+    name: slot('name'), ...(pets ? { pet: slot('pet'), visit: slot('visit') } : {}), provider: slot('provider'), when: slot('when'), from: slot('from'), ref: slot('ref'),
     pharmacy: slot('pharmacy'), details: slot('details'), answer: slot('answer'), hours: slot('hours'), mapUrl: slot('mapUrl'),
     label: slot('label'), url: slot('url'), address: c.address?.trim() || slot('address'),
     hospital: h?.name ?? slot('hospital'), hospitalAddress: h?.address ?? slot('hospitalAddress'), hospitalPhone: h?.phone ?? slot('hospitalPhone'),
@@ -71,7 +68,7 @@ function exampleVars(c: ClinicConfig): Record<string, string> {
   return {
     ...templateVars(c), clinicPhone: callUsNumber(c),
     name: pets ? 'Alex' : 'Sam', ...(pets ? { pet: 'Max', visit: (c.visitTypes[0]?.name ?? 'check-up').toLowerCase() } : {}),
-    provider: vet?.name ?? 'Dr. Lee', when: 'Wednesday, October 28, at 10:00 AM', pharmacy: 'CVS on Main St', details: 'sees dogs and cats',
+    provider: vet?.name ?? 'Dr. Lee', when: 'Wednesday, October 28, at 10:00 AM', from: 'Tuesday, October 27, at 3:00 PM', ref: 'R-12', pharmacy: 'CVS on Main St', details: 'sees dogs and cats',
     answer: 'We are open until 6 PM today.', hours: 'Mon-Fri 8 AM-6 PM, Sat 9 AM-1 PM', mapUrl: 'https://maps.google.com/?q=clinic',
     label: c.texting?.links[0]?.label ?? 'New client form', url: c.texting?.links[0]?.url ?? 'https://example.com/form',
     address: c.address?.trim() || '214 Main Street',
@@ -112,6 +109,7 @@ export function TextsEditor({ config, texting, onChange, disabled }: { config: C
   const names = slotNames(pets);
   const tmpl = templateVars(config);
   const example = exampleVars(config);
+  const WHEN = when(texting.reminders.hoursBefore);
   const languages = config.languages.filter((l): l is 'en' | 'es' => l === 'en' || l === 'es');
   const first = languages[0] ?? 'en';
   // the clinic's own words, marked where they go (shown highlighted); none set, nothing marked
@@ -151,10 +149,10 @@ export function TextsEditor({ config, texting, onChange, disabled }: { config: C
                       </div>
                       <Button type="button" size="sm" variant="outline" aria-expanded={editing} onClick={() => setOpen(editing ? null : t)}>{editing ? 'Done' : 'Add your words'}</Button>
                     </div>
-                    {!editing && <Template testId={`text-${t}`} names={names} words={{ yourLead: texting.wording[t]?.[first]?.label, yourLine: texting.wording[t]?.[first]?.extra }} body={renderText(t, tmpl, first, slotted(texting.wording[t]?.[first]))} />}
+                    {!editing && <Template testId={`text-${t}`} names={names} words={{ yourLead: texting.wording[t]?.[first]?.label, yourLine: texting.wording[t]?.[first]?.extra }} body={textPreview(t, tmpl, first, slotted(texting.wording[t]?.[first]))} />}
                     {editing && languages.map((lang) => {
                       const w = texting.wording[t]?.[lang] ?? {};
-                      const sent = renderText(t, example, lang, w);
+                      const sent = textPreview(t, example, lang, w);
                       const check = TextWording.safeParse(w);
                       const segments = smsSegments(sent);
                       // the problem with these words, read with both boxes by a screen reader
@@ -165,7 +163,7 @@ export function TextsEditor({ config, texting, onChange, disabled }: { config: C
                           {languages.length > 1 && <p className="text-xs font-medium uppercase tracking-wide text-text-muted">{lang === 'es' ? 'Spanish' : 'English'}</p>}
                           {/* one preview: the text with its tags, and the clinic's words in place as they are typed */}
                           <Template testId={`template-${t}-${lang}`} names={names} words={{ yourLead: w.label, yourLine: w.extra }}
-                            body={renderText(t, tmpl, lang, { label: slot('yourLead'), extra: slot('yourLine') })} />
+                            body={textPreview(t, tmpl, lang, { label: slot('yourLead'), extra: slot('yourLine') })} />
                           <div className="grid gap-3 sm:grid-cols-2">
                             <label className="space-y-1 text-sm">
                               <span className="font-medium">{names.yourLead}, after your name <span className="font-normal text-text-muted">(up to 40 characters)</span></span>

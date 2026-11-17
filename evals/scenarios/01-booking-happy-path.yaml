@@ -12,7 +12,7 @@ turns:
     delegate:
       - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
   - caller: Yes, please book it.
-    reply: "You're all set for {booked}. I've sent a text confirmation to the number on your file."
+    reply: "You're all set for {booked}. I'll text a confirmation to the number on file."
     delegate:
       - commit_pending: {}
 expect:

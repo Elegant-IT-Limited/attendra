@@ -1,0 +1,24 @@
+id: vet-unknown-number-last-four
+title: "From a number with no pets on it, the owner gives their name, then the pet's: no try is spent on a number already known to have none, only the last four digits are asked, and they find the pet (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550188"
+tags: [no-demo, call-bugs, identity]
+turns:
+  - caller: Hi, this is Linh Nguyen.
+    reply: "I don't see a profile under that number. What are the last four digits of the number the profile might be under, and your pet's name?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: null, phone: null }
+  - caller: I'd like a check-up for Biscuit this week.
+    reply: "What are the last four digits of the phone number on Biscuit's profile?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit, phone: null }
+  - caller: It ends in 0172.
+    reply: "I found Biscuit, your dog."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit, phone: null, phone_last4: "0172" }
+expect:
+  outcome: abandoned
+  verified: true
+  refusals: [no_pets_on_number, last_four_needed]
+  returned: ["What are the last four digits of the phone number on Biscuit's profile?"]

@@ -1,0 +1,28 @@
+id: vet-es-cant-text-says-once
+title: "In Spanish: a vet's details asked for by text when that text is off: one short line and a message for the team offered, never the details read out again (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-bugs, texts, es]
+turns:
+  - caller: Hola, cuénteme de la doctora Elena Ruiz.
+    reply: "La Dra. Elena Ruiz hace medicina general y atiende perros y gatos."
+    delegate:
+      - get_clinic_info: { question: la doctora Elena Ruiz }
+  - caller: ¿Me puede enviar sus datos por mensaje?
+    reply: "No puedo enviarle eso por mensaje desde aquí, pero puedo dejarle un recado al equipo para que se lo hagan llegar. ¿Le parece bien?"
+    delegate:
+      - send_text: { kind: provider, ref: prov_ruiz, to: null }
+  - caller: ¿Perdón?
+    reply: "Puedo dejarle un recado al equipo para que se lo hagan llegar. ¿Le parece bien?"
+    delegate:
+      - send_text: { kind: provider, ref: prov_ruiz, to: null }
+  - caller: Sí, por favor.
+    reply: "De acuerdo, se lo paso al equipo y alguien le llamará a este número."
+    delegate:
+      - create_callback: { reason: "Send Dr. Elena Ruiz's details", callback_number: null, topic: null }
+expect:
+  outcome: task_created
+  language: es
+  refusals: [texting_off, texting_off]
+  sms_sent: 0
+  returned: ["No puedo enviarle eso por mensaje desde aquí", "do not repeat the answer they heard"]

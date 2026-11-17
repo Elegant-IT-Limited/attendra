@@ -843,7 +843,7 @@ describe('review fixes', () => {
       c.caller('Yes.');
       const out = await c.delegate([{ tool: 'commit_pending', args: {} }]);
       expect(spoken(out)).toContain('"booked":true');
-      expect(spoken(out)).toContain('"sms_sent":false');
+      expect(spoken(out)).toContain('"confirmation_text":"none"');
     } finally {
       w.backend.messenger.sendTemplate = original;
     }

@@ -85,6 +85,8 @@ export class CallState {
    * wrong read-backs, or a number with no profile. Asked once; only then may verify_caller search by them.
    */
   lastFourAsked: 'wrong_readbacks' | 'no_profile' | null = null;
+  /** The numbers (digits) the call found no pets on: a pet is never looked up on one again (CB11, 2026-11-17). */
+  readonly numbersWithoutPets = new Set<string>();
   /** The pet was found by the last four digits and its name: the booking tells the team so. */
   foundByLastFour = false;
   /** The digits of a number the caller gave that is not a whole one for the clinic's country: read back once, then kept as given. */
@@ -100,6 +102,16 @@ export class CallState {
   askedTimeTold: string | null = null;
   /** Patients the caller has heard already have a visit booked, before times for another (once each per call). */
   upcomingSaid = new Set<string>();
+  /**
+   * The visit the assistant put forward to move instead of booking another ("already has a wellness exam ... move that
+   * one, or book another?"): the one a "move it" means when nothing was booked on the call since (flow/visit-pick.ts).
+   */
+  visitPutForward: string | null = null;
+  /**
+   * Pets and visits the caller was asked about "move that one, or book another?" (pet id and visit type): once each per
+   * call. '*' stands for every one: a replay of many calls into one shared calendar (the demo) never asks it.
+   */
+  readonly moveOrAddAsked = new Set<string>();
   proposals = 0;
   /** Requests the planner has taken on this call: the first one says "One moment." when it has nothing to say after a second. */
   requestsPlanned = 0;

@@ -10,7 +10,7 @@ turns:
       - list_appointments: {}
       - propose_cancellation: { appointment_id: "$appointments[0]" }
   - caller: Yes, cancel it.
-    reply: "It's cancelled. I've sent you a text so you have it in writing."
+    reply: "It's cancelled. I'll text you so you have it in writing."
     delegate:
       - commit_pending: {}
       - commit_pending: {}
