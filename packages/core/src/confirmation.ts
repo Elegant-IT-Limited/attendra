@@ -30,10 +30,10 @@ export function isClearYes(callerTextSinceReadback: string, languages: readonly 
  * through?", "¿ya está?", "¿ya quedó?". With its own question mark. Never a doubt, never a yes. "He's" and "she's" are
  * there for "it's" as a transcriber may write it.
  */
-const DONE_CHECK = /¿?\s*\b(?:(?:so|and|then|entonces|asi que|y)\s+)?(?:(?:are|is|was) (?:you|we|it|that|this|he|she)|(?:you|we|it|that|this|he|she) (?:are|is|was)|you'?re|we'?re|it'?s|that'?s|he'?s|she'?s)(?: all)? (?:done|finished|set|sorted|booked|moved|confirmed|through)(?: (?:with|now|then))?(?: (?:it|that|this|everything|your work|the work|my (?:visit|appointment|booking)))?\b\s*[?.!]?|\bdid (?:it|that) go through\b\s*[?.!]?|¿?\s*\b(?:(?:entonces|asi que|y)\s+)?(?:ya )?(?:esta|quedo|queda) (?:hech[oa]|list[oa]|confirmad[oa]|reservad[oa]|cambiad[oa])\b\s*[?.!]?|¿\s*ya (?:esta|quedo)\s*\?/g;
+const DONE_CHECK = /¿? ?\b(?:(?:so|and|then|entonces|asi que|y) )?(?:(?:are|is|was) (?:you|we|it|that|this|he|she)|(?:you|we|it|that|this|he|she) (?:are|is|was)|you'?re|we'?re|it'?s|that'?s|he'?s|she'?s)(?: all)? (?:done|finished|set|sorted|booked|moved|confirmed|through)(?: (?:with|now|then))?(?: (?:it|that|this|everything|your work|the work|my (?:visit|appointment|booking)))?\b ?[?.!]?|\bdid (?:it|that) go through\b ?[?.!]?|¿? ?\b(?:(?:entonces|asi que|y) )?(?:ya )?(?:esta|quedo|queda) (?:hech[oa]|list[oa]|confirmad[oa]|reservad[oa]|cambiad[oa])\b ?[?.!]?|¿ ?ya (?:esta|quedo) ?\?/g;
 /** The caller's words (normalised) without a check that the change is done. */
 export function withoutDoneCheck(normalisedText: string): string {
-  // one space between words first, so DONE_CHECK's `\s*` never meets a long run of spaces
+  // one space between words first: DONE_CHECK matches single spaces only (no unbounded repeats to backtrack on)
   return trimEdges(normalisedText.replace(/\s+/g, ' ').replace(DONE_CHECK, ' ').replace(/\s+/g, ' '), ' ,.;:', ' ,;:');
 }
 
