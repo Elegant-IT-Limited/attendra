@@ -1,0 +1,31 @@
+id: vet-es-plain-yes-books
+title: "In Spanish: a read-back answered with \"¿mande?\", then with \"claro, ¿ya quedó?\": asked again plainly (no set words to repeat), and the plain answer books it (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-bugs, clear-yes, es]
+turns:
+  - caller: Hola, soy Linh Nguyen. ¿Biscuit puede venir mañana en la mañana a una consulta por enfermedad?
+    reply: "Mañana en la mañana tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: "2026-09-29", part_of_day: morning }
+  - caller: La primera, por favor.
+    reply: "Tengo {readback}. ¿Le reservo la cita?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "¿Mande?"
+    reply: "Solo para confirmar: ¿le reservo {readback}? Con un sí me basta."
+    delegate:
+      - commit_pending: {}
+  - caller: "Claro, ¿ya quedó?"
+    reply: "Listo, la cita queda reservada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  refusals: [no_clear_yes]
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["Con un sí me basta"]

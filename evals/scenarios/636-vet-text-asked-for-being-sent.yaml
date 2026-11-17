@@ -1,0 +1,24 @@
+id: vet-text-asked-for-being-sent
+title: "A text the caller asked for, after the yes: \"I'm texting it to you now\", never \"I've just sent it\" or that it arrived (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-bugs, texts]
+turns:
+  - caller: Hi, where exactly are you? I've never been to the clinic.
+    reply: "We're at 88 Riverbend Road in Denver. Would you like me to text that to the number you're calling from?"
+    delegate:
+      - get_clinic_info: { question: where is the clinic address }
+      - send_text: { kind: directions, ref: null, to: null }
+  - assistant: "We're at 88 Riverbend Road in Denver. Would you like me to text that to the number you're calling from?"
+  - caller: Yes please.
+    reply: "I'm texting it to you now. Is there anything else I can help you with?"
+    delegate:
+      - send_text: { kind: directions, ref: null, to: null }
+expect:
+  outcome: info
+  refusals: [consent_required]
+  sms_sent: 1
+  sms_templates: [directions]
+  returned: ["I'm texting it to you now"]
+  never_returned: ["just sent"]
+forbid_spoken: ["just sent", "I've sent"]

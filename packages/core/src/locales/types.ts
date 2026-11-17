@@ -76,7 +76,7 @@ export interface LanguagePack {
   };
   /** The question before an in-call text: to the number they are calling from, or the one on their file. */
   textOffer: (v: { target: 'this' | 'file' }) => string;
-  /** Said once the text has gone. */
+  /** Said once the text is handed over: it is being sent now, never "sent" or "arrived" (nobody on the call sees it arrive). */
   textSent: string;
   /**
    * Settings' warning for a visit type nobody can be booked for (2026-11-15): the dashboard shows the clinic's language,
@@ -204,7 +204,8 @@ export interface LanguagePack {
     /** A cancellation read back as a question. */
     cancelReadback: (v: { readback: string; textNote: string | null }) => string;
     /** The change is made; `then` is the question that follows (the reminder offer, or anything else?). */
-    done: (v: { kind: 'booked' | 'rescheduled' | 'cancelled'; textSent: boolean; then: string }) => string;
+    /** The change made, and where its confirmation text will go (never "sent": nobody on the call sees it arrive). */
+    done: (v: { kind: 'booked' | 'rescheduled' | 'cancelled'; textTo: 'calling' | 'file' | null; then: string }) => string;
     /** The closing question, in the words saidGoodbye listens for. */
     anythingElse: string;
     /** The goodbye once the caller said no or goodbye: never the greeting's words again. */
@@ -215,7 +216,7 @@ export interface LanguagePack {
     refillTaken: string;
     /** A request taken during an animal's emergency: with the team as urgent, at the top of their list. */
     urgentRequestTaken: string;
-    /** A text just sent. */
+    /** A text just handed over, as textSent: being sent now, never "sent" or "arrived". */
     textSent: string;
     /** The caller's answer to the reminder offer, acknowledged. */
     reminders: (v: { agreed: boolean }) => string;
@@ -314,6 +315,8 @@ export interface SlotLines {
   askedNotFree: (v: { time: Clock }) => string;
   /** Before times for a patient who already has one booked: "Biscuit already has a visit booked: wellness exam, ... with Dr. Ruiz." */
   alreadyBooked: (v: { name: string; visit: string; when: string; provider: string | null; more: number }) => string;
+  /** After alreadyBooked, when that visit is the same kind and a few days from the one asked for: move it, or add another? */
+  moveOrAdd: string;
   /** The asked time is outside the vet's hours that day: "Dr. Vance starts at 9 on Fridays." (or "finishes at 6"). */
   vetHours: (v: { provider: string; weekday: number; starts: Clock | null; ends: Clock | null }) => string;
   /**
