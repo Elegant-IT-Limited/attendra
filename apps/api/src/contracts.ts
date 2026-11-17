@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { API_SCOPES, bareName, CALL_OUTCOMES, CustomField, DESK_STATUSES, EMERGENCY_RESULTS, Gender, HAS_NAME, PHONE_NUMBERS_ONLY, PHONE_TYPED, Provider, RequestTopic, SEARCH_MAX, VISIT_STATUSES, VisitType } from '@attendra/core';
+import { API_SCOPES, bareName, CALL_OUTCOMES, CustomField, DESK_STATUSES, EMERGENCY_RESULTS, Gender, HAS_NAME, PHONE_NUMBERS_ONLY, PHONE_TYPED, Provider, REMINDER_SKIPS, RequestTopic, SEARCH_MAX, VISIT_STATUSES, VisitType } from '@attendra/core';
 import { z } from 'zod';
 
 // The dashboard's HTTP contract. Request schemas are enforced by the API; response
@@ -629,9 +629,21 @@ export const CancelledList = z.object({
   /** More matched than the 200 shown. */
   truncated: z.boolean(),
 });
+/**
+ * Where the visit's reminder text is (core reminderState): going out (when), held or not sent and why, reminders off,
+ * or the text refused. Null when the reminder went (reminderSentAt says when) or there is nothing to say.
+ */
+export const ReminderInfo = z.object({
+  state: z.enum(['due', 'skipped', 'off', 'not_sent']),
+  dueAt: z.iso.datetime().nullable(),
+  reason: z.enum(REMINDER_SKIPS).nullable(),
+  /** The reason is final (too close to the visit for one to go); false: it holds the reminder for now. */
+  final: z.boolean(),
+});
 export const AppointmentDetail = Appointment.extend({
   note: z.string().nullable(),
   updatedAt: z.iso.datetime(),
+  reminder: ReminderInfo.nullable(),
   patient: z.object({ id: z.string(), name: z.string(), dob: z.string(), phone: z.string().nullable() }),
 });
 
@@ -1113,6 +1125,7 @@ export type AuditList = z.infer<typeof AuditList>;
 export type ApiError = z.infer<typeof ApiError>;
 export type Appointment = z.infer<typeof Appointment>;
 export type AppointmentDetail = z.infer<typeof AppointmentDetail>;
+export type ReminderInfo = z.infer<typeof ReminderInfo>;
 export type Schedule = z.infer<typeof Schedule>;
 export type SlotList = z.infer<typeof SlotList>;
 export type BookAppointment = z.infer<typeof BookAppointment>;

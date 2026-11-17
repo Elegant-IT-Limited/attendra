@@ -8,7 +8,7 @@ Settings > Assistant and languages:
 
 - **Assistant name.** One word of 2 to 24 letters, such as Maya. Without one the assistant is "the clinic's assistant". A name never counts as the AI disclosure: "Hi, I'm Maya" sounds like a person, so the greeting still has to say AI assistant (or the same in one of the clinic's languages), and a greeting without it is refused when it is saved. The software's own name never reaches a caller.
 - **Languages.** Which of English and Spanish the assistant may speak on this clinic's calls.
-- **Primary language.** Every call starts in it. The assistant switches when a caller speaks another language from the list, and switches back if they do.
+- **Primary language.** Every call starts in it. The assistant switches when a caller says a full sentence in another language from the list, or asks for it, and switches back the same way. A word or two in another language (someone in the room, a TV) never switches the call.
 - **Emergency number.** The number the emergency script gives. Leave it empty for the clinic's country: 911 for a +1 number, 999 for +44, 000 for +61 (Australia), 112 in the European Union and anywhere else. A clinic may choose only from its country's list (the United Kingdom and Australia also allow 112), so a typo like "91" is refused when settings are saved, and a number saved before this rule is replaced by the country's when a call runs.
 - **Names in other languages.** A visit type or provider can have a name for each other language ("consulta por enfermedad" for sick visit), used in read-backs and offers. Without one the clinic's own name is said.
 
@@ -16,7 +16,7 @@ The greeting preview shows what a caller hears first, in the primary language, a
 
 ## How a call picks its language
 
-The backend keeps the call's language in `CallState.language`. It starts as the clinic's primary language, and after every caller turn `detectLanguage` looks at the last few turns and counts words that mark each of the clinic's languages. A tie goes to the primary language, and a language the clinic has not switched on is never chosen.
+The backend keeps the call's language in `CallState.language`. It starts as the clinic's primary language, and after every caller turn `languageAfterTurn` reads that turn alone: a caller who asks for a language by name ("in Spanish, please", "¿podemos hablar en inglés?") gets it; otherwise the call switches only on a clear sentence: three or more words that only the other language uses (Spanish's ¿, ¡, ñ and accents count as one), more than of the call's own. An emergency said in another of the clinic's languages switches the call to it too. A language the clinic has not switched on is never chosen.
 
 Everything the backend writes for the caller follows that language: offered times, read-backs, the text message, the emergency script, and the names of visit types and providers.
 

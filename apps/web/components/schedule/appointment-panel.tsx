@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import type { AppointmentChange, AppointmentDetail, BookedBy, CancelReason } from '@attendra/api/contracts';
-import { type ClinicConfig, DESK_STATUS_KEYS, DESK_STATUS_REFUSED, DESK_STATUSES, type DeskStatus, deskStatusProblem, industryPack, localDateOf, providerName, VISIT_STATUS_LABELS } from '@attendra/core';
+import type { AppointmentChange, AppointmentDetail, BookedBy, CancelReason, ReminderInfo } from '@attendra/api/contracts';
+import { type ClinicConfig, DESK_STATUS_KEYS, DESK_STATUS_REFUSED, DESK_STATUSES, type DeskStatus, deskStatusProblem, industryPack, localDateOf, providerName, type ReminderState, reminderStateLine, VISIT_STATUS_LABELS } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bot, CalendarClock, Phone, User, XCircle } from 'lucide-react';
 import Link from 'next/link';
@@ -213,10 +213,13 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
                     <dt className="text-text-muted">Type</dt><dd>{visitTypeName(visit(a.visitTypeId)?.name ?? a.visitTypeId)}, {visit(a.visitTypeId)?.minutes} minutes</dd>
                     <dt className="text-text-muted">Note</dt><dd className="whitespace-pre-wrap">{a.note ?? <span className="text-text-muted">None</span>}</dd>
                     {a.overrideReason && <><dt className="text-text-muted">Hours</dt><dd><Badge tone="warn">Override</Badge> {a.overrideReason}</dd></>}
-                    {(a.reminderSentAt || a.confirmedAt) && (
-                      <><dt className="text-text-muted">Reminder</dt><dd>{a.confirmedAt
+                    {/* where the reminder is, by the rule the worker sends by: going out when, held or not sent and why (TX0) */}
+                    {(a.reminderSentAt || a.confirmedAt || a.reminder) && (
+                      <><dt className="text-text-muted">Reminder</dt><dd data-testid="visit-reminder">{a.confirmedAt
                         ? <><Badge tone="ok">Confirmed</Badge> {a.confirmedVia === 'text' ? 'replied C to the reminder' : 'at the desk'}, {clinicTime(a.confirmedAt, tz)}</>
-                        : `Texted ${clinicTime(a.reminderSentAt!, tz)}`}</dd></>
+                        : a.reminder
+                          ? reminderStateLine(reminderOf(a.reminder), { startsAt: new Date(a.startsAt), bookedAt: new Date(a.createdAt) }, (d) => clinicTime(d.toISOString(), tz))
+                          : `Texted ${clinicTime(a.reminderSentAt!, tz)}`}</dd></>
                     )}
                     {/* the texts about this visit and where each is: confirmation, move, cancel, reminder (text history, 2026-11-16) */}
                     <dt className="text-text-muted">Texts</dt>
@@ -239,6 +242,13 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
         )}
     </Panel>
   );
+}
+
+/** The API's reminder facts as core's state, for its words. */
+function reminderOf(r: ReminderInfo): ReminderState {
+  if (r.state === 'skipped') return { state: 'skipped', reason: r.reason ?? 'too_late', final: r.final };
+  if (r.state === 'due') return { state: 'due', dueAt: r.dueAt ? new Date(r.dueAt) : null };
+  return { state: r.state };
 }
 
 export function who(b: BookedBy) {

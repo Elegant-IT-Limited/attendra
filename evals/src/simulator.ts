@@ -98,6 +98,15 @@ function resolve(args: Record<string, unknown>, state: CallState, results: ToolR
     if (offered) return [k, [...state.offered.keys()][Number(offered[1])] ?? v];
     const appt = v.match(/^\$appointments\[(\d+)\]$/);
     if (appt) return [k, appointments[Number(appt[1])]?.appointment_id ?? v];
+    // the Nth time of the latest search (state.offered keeps every time offered on the call, in order)
+    const found = v.match(/^\$found\[(\d+)\]$/);
+    if (found) {
+      const latest = [...results].reverse().find((r) => Array.isArray(r.data.slots) && (r.data.slots as unknown[]).length);
+      return [k, (latest?.data.slots as { slot_id: string }[] | undefined)?.[Number(found[1])]?.slot_id ?? v];
+    }
+    // the visit booked (or moved to) on this call, and the one the assistant put forward to move (call bugs, 2026-11-17)
+    if (v === '$booked') return [k, state.memory.visit?.appointmentId ?? v];
+    if (v === '$put_forward') return [k, state.visitPutForward ?? v];
     if (v === '$next_week') {
       const today = localDateOf(now, clinic.timezone);
       return [k, addDays(today, 7 - ((weekdayOf(today) + 6) % 7))];
@@ -196,6 +205,14 @@ export async function prepareScenario(db: Database, cipher: PhiCipher, patientId
     await scheduler.book(clinic.id, { patientId, callId: setupCall, idempotencyKey: `setup-${scenario.id}`,
       slot: { id: 'setup', providerId, visitTypeId, start: existing, end: new Date(existing.getTime() + minutes * 60_000) } });
   }
+  // a visit the team booked for Biscuit earlier today, at 2:00 PM with Dr. Ruiz: the second visit a "move it" or "cancel
+  // it" must never touch unless the caller picks it (call bugs, 2026-11-17)
+  if (scenario.tags.includes('has-appointment-today') && scenario.clinic === 'riverbend') {
+    const setupCall = await calls.open(clinic.id, `today_${scenario.id}`, null);
+    const start = zonedInstant(localDateOf(now, clinic.timezone), '14:00', clinic.timezone);
+    await scheduler.book(clinic.id, { patientId: patientIds.biscuit!, callId: setupCall, idempotencyKey: `today-${scenario.id}`,
+      slot: { id: 'today', providerId: 'prov_ruiz', visitTypeId: 'vt_wellness', start, end: new Date(start.getTime() + 30 * 60_000) } });
+  }
   // Biscuit's past visits at the vet (Dr. Ruiz twice, the last on 14 September), for the visit questions
   if (scenario.tags.includes('visit-history') && scenario.clinic === 'riverbend') {
     const setupCall = await calls.open(clinic.id, `history_${scenario.id}`, null);
@@ -248,6 +265,9 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const historyName = /^Name on file for this number: (.+)\.$/m.exec(scenario.history ?? '')?.[1] ?? null;
   const recordsName = historyName && callerNumber && !opts.now ? await backend.patients.nameOnFile(clinic.id, callerNumber, callId) : historyName;
   const state = new CallState();
+  // the demo plays every scenario into one calendar, so a pet collects visits of the same kind no single scenario
+  // expects: "move that one, or book another?" is asked only in the scenarios written for it (call bugs, 2026-11-17)
+  if (opts.record && !scenario.tags.includes('call-bugs')) state.moveOrAddAsked.add('*');
   const results: ToolResult[] = [];
   const queue: Planner[] = [];
   const observed = new Observed({ plan: (input, execute) => queue.shift()!.plan(input, execute) });
@@ -475,6 +495,16 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
       return { on: local.date, at: `${String(Math.floor(local.minutes / 60)).padStart(2, '0')}:${String(local.minutes % 60).padStart(2, '0')}`, visit: a.visitTypeId };
     });
     check(JSON.stringify(made) === JSON.stringify(e.bookings), `bookings ${JSON.stringify(made)}, expected ${JSON.stringify(e.bookings)}`);
+  }
+  // the found pet's visits still booked when the call ends, whoever booked them: none moved or cancelled unasked
+  if (e.visits_after && !opts.now) {
+    const pet = state.verifiedPatient?.id;
+    const rows = pet ? await withClinic(db, clinic.id, (tx) => tx.select().from(schema.appointments).where(and(eq(schema.appointments.patientId, pet), eq(schema.appointments.status, 'booked')))) : [];
+    const left = rows.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime()).map((a) => {
+      const local = localParts(a.startsAt, clinic.timezone);
+      return { on: local.date, at: `${String(Math.floor(local.minutes / 60)).padStart(2, '0')}:${String(local.minutes % 60).padStart(2, '0')}`, visit: a.visitTypeId };
+    });
+    check(JSON.stringify(left) === JSON.stringify(e.visits_after), `visits booked after the call ${JSON.stringify(left)}, expected ${JSON.stringify(e.visits_after)}`);
   }
   if (e.booked_on && !opts.now) check(createdRows.every((a) => localDateOf(a.startsAt, clinic.timezone) === e.booked_on), `booked on ${JSON.stringify(createdRows.map((a) => localDateOf(a.startsAt, clinic.timezone)))}, expected ${e.booked_on}`);
   // the note for the team on the appointments the call made ("booked by caller: Alex"), stored encrypted like a staff note

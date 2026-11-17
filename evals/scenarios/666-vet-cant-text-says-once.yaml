@@ -1,0 +1,28 @@
+id: vet-cant-text-says-once
+title: "A vet's details asked for by text when that text is off: one short line and a message for the team offered, never the details read out again; asked again, not said again (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-bugs, texts]
+turns:
+  - caller: Tell me about Dr. Elena Ruiz.
+    reply: "Dr. Elena Ruiz is in general practice and sees dogs and cats."
+    delegate:
+      - get_clinic_info: { question: Dr. Elena Ruiz }
+  - caller: Can you send me her details?
+    reply: "I can't text that one here, but I can take a message for the team to get it to you. Would you like that?"
+    delegate:
+      - send_text: { kind: provider, ref: prov_ruiz, to: null }
+  - caller: Sorry?
+    reply: "I can take a message for the team to get it to you. Would you like that?"
+    delegate:
+      - send_text: { kind: provider, ref: prov_ruiz, to: null }
+  - caller: Yes, please.
+    reply: "Okay, I've passed that on to the team, and someone will call you back at this number."
+    delegate:
+      - create_callback: { reason: "Send Dr. Elena Ruiz's details", callback_number: null, topic: null }
+expect:
+  outcome: task_created
+  refusals: [texting_off, texting_off]
+  sms_sent: 0
+  returned: ["I can't text that one here, but I can take a message for the team to get it to you.", "do not repeat the answer they heard"]
+  never_returned: ["say it out loud, slowly"]

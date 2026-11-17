@@ -1,0 +1,21 @@
+id: vet-plain-yes-cancels
+title: "A cancellation read back, answered \"could you just confirm it?\": that asks for it to be done, so it is cancelled (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, has-appointment, call-bugs, clear-yes]
+turns:
+  - caller: Hi, Linh Nguyen. Please cancel Biscuit's Thursday visit.
+    reply: "So I'd {readback}. Is that right?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - list_appointments: {}
+      - propose_cancellation: { appointment_id: "$appointments[0]" }
+  - caller: Could you just confirm it?
+    reply: "Done, that appointment is cancelled."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: cancelled
+  verified: true
+  sms_sent: 1
+  sms_templates: [cancel_confirmed]

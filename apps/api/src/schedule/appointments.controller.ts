@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ageOn, animalFit, bookingOf, bookingPolicy, type BusyInterval, ClinicConfig, DESK_LEAD_MINUTES, DESK_STATUS_REFUSED, type EventSink, localDateOf, normalizeName, strandedReason, zonedInstant } from '@attendra/core';
+import { addDays, ageOn, animalFit, bookingOf, bookingPolicy, type BusyInterval, ClinicConfig, DESK_LEAD_MINUTES, DESK_STATUS_REFUSED, type EventSink, inQuietHours, localDateOf, localParts, normalizeName, reminderState, strandedReason, textingOf, zonedInstant } from '@attendra/core';
 import { appointmentFacts, type Database, type FrontDeskRepository, nameMatches, type ScheduleEntry, type ScheduleRepository } from '@attendra/db';
 import { openSlots, type SlotProblem, type StaffChange, type StaffScheduler, type StatusChange } from '@attendra/scheduling';
 import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
@@ -12,8 +12,9 @@ import {
 } from '../contracts';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
-import { CLOCK, DB, EVENTS, FRONT_DESK, SCHEDULE, STAFF_SCHEDULER } from '../http/tokens';
+import { CLOCK, DB, EVENTS, FRONT_DESK, JOBS, SCHEDULE, STAFF_SCHEDULER } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
+import type { JobQueue } from '@attendra/worker/queue';
 import { STRANDED_CHECK_DAYS } from './stranded';
 
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
@@ -59,6 +60,7 @@ export class AppointmentsController {
     @Inject(CLOCK) private readonly now: () => Date,
     @Inject(DB) private readonly db: Database,
     @Inject(EVENTS) private readonly events: EventSink,
+    @Inject(JOBS) private readonly jobs: JobQueue,
   ) {}
 
   @Get()
@@ -170,8 +172,21 @@ export class AppointmentsController {
   async get(@Param('clinicId') clinicId: string, @Param('appointmentId') id: string, @CurrentStaff() staff: Staff): Promise<AppointmentDetail> {
     const a = isUuid(id) ? await this.schedule.appointment(clinicId, id, staff.userId) : null;
     if (!a) throw new NotFoundException({ error: 'not_found' });
+    const clinic = await this.clinic(clinicId);
+    const r = textingOf(clinic).reminders;
+    const at = this.now();
+    // the same rule the worker sends by, read now (texts polish TX0)
+    const reminder = reminderState({
+      now: at, booked: a.status === 'booked', startsAt: a.startsAt, bookedAt: a.createdAt, reminderSentAt: a.reminderSentAt,
+      kept: a.reminderSkip, smsStatus: a.reminderSmsStatus, reminders: r, quietNow: inQuietHours(localParts(at, clinic.timezone).minutes, r.quietFrom, r.quietTo),
+      consent: a.patient.textsOk, phone: !!a.patient.phone,
+    });
     return {
       ...toAppointment(a), note: a.note, updatedAt: a.updatedAt.toISOString(),
+      reminder: reminder && {
+        state: reminder.state, dueAt: reminder.state === 'due' ? reminder.dueAt?.toISOString() ?? null : null,
+        reason: reminder.state === 'skipped' ? reminder.reason : null, final: reminder.state === 'skipped' && reminder.final,
+      },
       patient: { id: a.patient.id, name: `${a.patient.firstName} ${a.patient.lastName}`, dob: a.patient.dob, phone: a.patient.phone },
     };
   }
@@ -255,6 +270,9 @@ export class AppointmentsController {
     if (type === 'appointment.rescheduled') data.previousAppointmentId = null;
     // each move is its own event, even back to a time the appointment had before
     await this.events.emit(clinicId, { type, key: type === 'appointment.rescheduled' ? `${a.appointmentId}|${a.startsAt}|${a.updatedAt}` : a.appointmentId, data });
+    // a visit booked or moved inside the clinic's reminder hours gets its reminder now, not at the next 10 minutes;
+    // the booking stands whatever the queue does
+    if (type !== 'appointment.cancelled') await this.jobs.remindersDue?.({ clinicId, key: `${a.appointmentId}|${a.startsAt}` }).catch(() => {});
     return change;
   }
 

@@ -121,6 +121,9 @@ export const appointments = pgTable('appointments', {
   /** The reminder text, once claimed and sent. */
   reminderSentAt: timestamp('reminder_sent_at', { withTimezone: true }),
   reminderSmsId: uuid('reminder_sms_id'),
+  /** Why no reminder went (core REMINDER_SKIPS: no consent, no number, quiet hours, booked under an hour before), and when it was found (migration 0061). */
+  reminderSkip: text('reminder_skip', { enum: ['no_consent', 'no_number', 'quiet_hours', 'booked_late', 'too_late'] }),
+  reminderSkipAt: timestamp('reminder_skip_at', { withTimezone: true }),
   /** The owner confirmed the visit (replied C to the reminder), or staff marked it. */
   confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
   confirmedVia: text('confirmed_via', { enum: ['text', 'staff'] }),
