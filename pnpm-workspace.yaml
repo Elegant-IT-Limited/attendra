@@ -27,3 +27,5 @@ overrides:
   drizzle-orm: 0.45.4
   '@electric-sql/pglite': 0.5.10
   zod: 4.6.7
+  # security (Dependabot, 2026-11-17): vitest's vite, lifted to the first fixed patch
+  'vite@>=8.3.0 <8.3.3': 8.3.3
