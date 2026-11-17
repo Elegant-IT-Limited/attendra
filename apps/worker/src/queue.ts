@@ -26,7 +26,7 @@ export const QUEUES = {
   requestReady: 'request-ready',
   /** A visit handed to another vet when its vet was removed, and the team said yes to texting the owners: one text. */
   visitHandedOver: 'visit-handed-over',
-  /** Every 10 minutes: reminder texts for visits coming up, to people who said yes to them. */
+  /** Every 10 minutes, and at once after a booking or a move: reminder texts for visits coming up, to people who said yes to them. */
   appointmentReminders: 'appointment-reminders',
   /** Every 10 minutes: what the backup route does for each of our numbers, kept current in Twilio. */
   fallbackSync: 'fallback-sync',
@@ -61,6 +61,9 @@ export type RequestJob = z.infer<typeof RequestJob>;
 /** A handed-over visit: which one, and the vet it is now with (the text names them; a later move makes the job a no-op). */
 export const HandoverJob = z.object({ clinicId: z.string().min(1), appointmentId: z.uuid(), providerId: z.string().min(1).max(64) });
 export type HandoverJob = z.infer<typeof HandoverJob>;
+/** A visit booked or moved (at the desk, or on a call): the clinic's reminders run at once, so one inside its hours goes now, not at the next 10 minutes. */
+export const RemindersJob = z.object({ clinicId: z.string().min(1), key: z.string().min(1).max(200) });
+export type RemindersJob = z.infer<typeof RemindersJob>;
 
 /** Every status Twilio reports for a message it sends (its MessageStatus values for outbound messages). */
 export const SMS_STATUSES = ['accepted', 'scheduled', 'canceled', 'queued', 'sending', 'sent', 'delivered', 'undelivered', 'failed', 'partially_delivered', 'read'] as const;
@@ -98,6 +101,8 @@ export interface JobQueue {
   smsStatus(job: SmsStatusJob): Promise<void>;
   /** Once per visit and vet: a handover confirmed twice does not text twice. Absent where nothing sends texts. */
   visitHandedOver?(job: HandoverJob): Promise<void>;
+  /** A visit booked or moved: the clinic's reminders now (once per key: the visit and its time). Absent where nothing sends texts. */
+  remindersDue?(job: RemindersJob): Promise<void>;
 }
 
 export const noJobs: JobQueue = { callCompleted: async () => {}, indexDocument: async () => {}, webhookEvent: async () => {}, requestReady: async () => {}, smsStatus: async () => {} };
@@ -133,6 +138,9 @@ export function bossQueue(boss: PgBoss): JobQueue {
     },
     async visitHandedOver(job) {
       await boss.send(QUEUES.visitHandedOver, HandoverJob.parse(job), { id: jobId(QUEUES.visitHandedOver, `${job.appointmentId}|${job.providerId}`) });
+    },
+    async remindersDue(job) {
+      await boss.send(QUEUES.appointmentReminders, RemindersJob.parse(job), { id: jobId(QUEUES.appointmentReminders, `${job.clinicId}|${job.key}`) });
     },
   };
 }

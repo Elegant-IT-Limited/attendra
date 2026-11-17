@@ -1,0 +1,43 @@
+id: vet-es-cancel-it-after-booking
+title: "In Spanish: a pet has a visit the team booked today; the owner books a second one, then says \"cancélela\": the visit just booked is cancelled, the team's stays (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, has-appointment-today, call-bugs, es]
+turns:
+  - caller: Hola, soy Linh Nguyen. Quiero un chequeo general para Biscuit hoy, después de las 4.
+    reply: "Biscuit ya tiene una cita: chequeo general, hoy a las 2:00 PM, con la Dra. Elena Ruiz. ¿Quiere cambiar esa cita o reservar otra además?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-28", part_of_day: any, from_time: "16:00", time_mode: after }
+  - caller: Otra, por favor.
+    reply: "Hoy tengo {offered.0}, o {offered.1}."
+    delegate:
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-28", part_of_day: any, from_time: "16:00", time_mode: after }
+  - caller: La primera.
+    reply: "Tengo {readback}. ¿Le reservo la cita?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Sí."
+    reply: "Listo, la cita queda reservada."
+    delegate:
+      - commit_pending: {}
+  - caller: Perdone, ¿la puede cancelar, por favor?
+    reply: "Entonces, quiere {readback}. ¿Es correcto?"
+    delegate:
+      - propose_cancellation: { appointment_id: "$put_forward" }
+      - propose_cancellation: { appointment_id: "$booked" }
+  - caller: "Sí."
+    reply: "Listo, la cita queda cancelada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: cancelled
+  verified: true
+  language: es
+  refusals: [which_visit]
+  bookings_created: 1
+  sms_sent: 2
+  sms_templates: [booking_confirmed, cancel_confirmed]
+  visits_after:
+    - { on: "2026-09-28", at: "14:00", visit: vt_wellness }
+  returned: ["the visit booked on this call", "cancelar la cita del"]

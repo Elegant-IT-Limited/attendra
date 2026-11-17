@@ -1,0 +1,45 @@
+id: vet-es-move-it-after-booking
+title: "In Spanish: a pet has a visit the team booked today; the owner books a second one, then says \"cámbiela al viernes\": the visit just booked moves, never the team's (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, has-appointment-today, call-bugs, es]
+turns:
+  - caller: Hola, soy Linh Nguyen. Quiero un chequeo general para Biscuit hoy, después de las 4.
+    reply: "Biscuit ya tiene una cita: chequeo general, hoy a las 2:00 PM, con la Dra. Elena Ruiz. ¿Quiere cambiar esa cita o reservar otra además?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-28", part_of_day: any, from_time: "16:00", time_mode: after }
+  - caller: Reservar otra, por favor.
+    reply: "Hoy tengo {offered.0}, o {offered.1}."
+    delegate:
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-28", part_of_day: any, from_time: "16:00", time_mode: after }
+  - caller: La primera.
+    reply: "Tengo {readback}. ¿Le reservo la cita?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Sí."
+    reply: "Listo, la cita queda reservada."
+    delegate:
+      - commit_pending: {}
+  - caller: En realidad, ¿la puede cambiar al viernes?
+    reply: "Entonces, quiere {readback}. ¿Hago el cambio?"
+    delegate:
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-10-02", part_of_day: any }
+      - propose_booking: { slot_id: "$found[0]", replaces_appointment_id: "$put_forward" }
+      - propose_booking: { slot_id: "$found[0]", replaces_appointment_id: "$booked" }
+  - caller: "Sí."
+    reply: "Listo, la cita queda cambiada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: rescheduled
+  verified: true
+  language: es
+  refusals: [which_visit]
+  bookings_created: 2
+  sms_sent: 2
+  sms_templates: [booking_confirmed, change_confirmed]
+  visits_after:
+    - { on: "2026-09-28", at: "14:00", visit: vt_wellness }
+    - { on: "2026-10-02", at: "16:00", visit: vt_wellness }
+  returned: ["¿Quiere cambiar esa cita o reservar otra además?", "the visit booked on this call", "cambiar la cita de Biscuit del lunes 28 de septiembre"]

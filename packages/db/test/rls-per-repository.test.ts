@@ -414,9 +414,10 @@ describe('row-level security per repository, as attendra_service', () => {
     expect(open).toEqual(['clinic_memberships', 'invitations', 'phone_numbers']);
   });
 
-  it('may call no function that runs as the owner but the ones 0051 made for it', async () => {
+  it('may call no function that runs as the owner but the ones made for it (0051, 0063)', async () => {
     const definers = (await t.owner.execute(sql`select p.proname as name from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and p.prosecdef and has_function_privilege('attendra_service', p.oid, 'execute') order by 1`)).rows.map((r: unknown) => (r as { name: string }).name);
-    expect(definers).toEqual(['api_key_by_hash']);
+    // 0063: one date, when the words of texts were first kept (texts polish TX5); no table is read through it
+    expect(definers).toEqual(['api_key_by_hash', 'text_words_kept_since']);
   });
 });

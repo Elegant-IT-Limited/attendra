@@ -1,0 +1,28 @@
+id: vet-confirmation-text-will-come
+title: "After a booking the caller hears that a confirmation text will come to the number they are calling from, never that it was sent: nobody on the call sees it arrive (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-bugs, texts]
+turns:
+  - caller: Hi, Linh Nguyen. Can Biscuit come in tomorrow morning for a sick visit?
+    reply: "Tomorrow morning I have {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: "2026-09-29", part_of_day: morning }
+  - caller: The first one.
+    reply: "I have {readback}. I'll text you a confirmation at the number you're calling from, unless you'd rather not. Shall I book it?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "All set, that's booked. I'll text a confirmation to the number you're calling from. Is there anything else I can help you with?"
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  sms_templates: [booking_confirmed]
+  returned: ["I'll text a confirmation to the number you're calling from", "will go to the number calling", "in the future tense"]
+  never_returned: ["I've sent you a confirmation text", "confirmation text sent", "say it has been sent", "sms_sent"]
+forbid_spoken: ["I've sent you", "has been sent"]

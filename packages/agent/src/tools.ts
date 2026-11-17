@@ -14,7 +14,8 @@ import { dayReason, doesntDoType, frontDeskLine, nothingFound, vetHoursLine } fr
 import type { CallState } from './call-state';
 import { answerForAsked, answersFromFaqs } from './knowledge';
 import { askedVisitWords, asksWhatVisits, bookableVisits, closestVisits, visitChoicesIn } from './visit-offer';
-import { asksEmergencyHandling, asksWhichVet, withoutMeaningAsk } from './flow/guards';
+import { asksEmergencyHandling, asksWhichVet, saysTextsNotArriving, textsNotArrivingNote, withoutMeaningAsk } from './flow/guards';
+import { visitMeant, whichVisitLine } from './flow/visit-pick';
 import { outOfScopeLine } from '@attendra/knowledge/scope';
 
 export interface Backend {
@@ -58,6 +59,8 @@ export interface ToolResult {
 }
 
 const MAX_VERIFY_ATTEMPTS = 3;
+/** How many days either side of the day asked for a visit of the same kind counts as already booked then (CB8, 2026-11-17). */
+const SAME_KIND_DAYS = 3;
 /** Calls whose caller has heard the confirmation-text note with a read-back: it is said once a call. */
 const TEXT_NOTE_SAID = new WeakSet<CallState>();
 /** Said with every miss: once the tries run out, nobody can be found or added on this call. */
@@ -206,6 +209,40 @@ const NO_CALLBACK_NUMBER = (lang: CallState['language']) => refuse('no_callback_
 const MEDICAL = () => refuse('medical_question', `Do not answer it, and do not read anything from the clinic's documents. Say: "${MEDICAL_REFUSAL}" Offer to take a callback.`);
 
 const refuse = (code: string, say: string): ToolResult => ({ ok: false, data: { error: code, say } });
+/** The last four digits alone, once the pet's name is known (CB11). */
+const lastFourOnly = (lang: CallState['language'], pet: string) => (lang === 'es'
+  ? `¿Cuáles son los últimos cuatro dígitos del número de teléfono de la ficha de ${pet}?`
+  : `What are the last four digits of the phone number on ${pet}'s profile?`);
+/** A text the clinic does not send: one short line, and a message for the team instead of the answer read out again. */
+const cantTextLine = (lang: CallState['language']) => (lang === 'es'
+  ? 'No puedo enviarle eso por mensaje desde aquí, pero puedo dejarle un recado al equipo para que se lo hagan llegar. ¿Le parece bien?'
+  : 'I can\'t text that one here, but I can take a message for the team to get it to you. Would you like that?');
+/** "What are your hours?", "are you open Saturday?", "¿a qué hora abren?": the clinic's hours were asked about. */
+const HOURS_ASKED = /\b(?:hours|open|opening|opens|close|closing|closes|closed|horario|horarios|abren|abre|abierto|abiertos|cierran|cierra|cerrado)\b/;
+export const asksHours = (text: string) => HOURS_ASKED.test(normalise(text));
+/**
+ * After the address or the hours are said, the text of them is offered once (a test call, 2026-11-16: both were said and
+ * neither was offered, with both kinds on in Settings > Texting): when that kind is on, the caller's number can get
+ * texts, and nothing of that kind was offered or sent on the call. The voice asks the question; the caller's yes to it
+ * is the consent send_text reads.
+ */
+export function textOfferAfter(kind: 'directions' | 'hours', state: CallState, clinic: ClinicConfig, callerNumber: string | null): { kind: string; ask: string; note: string } | null {
+  const texting = textingOf(clinic);
+  if (!texting.enabled || !texting.kinds[kind] || !callerNumber || state.callerNotTextable || state.emergencyLocked) return null;
+  if (state.textsSent >= MAX_TEXTS_PER_CALL || state.guardsSaid.has(`text_offered:${kind}`)) return null;
+  state.guardsSaid.add(`text_offered:${kind}`);
+  const ask = PACKS[state.language].textOffer({ target: 'this' });
+  return { kind, ask, note: `After the answer, ask once, in these words: "${ask}" On a yes, call send_text with kind ${kind}; on a no, carry on.` };
+}
+/** Tool arguments with every empty or blank string as null. */
+const blanksAsNull = (args: unknown): unknown => (args && typeof args === 'object' && !Array.isArray(args)
+  ? Object.fromEntries(Object.entries(args as Record<string, unknown>).map(([k, v]) => [k, typeof v === 'string' && !v.trim() ? null : v])) : args);
+/** Where a confirmation text will go, for the tool result: never "sent", since nobody on the call can see it arrive. */
+const textNote = (to: 'calling' | 'file' | null) => (to === 'calling' ? 'will go to the number calling' : to === 'file' ? 'will go to the number on file' : 'none');
+/** The read-back asked again after an answer that was not a yes: plainly, with no set words to repeat. */
+const askYesAgain = (lang: CallState['language'], readback: string) => (lang === 'es'
+  ? `Solo para confirmar: ${/^(cambiar|cancelar) /.test(readback) ? `¿quiere ${readback}` : `¿le reservo ${readback}`}? Con un sí me basta.`
+  : `Just to confirm: ${/^(move|cancel) /.test(readback) ? `shall I ${readback}` : `shall I book ${readback}`}? A simple yes is fine.`);
 
 /**
  * A visit that is none of the clinic's (grooming, a boarding stay, laser therapy; 2026-11-16): never another visit in its
@@ -395,7 +432,11 @@ export async function runTool(
 async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx: CallContext, backend: Backend, revision: number): Promise<ToolResult> {
   // the arguments the clinic's industry takes: a veterinary clinic finds a pet by its owner's name and its own
   const trade = industryPack(ctx.clinic.industry);
-  const parsed = toolArgsFor(ctx.clinic.industry)[name].safeParse(rawArgs);
+  const schema = toolArgsFor(ctx.clinic.industry)[name];
+  // an empty string for a detail the caller did not give is that detail left out: null, where the tool takes null
+  // (a voice model sent "" for "none" and a move's slot search came back invalid_arguments, 2026-11-16)
+  const first = schema.safeParse(rawArgs);
+  const parsed = first.success ? first : schema.safeParse(blanksAsNull(rawArgs));
   // the arguments were the model's mistake, not the caller's: they are never asked to say it again for it
   if (!parsed.success) return refuse('invalid_arguments', `These arguments do not fit the tool (${parsed.error.issues.map((i) => i.path.join('.')).filter(Boolean).join(', ') || 'their shape'}). Call it again with what the caller already said; ask the caller only for a detail they have not given yet.`);
   // an animal's red flag waits for the caller's answer to the one question: no times or booking for that pet until then
@@ -514,11 +555,14 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
   /**
    * A confirmation text for a change just made. The read-back said it would come, so the caller's
    * yes is their consent to it; a caller who said no to the text gets none. The change stands
-   * whatever happens to the text; it is never reported as failed.
+   * whatever happens to the text; it is never reported as failed. Returns where it went (the number on file, or the one
+   * calling), or null when none went: handed to the carrier is not delivered, so the caller only ever hears that it
+   * will come (a test call, 2026-11-16, heard "I've sent you a confirmation text" for two texts that never arrived).
    */
-  const confirmByText = async (template: 'booking_confirmed' | 'change_confirmed' | 'cancel_confirmed', start: Date, appointmentId: string, visitFacts: { providerId?: string; visitTypeId?: string } = {}, declined = false, from: Date | null = null): Promise<boolean> => {
+  const confirmByText = async (template: 'booking_confirmed' | 'change_confirmed' | 'cancel_confirmed', start: Date, appointmentId: string, visitFacts: { providerId?: string; visitTypeId?: string } = {}, declined = false, from: Date | null = null): Promise<'calling' | 'file' | null> => {
     const patient = state.verifiedPatient;
-    if (declined || !patient?.phone || !confirmationTarget(template)) return false;
+    const target = confirmationTarget(template);
+    if (declined || !patient?.phone || !target) return null;
     try {
       const text = await backend.messenger.sendTemplate(clinic.id, {
         to: patient.phone, template, idempotencyKey: key(ctx.callId, template === 'booking_confirmed' ? 'sms' : template, appointmentId), language: lang,
@@ -526,11 +570,41 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         kind: 'auto', about: { callId: ctx.callId, patientId: patient.id, appointmentId },
       });
       if (text.status === 'not_sent') ctx.log?.info({ call_id: ctx.callId, reason: text.reason }, 'confirmation text not sent; the change stands');
-      return text.status !== 'not_sent';
+      return text.status !== 'not_sent' ? target : null;
     } catch (err) {
       ctx.log?.warn({ call_id: ctx.callId, err }, 'confirmation text failed; the change stands');
-      return false;
+      return null;
     }
+  };
+
+  /**
+   * A move or a cancellation of a visit the caller did not pick, when the pet has more than one to come: refused, with
+   * the one they meant ("it" right after a booking is the visit just booked), or else the question naming each (a test
+   * call, 2026-11-16, moved and cancelled the wrong visits). Null when this is the one, or the pet has only one.
+   */
+  const notPicked = (target: { id: string; start: Date }, upcoming: { id: string; start: Date }[], change: 'move' | 'cancel'): ToolResult | null => {
+    // a pet's visits (the call bugs were a vet's); a person's own visits keep the rules they had
+    if (upcoming.length < 2 || trade.identity !== 'pet') return null;
+    const meant = visitMeant(state, upcoming, clinic.timezone, ctx.now());
+    if (meant?.id === target.id) return null;
+    const again = change === 'move' ? 'propose_booking again with replaces_appointment_id' : 'propose_cancellation again with appointment_id';
+    const verb = change === 'move' ? 'moved' : 'cancelled';
+    const meantVisit = meant ? upcoming.find((a) => a.id === meant.id) : undefined;
+    if (meant && meantVisit) {
+      const why = meant.why === 'named' ? 'the one the caller named' : meant.why === 'booked_on_call' ? 'the visit booked on this call: "it" right after a booking means that one' : 'the one you offered to move';
+      return refuse('which_visit', `Not that visit: the caller did not pick ${when(target.start)}, and a visit the caller did not pick is never ${verb}. They mean ${when(meantVisit.start)}, ${why}. Call ${again} ${meant.id}: its read-back names it, so the caller hears which one.`);
+    }
+    const sorted = [...upcoming].sort((a, b) => a.start.getTime() - b.start.getTime());
+    const pet = trade.identity === 'pet' ? state.verifiedPatient?.firstName ?? null : null;
+    const line = whichVisitLine(lang, change, pet, sorted.map((a) => when(a.start)));
+    return refuse('which_visit', `Say, in these words: "${line}" Then call ${again} of the one they pick: ${sorted.map((a) => `${when(a.start)} (${a.id})`).join(', ')}. A visit the caller did not pick is never ${verb}.`);
+  };
+  /** A change waiting for a yes that a new proposal replaces: said in a few words, so the caller knows it will not happen. */
+  const replacedNote = (next: { kind: 'book' | 'cancel'; id: string }): string => {
+    const p = state.pending;
+    if (!p || p.readbackAtMs === null) return '';
+    if (p.kind === next.kind && (p.kind === 'cancel' ? p.appointmentId : p.slot.id) === next.id) return '';
+    return `This replaces the change that was waiting for a yes (${p.readback}): say first, in a few words, that that one will not be done, then the read-back. `;
   };
 
   switch (name) {
@@ -608,6 +682,13 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
 
     case 'get_clinic_info': {
       const question = String(args.question);
+      // texts that are not arriving are not a question about the clinic: where texts go, once a turn (2026-11-16: the
+      // caller heard the address). Asked again in the same turn, it answers the rest of what they asked
+      if ((saysTextsNotArriving(question) || saysTextsNotArriving(state.lastTurn('caller'))) && !state.guardsSaid.has(`no_texts_info:${state.turns.length}`)) {
+        state.guardsSaid.add(`no_texts_info:${state.turns.length}`);
+        const note = textsNotArrivingNote(state, clinic);
+        return { ok: true, data: { spoken: /"([^"]+)"/.exec(note)![1]!, say: `${note} If they also asked something about the clinic, call get_clinic_info again with just that.` } };
+      }
       // the medical-advice rule wins over anything the FAQ or a document says. It checks
       // what the caller said too: the model may pass on a question it has softened
       // "which vet is good for allergies?" is clinic information (who is listed for what), not medical advice (11-16)
@@ -635,6 +716,9 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       // the clinic's own answer wins when it is about what it offers ("What services do you offer?"), never one that only
       // shares a word ("What should I bring to the first visit?" for "what visits do you have?")
       const ownOffer = !!answer && (asksWhatVisits(answer.question) || /\b(?:services?|servicios?|offer|offers|ofrecen|ofrece)\b/.test(normalise(answer.question)));
+      // the address or the hours asked for: their text offered once after the answer (CB7)
+      const asked = `${question} ${state.lastTurn('caller')}`;
+      const offer = asksWhere(asked) ? textOfferAfter('directions', state, clinic, ctx.callerNumber) : asksHours(asked) ? textOfferAfter('hours', state, clinic, ctx.callerNumber) : null;
       const visitsLine = !ownOffer && bookable.length && asksWhatVisits(`${question} ${state.lastTurn('caller')}`)
         ? PACKS[lang].spoken.visitsWeBook({ visits: bookable.slice(0, 6).map((v) => localName(v, lang)), more: bookable.length > 6 }) : null;
       return {
@@ -648,6 +732,9 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
           // and its shorter days after this week, for "are you open on Christmas Eve?"
           ...(specialHoursAhead(clinic, today).length ? { special_hours_ahead: specialHoursAhead(clinic, today) } : {}),
           answer: answer?.answer ?? null, source: answer?.id ?? null,
+          // the clinic's own answer, said by the clinic: "we ...", never "they ..." (a test call, 2026-11-16)
+          ...(answer ? { answer_voice: 'This is the clinic\'s own answer and you speak for the clinic: say it as "we" and "our" ("Yes, we offer ..."), never "they" or "the clinic".' } : {}),
+          ...(offer ? { text_offer: offer.note } : {}),
           // more than one thing asked ("boarding and grooming?"): each has its own answer, and each is said
           ...(found.length > 1 ? { answers: found.map((f) => ({ question: f.question, answer: f.answer, source: f.id })), answers_note: 'The clinic\'s own answers, one for each thing they asked: answer each from its own answer. Never answer one from another\'s answer or from the visit types.' } : {}),
           ...(clinic.address ? { address: clinic.address } : {}), ...(clinic.website ? { website: clinic.website } : {}),
@@ -892,6 +979,26 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
           }
         }
       }
+      // never on a call about a visit they already have: a move or a cancel (said, or by the model), or their visits just
+      // read out by list_appointments. A move is not a second booking (a new call that moved a pet's visit heard
+      // "already has a visit booked" and "move it instead" in the middle of moving it)
+      const intent = state.memory.get('intent');
+      const aboutTheirVisit = !!moving || intent === 'move' || intent === 'cancel' || state.toolLog.some((t) => t.name === 'list_appointments' && t.ok);
+      // the same kind of visit a few days either side of the day asked for: "move it, or book another?" before any time
+      // (a test call, 2026-11-16, offered a second wellness exam the same evening as the first, with no word about moving it)
+      const askKey = patient ? `${patient.id}|${visitType.id}` : '';
+      const sameKind = patient && trade.identity === 'pet' && !aboutTheirVisit && recordOpen && !state.moveOrAddAsked.has(askKey) && !state.moveOrAddAsked.has('*')
+        ? theirs.filter((a) => a.visitTypeId === visitType.id && Math.abs(Date.parse(localDateOf(a.start, clinic.timezone)) - Date.parse(from)) <= SAME_KIND_DAYS * 86_400_000)
+          .sort((a, b) => a.start.getTime() - b.start.getTime())[0]
+        : undefined;
+      if (sameKind && patient) {
+        state.moveOrAddAsked.add(askKey);
+        state.upcomingSaid.add(patient.id);
+        state.visitPutForward = sameKind.id;
+        const has = pack.slots.alreadyBooked({ name: patient.firstName, visit: localName(visitType, lang).toLowerCase(), when: when(sameKind.start), provider: nameOf(sameKind.providerId) ?? null, more: 0 });
+        return { ok: true, data: { today: todayIs, slots: [], reason: 'same_visit_booked', say_as: `${has} ${pack.slots.moveOrAdd}`,
+          note: `Say say_as as written and wait for the answer; offer no times yet. To move that visit: find_slots for the day or time they want, then propose_booking with replaces_appointment_id ${sameKind.id}. To book another as well: find_slots again with the same visit.` } };
+      }
       for (const s of slots) state.offered.set(s.id, s);
       // the answer leads with "not at 9:30": the read-back need not say it again
       if (near && !exactSlot) state.askedTimeTold = near.time;
@@ -904,16 +1011,12 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const outside = near && one && !exactSlot ? vetHoursLine(clinic, one, from, near.time, lang, near.direction) : null;
       // a visit they already have, once per call, before anything else, to a caller the record is open to
       const next = theirs.sort((a, b) => a.start.getTime() - b.start.getTime())[0];
-      // never on a call about a visit they already have: a move or a cancel (said, or by the model), or their visits just
-      // read out by list_appointments. A move is not a second booking (a new call that moved a pet's visit heard
-      // "already has a visit booked" and "move it instead" in the middle of moving it)
-      const intent = state.memory.get('intent');
-      const aboutTheirVisit = !!moving || intent === 'move' || intent === 'cancel' || state.toolLog.some((t) => t.name === 'list_appointments' && t.ok);
       const booked = next && patient && !aboutTheirVisit && recordOpen && !state.upcomingSaid.has(patient.id)
         ? pack.slots.alreadyBooked({ name: patient.firstName, visit: (() => { const v = clinic.visitTypes.find((x) => x.id === next.visitTypeId); return v ? localName(v, lang).toLowerCase() : lang === 'es' ? 'cita' : 'visit'; })(), when: when(next.start), provider: nameOf(next.providerId) ?? null, more: theirs.length - 1 })
         : null;
       if (booked && patient) {
         state.upcomingSaid.add(patient.id);
+        state.visitPutForward = next!.id;
         note = `${note} ${patient.firstName} already has a visit booked (the first line of say_as): say it first. If they would rather move that visit than book another, move it with propose_booking and replaces_appointment_id ${next!.id}.`;
       }
       const sayAs = [booked, reason?.line, outside, frontDeskLine(clinic, slots, lang)].filter((x): x is string => !!x);
@@ -1003,8 +1106,11 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       let replacing: string | null = null;
       let replacesStart: Date | null = null;
       if (replaces) {
-        const current = (await backend.scheduler.upcoming(clinic.id, state.verifiedPatient!.id, ctx.now())).find((a) => a.id === replaces);
+        const upcoming = await backend.scheduler.upcoming(clinic.id, state.verifiedPatient!.id, ctx.now());
+        const current = upcoming.find((a) => a.id === replaces);
         if (!current) return refuse('unknown_appointment', 'Use list_appointments to find the appointment being moved.');
+        const wrong = notPicked(current, upcoming, 'move');
+        if (wrong) return wrong;
         replacing = when(current.start);
         replacesStart = current.start;
       }
@@ -1027,6 +1133,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if (same?.kind === 'book' && same.slot.id === slot.id && same.replacesAppointmentId === replaces && same.readbackAtMs !== null) {
         return { ok: true, data: { say: `This was already read back: ${readback}. If the caller said yes to it, call commit_pending now; otherwise ask for a clear yes.` } };
       }
+      const dropped = replacedNote({ kind: 'book', id: slot.id });
       state.pending = { kind: 'book', slot, replacesAppointmentId: replaces, replacesStart, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null, when: { start: slot.start, timeZone: clinic.timezone, now: ctx.now() } };
       state.chosen = null; // the time they chose is the one being read back now
       // the confirmation text is said before the yes, so the yes covers it and the caller can turn it down
@@ -1046,7 +1153,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       }
       if (textNote) TEXT_NOTE_SAID.add(state);
       if (notFree) state.askedTimeTold = askedTime;
-      const first = notFree ? `Say first, in these words: "${notFree}" Then: ` : '';
+      const first = `${dropped}${notFree ? `Say first, in these words: "${notFree}" Then: ` : ''}`;
       return { ok: true, data: { say: `${first}${textNote ? `Read this back, say "${textNote}", and ask for a clear yes: ${readback}.` : `Read this back and ask for a clear yes: ${readback}.`}`, spoken: [notFree, pack.spoken.readback({ readback, textNote, move: !!replaces })].filter(Boolean).join(' ') } };
     }
 
@@ -1054,15 +1161,18 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const upcoming = await backend.scheduler.upcoming(clinic.id, state.verifiedPatient!.id, ctx.now());
       const appt = upcoming.find((a) => a.id === args.appointment_id);
       if (!appt) return refuse('unknown_appointment', 'Use list_appointments to find the appointment first.');
+      const wrong = notPicked(appt, upcoming, 'cancel');
+      if (wrong) return wrong;
       const readback = pack.readbackCancel({ when: when(appt.start) });
       const same = state.pending;
       if (same?.kind === 'cancel' && same.appointmentId === appt.id && same.readbackAtMs !== null) {
         return { ok: true, data: { say: `This was already read back: ${readback}. If the caller said yes to it, call commit_pending now; otherwise ask for a clear yes.` } };
       }
+      const dropped = replacedNote({ kind: 'cancel', id: appt.id });
       state.pending = { kind: 'cancel', appointmentId: appt.id, start: appt.start, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null, when: { start: appt.start, timeZone: clinic.timezone, now: ctx.now() } };
       const target = confirmationTarget('cancel_confirmed');
       const textNote = target ? pack.confirmTextNote({ target }) : null;
-      return { ok: true, data: { say: textNote ? `Ask them to confirm, with a clear yes, that you should ${readback}, and say "${textNote}".` : `Ask them to confirm, with a clear yes, that you should ${readback}.`, spoken: pack.spoken.cancelReadback({ readback, textNote }) } };
+      return { ok: true, data: { say: dropped + (textNote ? `Ask them to confirm, with a clear yes, that you should ${readback}, and say "${textNote}".` : `Ask them to confirm, with a clear yes, that you should ${readback}.`), spoken: pack.spoken.cancelReadback({ readback, textNote }) } };
     }
 
     case 'commit_pending': {
@@ -1072,7 +1182,14 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       // "yes, but no text": a yes to the change, and no confirmation text
       const answer = state.answerToReadback();
       const noText = declinesText(answer);
-      if (!isClearYes(noText ? withoutTextRefusal(answer) : answer, clinic.languages)) return refuse('no_clear_yes', `Do not make the change yet. Ask again: ${pending.readback}?`);
+      if (!isClearYes(noText ? withoutTextRefusal(answer) : answer, clinic.languages)) {
+        // never a set phrase to repeat: a test call asked four times for "yes, move it" (2026-11-16). A plain yes,
+        // okay or sí is enough; a question is answered first
+        const ask = askYesAgain(lang, pending.readback);
+        return refuse('no_clear_yes', /[?¿]/.test(answer)
+          ? `Do not make the change yet. The caller asked something rather than answering: answer it in a few words, then ask once, in these words: "${ask}" Never ask them to say particular words; a plain yes is enough.`
+          : `Say, in these words: "${ask}" Do not make the change yet, and never ask the caller to say particular words: a plain yes, okay, sure or sí is enough.`);
+      }
       const patient = state.verifiedPatient!;
 
       if (pending.kind === 'cancel') {
@@ -1084,8 +1201,8 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         if (cancelled.status === 'cancelled') {
           await emit({ type: 'appointment.cancelled', key: pending.appointmentId, data: { appointmentId: pending.appointmentId, patientId: patient.id, by: 'assistant', callId: ctx.callId, reason: 'patient_asked' } });
         }
-        const smsSent = await confirmByText('cancel_confirmed', pending.start, pending.appointmentId, {}, noText);
-        return { ok: true, data: { cancelled: true, sms_sent: smsSent, spoken: pack.spoken.done({ kind: 'cancelled', textSent: smsSent, then: pack.spoken.anythingElse }) } };
+        const textTo = await confirmByText('cancel_confirmed', pending.start, pending.appointmentId, {}, noText);
+        return { ok: true, data: { cancelled: true, confirmation_text: textNote(textTo), spoken: pack.spoken.done({ kind: 'cancelled', textTo, then: pack.spoken.anythingElse }) } };
       }
 
       // booked on a number whose owner on file is not the name the caller gave: the team sees who booked it
@@ -1117,6 +1234,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         if (state.outcome === 'rescheduled' && state.memory.visit?.appointmentId === pending.replacesAppointmentId) state.memory.moved = { from: state.memory.visit.start, to: a.start };
         else if (state.outcome === 'rescheduled' && pending.replacesStart) state.memory.moved = { from: pending.replacesStart, to: a.start };
         state.memory.visit = { appointmentId: a.id, start: a.start, visitTypeId: a.visitTypeId, providerId: a.providerId };
+        state.memory.visitAtTurn = state.turns.length;
       }
       if (result.status === 'booked') {
         const a = result.appointment;
@@ -1126,9 +1244,9 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
           : { type: 'appointment.booked', key: a.id, data: facts });
       }
       // a move is confirmed as a move, a new booking as a booking
-      const smsSent = result.status === 'booked'
+      const textTo = result.status === 'booked'
         ? await confirmByText(state.outcome === 'rescheduled' ? 'change_confirmed' : 'booking_confirmed', result.appointment.start, result.appointment.id, { providerId: result.appointment.providerId, visitTypeId: result.appointment.visitTypeId }, noText, state.outcome === 'rescheduled' ? pending.replacesStart ?? null : null)
-        : false;
+        : null;
       // a clinic that sends reminders asks once, after a booking, whoever has not said yes yet
       const reminders = textingOf(clinic).reminders;
       const askReminder = result.status === 'booked' && reminders.enabled && reminders.askOnBooking && !patient.textsOk && !!patient.phone
@@ -1137,16 +1255,16 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         state.reminderOffer = { patientId: patient.id, offeredAtMs: state.lastMs(), askedAtMs: null };
         state.remindersAsked = true;
       }
-      state.done.push(`${pending.replacesAppointmentId ? 'moved: ' : 'booked '}${pending.readback}${smsSent ? ' (confirmation text sent)' : ''}`);
+      state.done.push(`${pending.replacesAppointmentId ? 'moved: ' : 'booked '}${pending.readback}${textTo ? ` (a confirmation text will go to ${textTo === 'calling' ? 'the number calling' : 'the number on file'})` : ''}`);
       return {
         ok: true,
         data: {
-          booked: true, when: pending.readback, sms_sent: smsSent,
-          done: `This visit is booked. Say so once${smsSent ? ', and that a confirmation text is on its way to the number on file (asked for one, say it has been sent)' : ''}; do not look for times again or check it, and never say it was not completed. If the caller says goodbye, call end_call.`,
+          booked: true, when: pending.readback, confirmation_text: textNote(textTo),
+          done: `This visit is booked. Say so once${textTo ? `, and that you'll text a confirmation to ${textTo === 'calling' ? 'the number they are calling from' : 'the number on file'}, in the future tense: nobody on the call can see a text arrive (asked about it, say where it goes and that you can't see when it arrives)` : ''}; do not look for times again or check it, and never say it was not completed. If the caller says goodbye, call end_call.`,
           ...(oldStillActive ? { old_appointment_still_active: true, say: 'The new time is booked, but the old appointment could not be cancelled; offer a callback to sort it out.' } : {}),
           ...(askReminder && !oldStillActive ? { say: `Say it is booked, then ask once: "${pack.reminderOffer}" and call set_reminder_consent with their answer.` } : {}),
           // the whole answer, in the backend's words: the model is not asked again unless something is left to explain
-          ...(result.status === 'booked' && !oldStillActive ? { spoken: pack.spoken.done({ kind: state.outcome === 'rescheduled' ? 'rescheduled' : 'booked', textSent: smsSent, then: askReminder ? pack.reminderOffer : pack.spoken.anythingElse }) } : {}),
+          ...(result.status === 'booked' && !oldStillActive ? { spoken: pack.spoken.done({ kind: state.outcome === 'rescheduled' ? 'rescheduled' : 'booked', textTo, then: askReminder ? pack.reminderOffer : pack.spoken.anythingElse }) } : {}),
         },
       };
     }
@@ -1228,9 +1346,13 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if ('refuse' in route) return refuse(route.refuse, TEXT_REFUSALS[route.refuse]);
       const kind = route.kind;
       if (kind !== picked && picked === 'answer') ref = null;
-      if (!texting.enabled) return refuse('texting_off', `The clinic does not text this. Say: "${pack.textRefused({ reason: 'off' })}" Then say it out loud, slowly, and offer to repeat it.`);
-      // the clinic texts, just not this: never "texting isn't set up"
-      if (!texting.kinds[kind]) return refuse('texting_off', 'The clinic does not send this one by text (it sends other things). Say in a few words that you can\'t text that one, then say it out loud, slowly, and offer to repeat it. Never say texting is not set up or not available on this line.');
+      // the clinic does not text this: said once, in one short line, with a message for the team offered; never the
+      // answer again, which the caller just heard (a test call, 2026-11-16, heard a vet's whole bio twice, word for word)
+      if (!texting.enabled || !texting.kinds[kind]) {
+        if (state.guardsSaid.has('texting_off')) return refuse('texting_off', 'You already said this can\'t be texted: do not say it again, and do not repeat the answer they heard. Answer what the caller says now; if they want it sent, take a message for the team with create_callback (what they want, and the best number).');
+        state.guardsSaid.add('texting_off');
+        return refuse('texting_off', `The clinic does not send this one by text. Say, in these words: "${cantTextLine(lang)}" Do not repeat the answer they already heard unless they ask for it again. On a yes, call create_callback with what they want sent and the best number. Never say texting is not set up or not available on this line.`);
+      }
       // the hospital's details go once a call (FRIDAY notes: text once, to a confirmed number)
       if (kind === 'emergency_hospital' && state.emergencyTextSent) return refuse(picked === 'emergency_hospital' ? 'already_sent' : 'emergency_in_progress', 'The hospital\'s details were already texted on this call. Say they are on their phone; do not send them again.');
       // only to the number they are calling from, or the one on their file: never another person's
@@ -1382,6 +1504,12 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
     return refuse('ask_if_new', `Before looking anything up, ask once, in these words: "${PACKS[lang].petNewQuestion({ pet: String(args.pet_name).trim() })}" If they say yes, add it with register_patient; if no, call verify_caller again with the same details.`);
   }
   const pet = String(args.pet_name);
+  // the number they call from has no pets and the last four digits were already asked for: a lookup of the pet on it can
+  // only miss, so no try is spent and only the four digits are asked again (a test call, 2026-11-16, spent a try on it,
+  // then asked whether the name or the number was wrong; it took three tries to find the pet)
+  if (state.lastFourAsked === 'no_profile' && state.numbersWithoutPets.has(phone.replace(/\D/g, '')) && !state.verifiedPatient) {
+    return refuse('last_four_needed', `Ask only for the four digits, in these words: "${lastFourOnly(lang, pet.trim())}" Then call verify_caller with phone_last4 (the four digits as they said them), pet_name ${pet.trim()} and phone null. If they give a whole number instead, call verify_caller with it as phone. Keep everything else they gave; do not ask for it again.`);
+  }
   // the pet already found: nothing to do. Another of the household's pets is checked like any
   const current = state.verifiedPatient;
   if (current && soundsLike(pet, current.firstName)) return { ok: true, data: { verified: true, pet_name: current.firstName } };
@@ -1475,6 +1603,7 @@ async function whichPet(phone: string, state: CallState, ctx: CallContext, backe
   const pets = known ?? await backend.patients.petsOnNumber(ctx.clinic.id, phone, ctx.callId);
   // an unknown number: a new owner and a new pet, the usual way
   if (!pets.names.length) {
+    state.numbersWithoutPets.add(phone.replace(/\D/g, ''));
     // the profile may be under another number: the second way, once, unless the caller said the pet is new (2026-11-15)
     if (!state.lastFourAsked && state.saidNew() !== 'new') {
       state.lastFourAsked = 'no_profile';

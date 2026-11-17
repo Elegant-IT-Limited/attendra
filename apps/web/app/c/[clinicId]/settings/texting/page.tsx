@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { type ClinicConfig, Texting, type TextKind } from '@attendra/core';
+import { type ClinicConfig, REMINDER_MIN_LEAD_MINUTES, spanWords, Texting, type TextKind } from '@attendra/core';
 import { useMutation } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { EmptyNote, Field, Item, Section } from '@/components/settings/section';
 import { SettingsHeader } from '@/components/settings/settings-nav';
 import { TextsEditor } from '@/components/settings/texts-editor';
-import { RecentTexts } from '@/components/texts/recent-texts';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/controls';
 import { Alert, Skeleton } from '@/components/ui/feedback';
@@ -76,6 +76,12 @@ export default function TextingSettings() {
   return (
     <>
       <SettingsHeader clinicId={clinicId} />
+      {/* the texts that went have their own page now, with search, filters and paging (texts polish TX3) */}
+      {can('patients:read') && (
+        <p className="mb-6 text-sm text-text-muted" data-testid="texts-page-link">
+          Every text your clinic sent, and where each one is, is on <Link href={`/c/${clinicId}/texts`} className="font-medium text-primary hover:underline">Texts</Link>, in the menu.
+        </p>
+      )}
       {!writable && <Alert className="mb-6">You can read these settings. A practice manager or owner can change them.</Alert>}
       <fieldset disabled={!writable || save.isPending} className="min-w-0 space-y-6 pb-24">
         <Section id="texting" title="Texting" description={'What the assistant may text a caller during a call, after they say yes. Texts go only to the number they are calling from, or the number on their file, and every text ends with "Reply STOP to opt out."'}>
@@ -119,14 +125,14 @@ export default function TextingSettings() {
           </Sortable>
         </Section>
 
-        <Section id="reminders" title="Reminders" description="A text before each visit, to owners who said yes: on a call, on their record, or in an import. They reply C to confirm, and the Schedule shows it.">
+        <Section id="reminders" title="Reminders" description="A text before each visit, booked on a call or at the desk, to owners who said yes: on a call, on their record, or in an import. They reply C to confirm, and the Schedule shows it. A visit that gets none says why in its panel.">
           <Switch id="reminders-on" label="Send appointment reminders" checked={r.enabled} onCheckedChange={(enabled) => rem({ enabled })} />
           {r.enabled && (
             <div className="grid gap-4 sm:grid-cols-3">
-              <Field label="Hours before the visit" htmlFor="reminder-hours" hint="Between 2 and 168. 24 is the day before.">
+              <Field label="Hours before the visit" htmlFor="reminder-hours" hint={`Between 2 and 168. 24 is the day before. A visit booked closer than this gets its reminder at once, if it is more than ${spanWords(REMINDER_MIN_LEAD_MINUTES * 60_000)} away.`}>
                 <Input id="reminder-hours" type="number" inputMode="numeric" min={2} max={168} value={r.hoursBefore} onChange={(e) => rem({ hoursBefore: Number(e.target.value) })} />
               </Field>
-              <Field label="Quiet hours" htmlFor="quiet-from" hint="No texts between these times, in your time zone. One that would fall in them goes out when they end." className="sm:col-span-2">
+              <Field label="Quiet hours" htmlFor="quiet-from" hint={`No texts between these times, in your time zone. One that would fall in them goes out when they end, if the visit is more than ${spanWords(REMINDER_MIN_LEAD_MINUTES * 60_000)} away then.`} className="sm:col-span-2">
                 <div className="flex items-center gap-2">
                   <Input id="quiet-from" aria-describedby="quiet-from-hint" type="time" className="w-32" value={r.quietFrom} onChange={(e) => rem({ quietFrom: e.target.value })} />
                   <span className="text-sm text-text-muted">to</span>
@@ -139,8 +145,6 @@ export default function TextingSettings() {
         </Section>
         <TextsEditor config={c} texting={draft} disabled={!writable} onChange={(wording) => set({ wording })} />
       </fieldset>
-      {/* read-only: the texts that went, for anyone who reads calls and records (text history, 2026-11-16) */}
-      {can('patients:read') && <RecentTexts clinicId={clinicId} timeZone={c.timezone} />}
 
       {writable && dirty && (
         <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur md:left-16 xl:left-60">

@@ -1,0 +1,33 @@
+id: vet-es-same-visit-move-that-one
+title: "In Spanish: a pet already has a chequeo general today and the owner asks for one this evening: asked \"¿cambiar esa cita o reservar otra?\" before any time, and moving it moves that visit (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, has-appointment-today, call-bugs, es]
+turns:
+  - caller: Hola, soy Linh Nguyen. Quiero un chequeo general para Biscuit hoy, después de las 4.
+    reply: "Biscuit ya tiene una cita: chequeo general, hoy a las 2:00 PM, con la Dra. Elena Ruiz. ¿Quiere cambiar esa cita o reservar otra además?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-28", part_of_day: any, from_time: "16:00", time_mode: after }
+  - caller: Cambiar esa, por favor.
+    reply: "Hoy después de las 4 tengo {offered.0}, o {offered.1}."
+    delegate:
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-28", part_of_day: any, from_time: "16:00", time_mode: after }
+  - caller: La primera.
+    reply: "Entonces, quiere {readback}. ¿Hago el cambio?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: "$put_forward" }
+  - caller: "Sí."
+    reply: "Listo, la cita queda cambiada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: rescheduled
+  verified: true
+  language: es
+  bookings_created: 1
+  sms_sent: 1
+  sms_templates: [change_confirmed]
+  visits_after:
+    - { on: "2026-09-28", at: "16:00", visit: vt_wellness }
+  returned: ["¿Quiere cambiar esa cita o reservar otra además?"]

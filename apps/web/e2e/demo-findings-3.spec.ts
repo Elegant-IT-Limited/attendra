@@ -60,7 +60,7 @@ test.describe.serial('demo findings 3, 2026-11-16', () => {
     const failed = { status: 'failed', failureReason: null, errorCode: '30006', at: new Date(Date.now() - 60_000).toISOString() };
     const problem = { textId: 'f3-text-1', taskId: mine.id, number: mine.number, type: 'callback', taskStatus: 'open', ...failed };
     // the worker's result, as the API would send it once the carrier refused the text
-    await page.route('**/api/v1/clinics/*/tasks/text-problems', (r) => r.fulfill({ json: { problems: [problem] } }));
+    await page.route('**/api/v1/clinics/*/tasks/text-problems', (r) => r.fulfill({ json: { total: 1, problems: [problem] } }));
     await page.route('**/api/v1/clinics/*/tasks/search', async (r) => {
       const res = await r.fetch();
       const body = await res.json() as { tasks: (Served & { textProblem?: unknown })[] };
@@ -68,17 +68,18 @@ test.describe.serial('demo findings 3, 2026-11-16', () => {
     });
     await page.goto(`/c/${C}`);
     // the notice, wherever the person is: it stays until read
-    const notice = page.getByRole('alertdialog').or(page.getByRole('dialog')).filter({ hasText: 'A text was not sent' });
+    // "1 text was not sent" (texts polish TX6)
+    const notice = page.getByRole('alertdialog').or(page.getByRole('dialog')).filter({ hasText: '1 text was not sent' });
     await expect(notice).toBeVisible();
     await expect(notice).toContainText(`R-${mine.number} · Callback: Text not sent: the carrier refused it (error 30006)`);
     await page.waitForTimeout(1500);
     await expect(notice).toBeVisible();
     await notice.getByRole('button', { name: /OK|Close|Got it/ }).first().click();
     await expect(notice).toBeHidden();
-    // Today: one item for it, with the same words
-    const item = page.getByText(`Text not sent · R-${mine.number} · Callback`, { exact: true });
+    // Today: one item for it, with the same words (texts not sent are one item since texts polish TX2)
+    const item = page.getByText('1 text not sent · Review', { exact: true });
     await expect(item).toBeVisible();
-    await expect(page.getByText('Text not sent: the carrier refused it (error 30006).', { exact: false }).first()).toBeVisible();
+    await expect(page.getByText(`R-${mine.number} · Callback: Text not sent: the carrier refused it (error 30006).`, { exact: false }).first()).toBeVisible();
     // said once in this browser: back on Today, no notice again
     await page.reload();
     await expect(item).toBeVisible();

@@ -1,0 +1,26 @@
+id: vet-blank-arguments-search
+title: "A move's slot search sent with empty strings for \"none\" (no vet's gender, no specialty, no time mode) and the time left to the call memory: it searches, never invalid_arguments (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, has-appointment, call-bugs]
+turns:
+  - caller: Hi, Linh Nguyen. Biscuit has a visit on Thursday at 9. Can you move it to Friday, after 3?
+    reply: "On Friday after 3 I have {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - list_appointments: {}
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, provider_gender: "", specialty: "", from_date: "2026-10-02", part_of_day: any, from_time: null, time_mode: "", propose_if_exact: null }
+  - caller: The first one.
+    reply: "So I'd {readback}. Shall I go ahead?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: "$appointments[0]" }
+  - caller: "Yes."
+    reply: "All set, it's moved."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: rescheduled
+  verified: true
+  bookings_created: 1
+  offered_from_time: "15:00"
+  sms_sent: 1

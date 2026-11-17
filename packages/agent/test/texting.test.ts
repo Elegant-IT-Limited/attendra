@@ -198,7 +198,7 @@ describe('texting during a call', () => {
     c.readBack('Cancel the appointment on Tuesday?');
     c.caller('Yes, cancel it.');
     const out = await c.delegate([{ tool: 'commit_pending', args: {} }]);
-    expect(out.results[0]!.data).toMatchObject({ cancelled: true, sms_sent: true });
+    expect(out.results[0]!.data).toMatchObject({ cancelled: true, confirmation_text: 'will go to the number calling' });
     expect(w.sms.map((s) => s.template)).toEqual(['booking_confirmed', 'cancel_confirmed']);
   });
 });

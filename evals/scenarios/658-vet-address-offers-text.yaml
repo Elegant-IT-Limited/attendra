@@ -1,0 +1,20 @@
+id: vet-address-offers-text
+title: "Asked where the clinic is, with the directions text on: the address is said, then a text of it offered once, and sent on the yes (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-bugs, texts]
+turns:
+  - caller: Hi, what's your address?
+    reply: "We're at 88 Riverbend Road in Denver. Would you like me to text that to the number you're calling from?"
+    delegate:
+      - get_clinic_info: { question: clinic address }
+  - assistant: "Would you like me to text that to the number you're calling from?"
+  - caller: Yes, please.
+    reply: "I'm texting it to you now."
+    delegate:
+      - send_text: { kind: directions, ref: null, to: null }
+expect:
+  outcome: info
+  sms_sent: 1
+  sms_templates: [directions]
+  returned: ["send_text with kind directions"]
