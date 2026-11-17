@@ -33,7 +33,17 @@ export function isClearYes(callerTextSinceReadback: string, languages: readonly 
 const DONE_CHECK = /¿?\s*\b(?:(?:so|and|then|entonces|asi que|y)\s+)?(?:(?:are|is|was) (?:you|we|it|that|this|he|she)|(?:you|we|it|that|this|he|she) (?:are|is|was)|you'?re|we'?re|it'?s|that'?s|he'?s|she'?s)(?: all)? (?:done|finished|set|sorted|booked|moved|confirmed|through)(?: (?:with|now|then))?(?: (?:it|that|this|everything|your work|the work|my (?:visit|appointment|booking)))?\b\s*[?.!]?|\bdid (?:it|that) go through\b\s*[?.!]?|¿?\s*\b(?:(?:entonces|asi que|y)\s+)?(?:ya )?(?:esta|quedo|queda) (?:hech[oa]|list[oa]|confirmad[oa]|reservad[oa]|cambiad[oa])\b\s*[?.!]?|¿\s*ya (?:esta|quedo)\s*\?/g;
 /** The caller's words (normalised) without a check that the change is done. */
 export function withoutDoneCheck(normalisedText: string): string {
-  return normalisedText.replace(DONE_CHECK, ' ').replace(/^[\s,.;:]+|[\s,;:]+$/g, '').replace(/\s+/g, ' ');
+  // one space between words first, so DONE_CHECK's `\s*` never meets a long run of spaces
+  return trimEdges(normalisedText.replace(/\s+/g, ' ').replace(DONE_CHECK, ' ').replace(/\s+/g, ' '), ' ,.;:', ' ,;:');
+}
+
+/** The text without these characters at its start and end: a loop, not a regex (`[…]+$` backtracks on long runs of spaces). */
+function trimEdges(text: string, start: string, end: string): string {
+  let a = 0;
+  let b = text.length;
+  while (a < b && start.includes(text[a]!)) a++;
+  while (b > a && end.includes(text[b - 1]!)) b--;
+  return text.slice(a, b);
 }
 
 /** Asking for the change to be made, as a question: "can you confirm it?", "could you just book it please?", "¿me lo puede confirmar?". */
