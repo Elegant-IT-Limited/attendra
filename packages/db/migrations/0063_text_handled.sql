@@ -6,8 +6,19 @@
 --
 -- sms_messages_search      the clinic's texts by kind, newest first, for the Texts page's filters and paging.
 --
+-- text_words_kept_since()  when this database started keeping the words of each text: when 0059 (text bodies) was
+--                          applied. A sent text from before then says "Words not kept (sent before 16 Nov)" (TX5).
+--                          The services' role may not read schema_migrations (0051), so it gets this one date only.
+--
 -- Additive: older code reads none of it.
 alter table sms_messages
   add column if not exists handled_at timestamptz,
   add column if not exists handled_by text;
 create index if not exists sms_messages_search on sms_messages (clinic_id, template, created_at desc);
+create or replace function text_words_kept_since()
+  returns timestamptz
+  language sql stable security definer set search_path = pg_catalog, public as $$
+  select applied_at from public.schema_migrations where id = '0059_text_bodies.sql'
+$$;
+revoke all on function text_words_kept_since() from public;
+grant execute on function text_words_kept_since() to attendra_service;

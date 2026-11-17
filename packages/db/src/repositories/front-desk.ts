@@ -1100,8 +1100,9 @@ export class FrontDeskRepository {
    */
   async wordsKeptSince(): Promise<Date | null> {
     if (this.keptSince !== undefined) return this.keptSince;
-    const res = await this.db.execute(sql`select applied_at from schema_migrations where id = '0059_text_bodies.sql'`).catch(() => null);
-    const at = (res?.rows[0] as { applied_at?: string | Date } | undefined)?.applied_at;
+    // through a function (migration 0063): the services' role may not read schema_migrations itself
+    const res = await this.db.execute(sql`select text_words_kept_since() as applied_at`).catch(() => null);
+    const at = (res?.rows[0] as { applied_at?: string | Date | null } | undefined)?.applied_at;
     this.keptSince = at ? new Date(at) : null;
     return this.keptSince;
   }
