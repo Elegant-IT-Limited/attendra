@@ -75,7 +75,8 @@ function TextRow({ clinicId, t, timeZone, wordsKeptSince, about, canHandle, prov
   const [open, setOpen] = useState(false);
   const who = about
     ? (t.patientFirstName ? `about ${t.patientFirstName}` : 'about the household')
-    : (t.patientName ? `${t.patientName}${t.ownerName ? ` (${t.ownerName})` : ''}` : 'Not on file');
+    // no record: the request it was about, else a number not on file
+    : (t.patientName ? `${t.patientName}${t.ownerName ? ` (${t.ownerName})` : ''}` : t.taskNumber !== null && t.taskNumber !== undefined ? `Request ${requestNumber(t.taskNumber)}` : 'A number not on file');
   const day = t.appointmentStartsAt ? localDateOf(new Date(t.appointmentStartsAt), timeZone) : null;
   const status = textStatusWords(t);
   const words = noWords(t, wordsKeptSince, timeZone);
