@@ -27,3 +27,5 @@ overrides:
   drizzle-orm: 0.45.4
   '@electric-sql/pglite': 0.5.10
   zod: 4.6.7
+  # security (Dependabot, 2026-11-17): better-auth's auto-installed next peer in apps/api had stayed on a vulnerable 16.3.x
+  'next@>=16.0.0 <16.4.5': 16.4.6
