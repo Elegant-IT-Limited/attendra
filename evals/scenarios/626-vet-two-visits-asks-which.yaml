@@ -1,0 +1,30 @@
+id: vet-two-visits-asks-which
+title: "A pet has two visits coming and the owner says \"cancel Biscuit's appointment\": the assistant names both and asks which, and cancels only the one picked (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, has-appointment, has-appointment-today, call-bugs]
+turns:
+  - caller: Hi, Linh Nguyen. I need to cancel Biscuit's appointment.
+    reply: "Biscuit has 2 visits coming up: today at 2:00 PM and Thursday, October 1, at 9:00 AM. Which one would you like to cancel?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - list_appointments: {}
+      # a guess: the caller has not said which
+      - propose_cancellation: { appointment_id: "$appointments[0]" }
+  - caller: The Thursday one.
+    reply: "So I'd {readback}. Is that right?"
+    delegate:
+      - propose_cancellation: { appointment_id: "$appointments[1]" }
+  - caller: "Yes."
+    reply: "Done, that appointment is cancelled."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: cancelled
+  verified: true
+  refusals: [which_visit]
+  sms_sent: 1
+  sms_templates: [cancel_confirmed]
+  visits_after:
+    - { on: "2026-09-28", at: "14:00", visit: vt_wellness }
+  returned: ["Which one would you like to cancel?"]

@@ -108,7 +108,7 @@ export const en: LanguagePack = {
     reminder: (v) => `${v.clinic}: ${hi(v, `a reminder of ${visitOf(v)} on ${v.when}.`)} Reply C to confirm, or call ${v.clinicPhone} to change it. Reply STOP to opt out.`,
   },
   textOffer: ({ target }) => (target === 'file' ? 'Would you like me to text that to the number on your file?' : "Would you like me to text that to the number you're calling from?"),
-  textSent: "Done, I've just sent it.",
+  textSent: "I'm texting it to you now.",
   noProviderForVisit: ({ visit, pets }) => `No ${pets ? 'vet' : 'doctor'} does ${visit}: callers can't book it`,
   textRefused: ({ reason }) => (reason === 'opted_out' ? "That number has asked not to get texts from us, so I'll read it out instead." : "I can't send texts, so I'll say it slowly."),
   reminderOffer: 'Would you like a reminder text the day before the visit? Message and data rates may apply, and you can reply STOP anytime.',
@@ -187,6 +187,7 @@ export const en: LanguagePack = {
     notAt: ({ time, day }) => `Not at ${clock12(time.hour, time.minute).hour}:${clock12(time.hour, time.minute).minutes}, but ${dayTimes(day)} on ${fullDay(day.date)}.`,
     nearest: ({ day }) => `The nearest ${day.times.length > 1 ? 'are' : 'is'} ${dayTimes(day)} on ${fullDay(day.date)}.`,
     askedNotFree: ({ time }) => `${timeWords(time)} isn't free.`,
+    moveOrAdd: 'Would you like to move that one, or book another as well?',
     alreadyBooked: ({ name, visit, when, provider, more }) => `${name} already has a visit booked: ${visit}, ${when}${provider ? `, with ${provider}` : ''}${more ? `, and ${more === 1 ? 'one more' : `${more} more`} after it` : ''}.`,
     vetHours: ({ provider, weekday, starts, ends }) => (starts
       ? `${provider} starts at ${hourWords(starts)} on ${WEEKDAYS[weekday]}s.`
@@ -214,13 +215,13 @@ export const en: LanguagePack = {
       ? `So I'd ${readback}. ${textNote ? `${sentence(textNote)}. ` : ''}Shall I go ahead?`
       : `I have ${readback}. ${textNote ? `${sentence(textNote)}. ` : ''}Shall I book it?`),
     cancelReadback: ({ readback, textNote }) => `So I'd ${readback}. ${textNote ? `${sentence(textNote)}. ` : ''}Is that right?`,
-    done: ({ kind, textSent, then }) => `${kind === 'booked' ? 'All set, that\'s booked.' : kind === 'rescheduled' ? 'All set, it\'s moved.' : 'Done, that appointment is cancelled.'}${textSent ? ' I\'ve sent you a confirmation text.' : ''} ${then}`,
+    done: ({ kind, textTo, then }) => `${kind === 'booked' ? 'All set, that\'s booked.' : kind === 'rescheduled' ? 'All set, it\'s moved.' : 'Done, that appointment is cancelled.'}${textTo ? ` I'll text a confirmation to ${textTo === 'calling' ? 'the number you\'re calling from' : 'the number on file'}.` : ''} ${then}`,
     anythingElse: 'Is there anything else I can help you with?',
     goodbye: 'Take care, goodbye!',
     callbackTaken: ({ sameNumber }) => `Okay, I've passed that on to the team, and someone will call you back at ${sameNumber ? 'this number' : 'the number you gave me'}. Is there anything else I can help you with?`,
     refillTaken: 'I\'ve sent the refill request to the team; they\'ll review it and get back to you. Is there anything else I can help you with?',
     urgentRequestTaken: 'I\'ve sent that to the team as urgent, and someone will call you back as soon as they can.',
-    textSent: 'Done, I\'ve just sent it. Is there anything else I can help you with?',
+    textSent: 'I\'m texting it to you now. Is there anything else I can help you with?',
     reminders: ({ agreed }) => `${agreed ? 'Great, you\'ll get a reminder text the day before the visit.' : 'No problem, no reminder texts.'} Is there anything else I can help you with?`,
     noVetForAnimal: ({ vet, animals, pet }) => `${vet && animals ? `${vet} sees ${animals} only` : 'None of our vets is listed for that kind of animal'}, so I can't book that here myself. Shall I take a request so the team can book ${pet}?`,
     visitNotOffered: ({ visits }) => `That isn't something we book here.${visits.length ? ` I can book ${orList(visits.map((v) => withArticle(v.toLowerCase())))}. Would you like one of those, or shall I take a request for the team?` : ' Shall I take a request for the team?'}`,

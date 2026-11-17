@@ -1,0 +1,30 @@
+id: vet-plain-yes-books
+title: "A read-back answered with a question, then with \"okay, so we're all set\": asked again plainly (no set words to repeat), and the plain answer books it (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-bugs, clear-yes]
+turns:
+  - caller: Hi, Linh Nguyen. Can Biscuit come in tomorrow morning for a sick visit?
+    reply: "Tomorrow morning I have {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: "2026-09-29", part_of_day: morning }
+  - caller: The first one.
+    reply: "I have {readback}. Shall I book it?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Hmm?"
+    reply: "Just to confirm: shall I book {readback}? A simple yes is fine."
+    delegate:
+      - commit_pending: {}
+  - caller: "Okay, so we're all set."
+    reply: "All set, that's booked."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [no_clear_yes]
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["A simple yes is fine", "never ask them to say particular words"]

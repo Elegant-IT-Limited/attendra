@@ -121,6 +121,9 @@ export const appointments = pgTable('appointments', {
   /** The reminder text, once claimed and sent. */
   reminderSentAt: timestamp('reminder_sent_at', { withTimezone: true }),
   reminderSmsId: uuid('reminder_sms_id'),
+  /** Why no reminder went (core REMINDER_SKIPS: no consent, no number, quiet hours, booked under an hour before), and when it was found (migration 0061). */
+  reminderSkip: text('reminder_skip', { enum: ['no_consent', 'no_number', 'quiet_hours', 'booked_late', 'too_late'] }),
+  reminderSkipAt: timestamp('reminder_skip_at', { withTimezone: true }),
   /** The owner confirmed the visit (replied C to the reminder), or staff marked it. */
   confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
   confirmedVia: text('confirmed_via', { enum: ['text', 'staff'] }),
@@ -356,6 +359,9 @@ export const smsMessages = pgTable('sms_messages', {
   deliveredAt: timestamp('delivered_at', { withTimezone: true }),
   // the words that went out, encrypted; null once the clinic's retention is over (migration 0059)
   bodyEnc: text('body_enc'),
+  /** A text not sent that a person marked handled (they called instead), and who: it leaves Today (migration 0063). */
+  handledAt: timestamp('handled_at', { withTimezone: true }),
+  handledBy: text('handled_by'),
 });
 
 /** A number's standing with a clinic: the latest STOP or START wins. Only the number's hash. */

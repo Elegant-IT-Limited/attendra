@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { API_SCOPES, bareName, CALL_OUTCOMES, CustomField, DESK_STATUSES, EMERGENCY_RESULTS, Gender, HAS_NAME, PHONE_NUMBERS_ONLY, PHONE_TYPED, Provider, RequestTopic, SEARCH_MAX, VISIT_STATUSES, VisitType } from '@attendra/core';
+import { API_SCOPES, bareName, CALL_OUTCOMES, CustomField, DESK_STATUSES, EMERGENCY_RESULTS, Gender, HAS_NAME, PHONE_NUMBERS_ONLY, PHONE_TYPED, Provider, REMINDER_SKIPS, RequestTopic, SEARCH_MAX, VISIT_STATUSES, VisitType } from '@attendra/core';
 import { z } from 'zod';
 
 // The dashboard's HTTP contract. Request schemas are enforced by the API; response
@@ -437,8 +437,45 @@ export const TextItem = z.object({
   patientId: z.string().nullable().optional(),
   /** The pet's or patient's name, in the clinic's list of recent texts. */
   patientName: z.string().nullable().optional(),
+  /** The pet's or patient's first name: "about Bella" in a household's list (texts polish TX4); null: about the household. */
+  patientFirstName: z.string().nullable().optional(),
+  /** The owner's name, on the Texts page. */
+  ownerName: z.string().nullable().optional(),
+  /** A text not sent that someone marked handled: when, and their name (texts polish TX2). */
+  handledAt: z.iso.datetime().nullable().optional(),
+  handledBy: z.string().nullable().optional(),
 });
-export const TextList = z.object({ texts: z.array(TextItem) });
+/**
+ * `wordsKeptSince`: when this server started keeping the words of each text (migration 0059); a sent text from before
+ * has none, and says "Words not kept (sent before 16 Nov)" (texts polish TX5). Null if unknown.
+ */
+export const TextList = z.object({ texts: z.array(TextItem), wordsKeptSince: z.iso.datetime().nullable().optional() });
+/** Which texts the Texts page lists. */
+export const TEXT_STATUS_FILTERS = ['all', 'sent', 'not_sent', 'needs_handling'] as const;
+/**
+ * The Texts page's search (texts polish TX3), in a POST body: what is typed can be a name or a phone number, and URLs
+ * end up in logs. `kind` is a group (visits, refills, during_call) or one kind; `from`/`to` clinic-local days, both
+ * included; `cursor` the `next` of the page before.
+ */
+export const TextSearch = z.object({
+  q: z.string().trim().max(SEARCH_MAX).default(''),
+  status: z.enum(TEXT_STATUS_FILTERS).default('all'),
+  kind: z.string().trim().max(40).regex(/^[a-z_]*$/).default(''),
+  from: day().optional(),
+  to: day().optional(),
+  cursor: z.string().max(100).regex(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z\|[0-9a-f-]{36}$/).optional(),
+  limit: z.number().int().min(1).max(50).default(10),
+});
+export const TextPage = TextList.extend({ next: z.string().nullable() });
+/** The Texts page's strip: today's and the last 7 days' texts, sent and not sent, and how many not sent nobody has handled. */
+export const TextSummary = z.object({
+  today: z.object({ sent: z.number().int(), notSent: z.number().int() }),
+  week: z.object({ sent: z.number().int(), notSent: z.number().int() }),
+  needsHandling: z.number().int(),
+  /** The clinic-local days the strip's filters use. */
+  todayDate: z.string(), weekFrom: z.string(),
+});
+export const TextHandled = z.object({ handled: z.boolean() });
 
 export const TaskOutcome = z.enum(['called_back', 'left_message', 'refill_sent', 'refill_ready', 'refill_declined', 'not_needed', 'details_confirmed']);
 export const TaskDone = z.object({ outcome: TaskOutcome.optional() }).default({});
@@ -529,6 +566,8 @@ export const TaskHistory = z.object({
 export const TaskCount = z.object({ open: z.number() });
 /** Texts about requests that were not sent, lately: request number and type, the text's state and why. No patient data. */
 export const TextProblems = z.object({
+  /** Every such text, though `problems` lists the newest 20 (Today groups them into one item, texts polish TX2). */
+  total: z.number().int(),
   problems: z.array(z.object({ textId: z.string(), taskId: z.string(), number: z.number().int(), type: z.string(), taskStatus: z.enum(['open', 'done']), status: z.string(), failureReason: z.string().nullable(), errorCode: z.string().nullable(), at: z.iso.datetime() })),
 });
 export type TextProblems = z.infer<typeof TextProblems>;
@@ -590,9 +629,21 @@ export const CancelledList = z.object({
   /** More matched than the 200 shown. */
   truncated: z.boolean(),
 });
+/**
+ * Where the visit's reminder text is (core reminderState): going out (when), held or not sent and why, reminders off,
+ * or the text refused. Null when the reminder went (reminderSentAt says when) or there is nothing to say.
+ */
+export const ReminderInfo = z.object({
+  state: z.enum(['due', 'skipped', 'off', 'not_sent']),
+  dueAt: z.iso.datetime().nullable(),
+  reason: z.enum(REMINDER_SKIPS).nullable(),
+  /** The reason is final (too close to the visit for one to go); false: it holds the reminder for now. */
+  final: z.boolean(),
+});
 export const AppointmentDetail = Appointment.extend({
   note: z.string().nullable(),
   updatedAt: z.iso.datetime(),
+  reminder: ReminderInfo.nullable(),
   patient: z.object({ id: z.string(), name: z.string(), dob: z.string(), phone: z.string().nullable() }),
 });
 
@@ -1062,6 +1113,8 @@ export type TaskList = z.infer<typeof TaskList>;
 export type TaskHistory = z.infer<typeof TaskHistory>;
 export type TextItem = z.infer<typeof TextItem>;
 export type TextList = z.infer<typeof TextList>;
+export type TextPage = z.infer<typeof TextPage>;
+export type TextSummary = z.infer<typeof TextSummary>;
 export type TestCall = z.infer<typeof TestCall>;
 export type EmergencyReview = z.infer<typeof EmergencyReview>;
 export type TestCallAllowance = z.infer<typeof TestCallAllowance>;
@@ -1072,6 +1125,7 @@ export type AuditList = z.infer<typeof AuditList>;
 export type ApiError = z.infer<typeof ApiError>;
 export type Appointment = z.infer<typeof Appointment>;
 export type AppointmentDetail = z.infer<typeof AppointmentDetail>;
+export type ReminderInfo = z.infer<typeof ReminderInfo>;
 export type Schedule = z.infer<typeof Schedule>;
 export type SlotList = z.infer<typeof SlotList>;
 export type BookAppointment = z.infer<typeof BookAppointment>;

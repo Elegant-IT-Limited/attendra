@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { CALL_EVENTS_RETENTION_DAYS, callUsNumber, ClinicConfig, dailyDigest, demoResetDue, isRefillDecision, localName, localParts, refillText, speakSlot, textingOf, toMinutes } from '@attendra/core';
+import { CALL_EVENTS_RETENTION_DAYS, inQuietHours, reminderDecision, type ReminderSkip, callUsNumber, ClinicConfig, dailyDigest, demoResetDue, isRefillDecision, localName, localParts, refillText, speakSlot, textingOf } from '@attendra/core';
 import type { EventSink } from '@attendra/core';
 import { activeNumbers, allClinics, CallSummaryRepository, callFacts, callsForDigest, configName, DEMO_NIGHTLY_ACTOR, demoClinics, type Database, ensureWorkerJobsView, KnowledgeRepository, lapseInvitations, type PhiCipher, phiContext, PostgresTaskQueue, purgeCallEvents, purgeCallRecords, purgeTextBodies, purgeWebhookRecords, demoResetLine, resetDemoClinic, schema, WebhookRepository, withClinic } from '@attendra/db';
 import { type Embedder, indexDocument, LocalEmbedder, OpenAIEmbedder } from '@attendra/knowledge';
 import type { Alerter, Logger } from '@attendra/observability';
 import { deliver, type GuardOptions, payloadOf, type Resolver } from '@attendra/webhooks';
-import { and, eq, gt, isNotNull, isNull, lte } from 'drizzle-orm';
+import { and, eq, gt, isNull, lte } from 'drizzle-orm';
 import OpenAI from 'openai';
 import type { Job, PgBoss } from 'pg-boss';
 import { type FallbackEntry, fallbackEntry, formatBalance, type SmsSender, smsStatusUrl, type SpendTrigger, type TwilioBalance, type TwilioBalanceReading, type TwilioFallback, TwilioMessenger, type TwilioSpendAlerts } from '@attendra/telephony';
-import { CallJob, DeliveryJob, DocumentJob, ensureQueues, HandoverJob, jobId, QUEUES, RequestJob, SmsStatusJob, WEBHOOK_RETRY, WebhookEventJob } from './queue';
+import { CallJob, DeliveryJob, DocumentJob, ensureQueues, HandoverJob, jobId, QUEUES, type RemindersJob, RequestJob, SmsStatusJob, WEBHOOK_RETRY, WebhookEventJob } from './queue';
 import { JobError, LocalSummariser, ModelSummariser, SummaryCutOff, type Summariser } from './summarise';
 
 export interface WorkerDeps {
@@ -68,12 +68,7 @@ const SMS_STATUS_MAP: Partial<Record<SmsStatusJob['status'], 'sent' | 'delivered
 const STATUS_RANK: Record<string, number> = { queued: 0, sent: 1, undelivered: 2, failed: 2, delivered: 3 };
 
 /** Whether a clinic-local minute of the day falls in quiet hours, which may run past midnight (20:00 to 08:00). */
-export function quiet(minute: number, from: string, to: string): boolean {
-  const f = toMinutes(from);
-  const t = toMinutes(to);
-  if (f === t) return false;
-  return f < t ? minute >= f && minute < t : minute >= f || minute < t;
-}
+export const quiet = inQuietHours;
 
 /** The job handlers, apart from pg-boss, so tests can run them one at a time. */
 export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'send'> }) {
@@ -92,6 +87,8 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
     async callCompleted(job: CallJob) {
       const data = CallJob.parse(job);
       await d.boss.send(QUEUES.summariseCall, data, { id: jobId(QUEUES.summariseCall, data.callId) });
+      // a visit booked or moved on the call gets its reminder now if it is inside the clinic's hours before it
+      await d.boss.send(QUEUES.appointmentReminders, { clinicId: data.clinicId, key: `call|${data.callId}` }, { id: jobId(QUEUES.appointmentReminders, `${data.clinicId}|call|${data.callId}`) });
       const facts = await callFacts(d.db, data.clinicId, data.callId);
       if (facts?.endedAt) await emit(data.clinicId, { type: 'call.completed', key: data.callId, occurredAt: new Date(facts.endedAt), data: facts });
     },
@@ -266,27 +263,37 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
       return lapsed;
     },
 
-    async appointmentReminders() {
+    /**
+     * Reminder texts (core reminderDecision): every 10 minutes, and at once after a desk booking or a call. A visit gets
+     * its reminder as soon as it is inside the clinic's "hours before the visit", for any booking whose owner said yes
+     * to texts, while it is still more than an hour away; when one cannot go (no consent, no number, quiet hours,
+     * booked under an hour before), the reason is kept on the visit (appointments.reminder_skip) for the visit panel.
+     * Before 2026-11-17 it sent only for visits 2 to 3 hours away at a setting of 2, so a visit booked, or reminders
+     * turned on, after that window opened was never texted, and nothing said why (texts polish TX0).
+     */
+    async appointmentReminders(job?: { clinicId?: string } | null) {
       const at = now();
       let sent = 0;
+      let skipped = 0;
       for (const row of await allClinics(d.db)) {
+        if (job?.clinicId && row.id !== job.clinicId) continue;
         // a closed clinic (a location removed) texts nobody
         if (row.closedAt) continue;
         const parsed = ClinicConfig.safeParse(row.config);
         if (!parsed.success) continue;
         const config = parsed.data;
-        // no reminder goes out under 2 hours before a visit; a setting of 2 hours means 3, so it can send at all
         const r = textingOf(config).reminders;
-        if (!r.enabled || quiet(localParts(at, config.timezone).minutes, r.quietFrom, r.quietTo)) continue;
+        if (!r.enabled) continue;
+        const quietNow = quiet(localParts(at, config.timezone).minutes, r.quietFrom, r.quietTo);
         const clinicId = config.id;
+        // every booked visit still to come, inside the clinic's hours before it, with no reminder yet
         const due = await withClinic(d.db, clinicId, (tx) => tx.select({ a: schema.appointments, p: schema.patients, language: schema.calls.language })
           .from(schema.appointments)
           .innerJoin(schema.patients, eq(schema.patients.id, schema.appointments.patientId))
           .leftJoin(schema.calls, eq(schema.calls.id, schema.appointments.createdByCallId))
           .where(and(
             eq(schema.appointments.clinicId, clinicId), eq(schema.appointments.status, 'booked'), isNull(schema.appointments.reminderSentAt),
-            gt(schema.appointments.startsAt, new Date(at.getTime() + 2 * 3_600_000)), lte(schema.appointments.startsAt, new Date(at.getTime() + Math.max(r.hoursBefore, 3) * 3_600_000)),
-            isNotNull(schema.patients.smsConsentAt), isNotNull(schema.patients.phoneEnc),
+            gt(schema.appointments.startsAt, at), lte(schema.appointments.startsAt, new Date(at.getTime() + r.hoursBefore * 3_600_000)),
           )));
         if (!due.length) continue;
         const messenger = new TwilioMessenger(d.db, d.cipher, d.texts ?? null, () => config.phoneNumbers[0]!, {
@@ -294,7 +301,25 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
           statusCallback: d.sms?.publicUrl ? (id) => smsStatusUrl(d.sms!.publicUrl!, id) : undefined,
         });
         for (const { a, p, language } of due) {
-          const claimed = await withClinic(d.db, clinicId, (tx) => tx.update(schema.appointments).set({ reminderSentAt: now() })
+          const decision = reminderDecision({
+            now: at, startsAt: a.startsAt, bookedAt: a.createdAt, hoursBefore: r.hoursBefore, quietNow,
+            consent: !!p.smsConsentAt && !p.deletedAt, phone: !!p.phoneEnc, kept: (a.reminderSkip as ReminderSkip | null) ?? null,
+          });
+          if (decision.action === 'later') continue;
+          if (decision.action === 'skip') {
+            // the reason kept on the visit (and audited) when it changes; reminder_sent_at stays empty, so a reply of C
+            // never confirms a visit that had no reminder
+            if (a.reminderSkip !== decision.reason) {
+              await withClinic(d.db, clinicId, async (tx) => {
+                const changed = await tx.update(schema.appointments).set({ reminderSkip: decision.reason, reminderSkipAt: at })
+                  .where(and(eq(schema.appointments.id, a.id), isNull(schema.appointments.reminderSentAt))).returning({ id: schema.appointments.id });
+                if (changed.length) await tx.insert(schema.auditLogs).values({ clinicId, actor: 'worker', action: `appointment.reminder.skipped.${decision.reason}`, entity: 'appointment', entityId: a.id });
+              });
+              skipped++;
+            }
+            continue;
+          }
+          const claimed = await withClinic(d.db, clinicId, (tx) => tx.update(schema.appointments).set({ reminderSentAt: now(), reminderSkip: null, reminderSkipAt: null })
             .where(and(eq(schema.appointments.id, a.id), isNull(schema.appointments.reminderSentAt))).returning({ id: schema.appointments.id }));
           if (!claimed.length) continue;
           const lang = config.languages.includes(language as never) ? (language as typeof config.primaryLanguage) : config.primaryLanguage;
@@ -327,6 +352,7 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
         }
       }
       if (sent) d.log.info({ sent }, 'reminder texts sent');
+      if (skipped) d.log.info({ skipped }, 'reminders not sent: the reason is kept on each visit');
       return { sent };
     },
 
@@ -519,7 +545,7 @@ export async function startWorker(d: WorkerDeps) {
   await d.boss.work<SmsStatusJob>(QUEUES.smsStatus, poll, each((data) => h.smsStatus(data)));
   await d.boss.work<RequestJob>(QUEUES.requestReady, poll, each((data) => h.requestReady(data)));
   await d.boss.work<HandoverJob>(QUEUES.visitHandedOver, poll, each((data) => h.visitHandedOver(data)));
-  await d.boss.work(QUEUES.appointmentReminders, each(() => h.appointmentReminders()));
+  await d.boss.work<Partial<RemindersJob> | null>(QUEUES.appointmentReminders, each((data) => h.appointmentReminders(data)));
   await d.boss.work(QUEUES.lapseInvitations, each(async () => { await h.lapseInvitations(); }));
   await d.boss.work(QUEUES.dailyDigest, each(async () => { await h.dailyDigest(); }));
   await d.boss.work(QUEUES.moneyCheck, each(async () => { await h.moneyCheck(); }));

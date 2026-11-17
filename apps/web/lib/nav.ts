@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { Terms } from '@attendra/core';
-import { CalendarDays, Gauge, House, ListChecks, type LucideIcon, Mic, Phone, Settings, ShieldCheck, Stethoscope, UserCog, Users } from 'lucide-react';
+import { CalendarDays, Gauge, House, ListChecks, type LucideIcon, MessageSquare, Mic, Phone, Settings, ShieldCheck, Stethoscope, UserCog, Users } from 'lucide-react';
 
 export interface NavItem { href: string; label: string; icon: LucideIcon; permission: string; shortcut?: string; /** The label comes from the account's industry pack. */ term?: keyof Terms }
 
@@ -15,6 +15,8 @@ export const NAV: { group: string | null; items: NavItem[] }[] = [
       { href: 'doctors', label: 'Doctors', icon: Stethoscope, permission: 'settings:read', shortcut: 'd', term: 'providers' },
       { href: 'requests', label: 'Requests', icon: ListChecks, permission: 'tasks:list', shortcut: 'r' },
       { href: 'calls', label: 'Calls', icon: Phone, permission: 'calls:list', shortcut: 'c' },
+      // every text the clinic sent, with search, filters and paging (texts polish TX3); the words are caller data
+      { href: 'texts', label: 'Texts', icon: MessageSquare, permission: 'patients:read' },
     ],
   },
   {
