@@ -3,12 +3,12 @@
 import { type ClinicConfig, Texting, type TextKind } from '@attendra/core';
 import { useMutation } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { EmptyNote, Field, Item, Section } from '@/components/settings/section';
 import { SettingsHeader } from '@/components/settings/settings-nav';
 import { TextsEditor } from '@/components/settings/texts-editor';
-import { RecentTexts } from '@/components/texts/recent-texts';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/controls';
 import { Alert, Skeleton } from '@/components/ui/feedback';
@@ -76,6 +76,12 @@ export default function TextingSettings() {
   return (
     <>
       <SettingsHeader clinicId={clinicId} />
+      {/* the texts that went have their own page now, with search, filters and paging (texts polish TX3) */}
+      {can('patients:read') && (
+        <p className="mb-6 text-sm text-text-muted" data-testid="texts-page-link">
+          Every text your clinic sent, and where each one is, is on <Link href={`/c/${clinicId}/texts`} className="font-medium text-primary hover:underline">Texts</Link>, in the menu.
+        </p>
+      )}
       {!writable && <Alert className="mb-6">You can read these settings. A practice manager or owner can change them.</Alert>}
       <fieldset disabled={!writable || save.isPending} className="min-w-0 space-y-6 pb-24">
         <Section id="texting" title="Texting" description={'What the assistant may text a caller during a call, after they say yes. Texts go only to the number they are calling from, or the number on their file, and every text ends with "Reply STOP to opt out."'}>
@@ -139,8 +145,6 @@ export default function TextingSettings() {
         </Section>
         <TextsEditor config={c} texting={draft} disabled={!writable} onChange={(wording) => set({ wording })} />
       </fieldset>
-      {/* read-only: the texts that went, for anyone who reads calls and records (text history, 2026-11-16) */}
-      {can('patients:read') && <RecentTexts clinicId={clinicId} timeZone={c.timezone} />}
 
       {writable && dirty && (
         <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur md:left-16 xl:left-60">

@@ -45,6 +45,7 @@ export * from './greeting-names';
 export * from './uploads';
 export * from './security';
 export * from './texts';
+export * from './text-preview';
 export * from './visit-coverage';
 export * from './visit-status';
 export * from './call-markers';

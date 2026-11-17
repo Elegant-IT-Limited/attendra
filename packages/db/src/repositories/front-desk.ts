@@ -4,7 +4,7 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL, sql }
 import { clinicAccess, clinicMemberships, memberships } from '../auth-schema';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext, smsNumberHash } from '../crypto';
-import { patientSetKey, recordView } from './audit';
+import { patientSetKey, recordView, staffNames } from './audit';
 import { callerKey, callerPartKey } from './calls';
 import { nameWordKeys, patientsWithKey, PHONE_PART_DIGITS, searchHash, phoneKey, phoneMatch, phonePartKey } from './patients';
 import { appointments, auditLogs, callActions, calls, callSearchKeys, callSegments, callSummaries, clinics, organizations, patients, smsMessages, taskNotes, tasks } from '../schema';
@@ -99,6 +99,23 @@ const fold = (s: string) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').
  */
 /** A text's states that mean it did not reach the caller. */
 export const TEXT_FAILED = new Set(['not_sent', 'failed', 'undelivered']);
+/** Which texts a list shows: all, sent (on its way or delivered), not sent, or not sent and nobody has handled it. */
+export type TextStatusFilter = 'all' | 'sent' | 'not_sent' | 'needs_handling';
+/**
+ * A list's texts by status. "Needs handling" (texts polish TX2): not sent, nobody marked it handled, and no later text
+ * of the same kind went about the same thing (the request, the visit, or else the same number): the latest try is
+ * the one that counts, as the request history says.
+ */
+export function textStatusWhere(status: TextStatusFilter | undefined): SQL | undefined {
+  const failed = inArray(smsMessages.status, [...TEXT_FAILED]);
+  if (status === 'sent') return sql`not (${failed})`;
+  if (status === 'not_sent') return failed;
+  if (status !== 'needs_handling') return undefined;
+  return and(failed, isNull(smsMessages.handledAt), sql`not exists (select 1 from sms_messages later where later.clinic_id = ${smsMessages.clinicId}
+    and later.template = ${smsMessages.template} and later.id <> ${smsMessages.id}
+    and (later.created_at, later.id) > (${smsMessages.createdAt}, ${smsMessages.id})
+    and coalesce(later.task_id::text, later.appointment_id::text, later.to_hash) = coalesce(${smsMessages.taskId}::text, ${smsMessages.appointmentId}::text, ${smsMessages.toHash}))`);
+}
 export type TextFailure = { status: string; failureReason: string | null; errorCode: string | null; at: Date };
 /** Each request's latest text, when it is one that was not sent: { request id: why }. */
 async function lastTextFailures(tx: Tx, clinicId: string, taskIds: string[]): Promise<Map<string, TextFailure>> {
@@ -532,21 +549,16 @@ export class FrontDeskRepository {
    * later text of that kind that went clears it): the request's number and type, the text's state and why. No patient
    * data and nothing decrypted, so not audited. For the notice and Today's list that a failed text is never missed.
    */
-  async textProblems(clinicId: string, since: Date): Promise<{ textId: string; taskId: string; number: number; type: string; taskStatus: 'open' | 'done'; status: string; failureReason: string | null; errorCode: string | null; at: Date }[]> {
+  async textProblems(clinicId: string, since: Date): Promise<{ total: number; problems: { textId: string; taskId: string; number: number; type: string; taskStatus: 'open' | 'done'; status: string; failureReason: string | null; errorCode: string | null; at: Date }[] }> {
     return withClinic(this.db, clinicId, async (tx) => {
-      const rows = await tx.select({ id: smsMessages.id, taskId: smsMessages.taskId, template: smsMessages.template, status: smsMessages.status, failureReason: smsMessages.failureReason, errorCode: smsMessages.errorCode, at: smsMessages.createdAt, number: tasks.number, type: tasks.type, taskStatus: tasks.status })
+      // the latest text of its kind on its request, not sent, and nobody marked it handled (texts polish TX2): the
+      // Texts page's "Needs handling" for refills, the same rule
+      const where = and(eq(smsMessages.clinicId, clinicId), isNotNull(smsMessages.taskId), sql`${smsMessages.createdAt} >= ${since}`, textStatusWhere('needs_handling'));
+      const [count] = await tx.select({ n: sql<number>`count(*)::int` }).from(smsMessages).where(where);
+      const rows = await tx.select({ id: smsMessages.id, taskId: smsMessages.taskId, status: smsMessages.status, failureReason: smsMessages.failureReason, errorCode: smsMessages.errorCode, at: smsMessages.createdAt, number: tasks.number, type: tasks.type, taskStatus: tasks.status })
         .from(smsMessages).innerJoin(tasks, and(eq(tasks.clinicId, smsMessages.clinicId), eq(tasks.id, smsMessages.taskId)))
-        .where(and(eq(smsMessages.clinicId, clinicId), isNotNull(smsMessages.taskId), sql`${smsMessages.createdAt} >= ${since}`))
-        .orderBy(desc(smsMessages.createdAt), desc(smsMessages.id));
-      const seen = new Set<string>();
-      const out: Awaited<ReturnType<FrontDeskRepository['textProblems']>> = [];
-      for (const r of rows) {
-        const key = `${r.taskId}|${r.template}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        if (TEXT_FAILED.has(r.status)) out.push({ textId: r.id, taskId: r.taskId!, number: r.number, type: r.type, taskStatus: r.taskStatus, status: r.status, failureReason: r.failureReason, errorCode: r.errorCode, at: r.at });
-      }
-      return out.slice(0, 20);
+        .where(where).orderBy(desc(smsMessages.createdAt), desc(smsMessages.id)).limit(20);
+      return { total: count!.n, problems: rows.map((r) => ({ textId: r.id, taskId: r.taskId!, number: r.number, type: r.type, taskStatus: r.taskStatus, status: r.status, failureReason: r.failureReason, errorCode: r.errorCode, at: r.at })) };
     });
   }
 
@@ -961,26 +973,139 @@ export class FrontDeskRepository {
       else if (filter.appointmentId) where = eq(smsMessages.appointmentId, filter.appointmentId);
       else if (filter.recent) where = filter.status === 'not_sent' ? inArray(smsMessages.status, [...TEXT_FAILED]) : undefined;
       else where = sql`false`;
-      const rows = await tx.select({ m: smsMessages, taskNumber: tasks.number, taskStatus: tasks.status, appointmentStartsAt: appointments.startsAt, firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc })
-        .from(smsMessages)
-        .leftJoin(tasks, and(eq(tasks.clinicId, smsMessages.clinicId), eq(tasks.id, smsMessages.taskId)))
-        .leftJoin(appointments, and(eq(appointments.clinicId, smsMessages.clinicId), eq(appointments.id, smsMessages.appointmentId)))
-        .leftJoin(patients, and(eq(patients.clinicId, smsMessages.clinicId), eq(patients.id, smsMessages.patientId)))
-        .where(and(eq(smsMessages.clinicId, clinicId), where)).orderBy(desc(smsMessages.createdAt), desc(smsMessages.id)).limit(filter.recent ? 50 : 20);
+      const rows = await this.textRows(tx, clinicId, where, filter.recent ? 50 : 20);
       if (userId) {
         const [entity, entityId] = filter.patientId ? ['patient', filter.patientId] : filter.callId ? ['call', filter.callId] : filter.taskId ? ['task', filter.taskId] : filter.appointmentId ? ['appointment', filter.appointmentId] : ['clinic', clinicId];
         await recordView(tx, { clinicId, actor: actorOf(userId), action: filter.patientId ? 'patient.texts.viewed' : 'texts.viewed', entity, entityId: entityId!, ...(filter.callId ? { callId: filter.callId } : {}) }, 5);
       }
-      const ctx = (col: string) => phiContext(clinicId, col);
-      return rows.map(({ m: r, taskNumber, taskStatus, appointmentStartsAt, firstNameEnc, lastNameEnc }) => ({
+      return { rows, last4 };
+    }).then(({ rows, last4 }) => this.textViews(clinicId, rows, { last4, fullName: !!filter.recent }));
+  }
+
+  /** Texts with what they belong to (the request's number, the visit's start, the pet), newest first. */
+  private textRows(tx: Tx, clinicId: string, where: SQL | undefined, limit: number) {
+    return tx.select({ m: smsMessages, taskNumber: tasks.number, taskStatus: tasks.status, appointmentStartsAt: appointments.startsAt, firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc, guardianNameEnc: patients.guardianNameEnc, phoneEnc: patients.phoneEnc })
+      .from(smsMessages)
+      .leftJoin(tasks, and(eq(tasks.clinicId, smsMessages.clinicId), eq(tasks.id, smsMessages.taskId)))
+      .leftJoin(appointments, and(eq(appointments.clinicId, smsMessages.clinicId), eq(appointments.id, smsMessages.appointmentId)))
+      .leftJoin(patients, and(eq(patients.clinicId, smsMessages.clinicId), eq(patients.id, smsMessages.patientId)))
+      .where(and(eq(smsMessages.clinicId, clinicId), where)).orderBy(desc(smsMessages.createdAt), desc(smsMessages.id)).limit(limit);
+  }
+
+  /**
+   * Texts as staff see them: the words decrypted, the pet each is about by its first name ("about Bella", texts polish
+   * TX4) and, in the clinic's lists, its full name and owner; who marked one not sent as handled.
+   */
+  private async textViews(clinicId: string, rows: Awaited<ReturnType<FrontDeskRepository['textRows']>>, opts: { last4?: string | null; fullName?: boolean; owner?: boolean }) {
+    const ctx = (col: string) => phiContext(clinicId, col);
+    const names = await staffNames(this.db, clinicId, rows.flatMap(({ m }) => (m.handledBy ? [m.handledBy] : [])));
+    return rows.map(({ m: r, taskNumber, taskStatus, appointmentStartsAt, firstNameEnc, lastNameEnc, guardianNameEnc, phoneEnc }) => {
+      const first = firstNameEnc ? this.cipher.decrypt(firstNameEnc, ctx('patients.first_name')) : null;
+      const phone = opts.owner && phoneEnc ? this.cipher.decrypt(phoneEnc, ctx('patients.phone')) : null;
+      return {
         id: r.id, template: r.template, kind: r.kind, status: r.status, failureReason: r.failureReason, errorCode: r.errorCode, language: r.language,
-        callId: r.callId, createdAt: r.createdAt, sentAt: r.sentAt, deliveredAt: r.deliveredAt, consentAtMs: r.consentAtMs, toLast4: last4,
+        callId: r.callId, createdAt: r.createdAt, sentAt: r.sentAt, deliveredAt: r.deliveredAt, consentAtMs: r.consentAtMs,
+        toLast4: opts.last4 !== undefined ? opts.last4 : phone ? phone.replace(/\D/g, '').slice(-4) : null,
         body: r.bodyEnc ? this.cipher.decrypt(r.bodyEnc, ctx('sms_messages.body')) : null,
         taskId: r.taskId, taskNumber: taskNumber ?? null, taskStatus: taskStatus ?? null, appointmentId: r.appointmentId, appointmentStartsAt: appointmentStartsAt ?? null, patientId: r.patientId,
-        patientName: filter.recent && firstNameEnc ? this.cipher.decrypt(firstNameEnc, ctx('patients.first_name')) + (lastNameEnc ? ` ${this.cipher.decrypt(lastNameEnc, ctx('patients.last_name'))}` : '') : null,
-      }));
+        patientName: opts.fullName && first ? first + (lastNameEnc ? ` ${this.cipher.decrypt(lastNameEnc, ctx('patients.last_name'))}` : '') : null,
+        patientFirstName: first,
+        ownerName: opts.owner && guardianNameEnc ? this.cipher.decrypt(guardianNameEnc, ctx('patients.guardian_name')) : null,
+        handledAt: r.handledAt, handledBy: r.handledBy ? names.get(r.handledBy) ?? null : null,
+      };
     });
   }
+
+  /**
+   * The Texts page (texts polish TX3): the clinic's texts, newest first, a page at a time, by status (sent, not sent,
+   * not sent and nobody has handled it), kind, clinic-local days and a search: every word typed must be a request's
+   * number (R-12), the start or sound of a word of the pet's or owner's name, or digits of their number (the last four).
+   * A name or number finds the household's texts too (every text to the number on the record). Audited as one view.
+   */
+  async searchTexts(clinicId: string, q: { search?: string; status?: TextStatusFilter; templates?: readonly string[]; from?: Date; to?: Date; before?: { at: Date; id: string }; limit: number }, userId: string) {
+    const rows = await withClinic(this.db, clinicId, async (tx) => {
+      const words = q.search ? await this.textSearch(tx, clinicId, q.search) : undefined;
+      const where = and(
+        textStatusWhere(q.status),
+        q.templates?.length ? inArray(smsMessages.template, [...q.templates]) : undefined,
+        q.from ? sql`${smsMessages.createdAt} >= ${q.from}` : undefined,
+        q.to ? sql`${smsMessages.createdAt} < ${q.to}` : undefined,
+        q.before ? sql`(${smsMessages.createdAt}, ${smsMessages.id}) < (${q.before.at}, ${q.before.id}::uuid)` : undefined,
+        words,
+      );
+      const rows = await this.textRows(tx, clinicId, where, q.limit + 1);
+      await recordView(tx, { clinicId, actor: actorOf(userId), action: 'texts.viewed', entity: 'clinic', entityId: clinicId }, 5);
+      return rows;
+    });
+    // the names of who handled them read outside the transaction: one connection at a time in tests
+    const page = rows.slice(0, q.limit);
+    const last = page.at(-1);
+    return { texts: await this.textViews(clinicId, page, { fullName: true, owner: true }), next: rows.length > q.limit && last ? { at: last.m.createdAt, id: last.m.id } : null };
+  }
+
+  /** What a search finds, as one condition: each word a request number, a name or digits of a number. Nothing found: false. */
+  private async textSearch(tx: Tx, clinicId: string, search: string): Promise<SQL> {
+    const each: SQL[] = [];
+    for (const w of fold(search).split(/\s+/).filter(Boolean)) {
+      const asNumber = /^r-?(\d{1,9})$/.exec(w);
+      if (asNumber) { each.push(eq(tasks.number, Number(asNumber[1]))); continue; }
+      const typed = w.replace(/\D/g, '');
+      const digits = /^[\d()+.-]+$/.test(w) && !!typed;
+      const keys = digits ? [phonePartKey(clinicId, typed.slice(-PHONE_PART_DIGITS))] : normalizeName(w).split(' ').filter(Boolean).flatMap((n) => nameWordKeys(clinicId, n));
+      const found = keys.length ? await tx.select({ id: patients.id, phoneEnc: patients.phoneEnc }).from(patients)
+        .where(and(eq(patients.clinicId, clinicId), inArray(patients.id, patientsWithKey(tx, this.cipher, clinicId, keys)))).limit(500) : [];
+      // the household: texts filed under the record, and texts to the number on it
+      const hashes = [...new Set(found.flatMap((p) => (p.phoneEnc ? [smsNumberHash(this.cipher, clinicId, this.cipher.decrypt(p.phoneEnc, phiContext(clinicId, 'patients.phone')))] : [])))];
+      const byPatient = found.length ? or(inArray(smsMessages.patientId, found.map((p) => p.id)), hashes.length ? inArray(smsMessages.toHash, hashes) : undefined) : undefined;
+      const byNumber = digits && typed.length <= 9 ? eq(tasks.number, Number(typed)) : undefined;
+      each.push(or(byPatient, byNumber) ?? sql`false`);
+    }
+    return and(...each) ?? sql`true`;
+  }
+
+  /** Today's and the last 7 days' texts, sent and not sent, and those not sent nobody has handled (the Texts page's strip). */
+  async textSummary(clinicId: string, since: { today: Date; week: Date }) {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const failed = sql`${smsMessages.status} in ('not_sent', 'failed', 'undelivered')`;
+      const [row] = await tx.select({
+        todaySent: sql<number>`count(*) filter (where ${smsMessages.createdAt} >= ${since.today} and not (${failed}))::int`,
+        todayNotSent: sql<number>`count(*) filter (where ${smsMessages.createdAt} >= ${since.today} and ${failed})::int`,
+        weekSent: sql<number>`count(*) filter (where not (${failed}))::int`,
+        weekNotSent: sql<number>`count(*) filter (where ${failed})::int`,
+      }).from(smsMessages).where(and(eq(smsMessages.clinicId, clinicId), sql`${smsMessages.createdAt} >= ${since.week}`));
+      const [open] = await tx.select({ n: sql<number>`count(*)::int` }).from(smsMessages).where(and(eq(smsMessages.clinicId, clinicId), textStatusWhere('needs_handling')));
+      return { today: { sent: row!.todaySent, notSent: row!.todayNotSent }, week: { sent: row!.weekSent, notSent: row!.weekNotSent }, needsHandling: open!.n };
+    });
+  }
+
+  /**
+   * A text not sent marked handled (someone called the owner instead), or back to not handled: it leaves Today and the
+   * notice, with who and when. Audited (sms.handled, sms.unhandled). Only a text that was not sent.
+   */
+  async markTextHandled(clinicId: string, textId: string, handled: boolean, userId: string): Promise<'done' | 'not_found' | 'was_sent'> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const [row] = await tx.select({ status: smsMessages.status, handledAt: smsMessages.handledAt, callId: smsMessages.callId }).from(smsMessages).where(and(eq(smsMessages.clinicId, clinicId), eq(smsMessages.id, textId)));
+      if (!row) return 'not_found';
+      if (!TEXT_FAILED.has(row.status)) return 'was_sent';
+      if (!!row.handledAt === handled) return 'done';
+      await tx.update(smsMessages).set(handled ? { handledAt: new Date(), handledBy: userId } : { handledAt: null, handledBy: null }).where(and(eq(smsMessages.clinicId, clinicId), eq(smsMessages.id, textId)));
+      await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: handled ? 'sms.handled' : 'sms.unhandled', entity: 'sms', entityId: textId, ...(row.callId ? { callId: row.callId } : {}) });
+      return 'done';
+    });
+  }
+
+  /**
+   * Since when this database keeps the words of each text: when migration 0059 (text bodies) was applied. A sent text
+   * from before then has no words to show (texts polish TX5), and says so with this date. Null if it cannot be read.
+   */
+  async wordsKeptSince(): Promise<Date | null> {
+    if (this.keptSince !== undefined) return this.keptSince;
+    const res = await this.db.execute(sql`select applied_at from schema_migrations where id = '0059_text_bodies.sql'`).catch(() => null);
+    const at = (res?.rows[0] as { applied_at?: string | Date } | undefined)?.applied_at;
+    this.keptSince = at ? new Date(at) : null;
+    return this.keptSince;
+  }
+  private keptSince: Date | null | undefined;
 
   /** Newest first. Pages by id, not time: one request can write several rows with the same timestamp. */
   /**

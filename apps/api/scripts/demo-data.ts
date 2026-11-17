@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { RIVERBEND_CLINIC } from '@attendra/core';
+import { callUsNumber, RIVERBEND_CLINIC, type SmsTemplateName, speakSlot, textPreview } from '@attendra/core';
 import { type Database, type PhiCipher, phiContext, rehashCallLookups, rehashPatientLookups, schema, seedCedarPark, seedDemo, seedDemoSchedule, seedRiverbend, smsNumberHash, withClinic } from '@attendra/db';
 import { LocalEmbedder, seedDemoKnowledge } from '@attendra/knowledge';
 import { createLogger } from '@attendra/observability';
@@ -56,23 +56,59 @@ export async function seedDemoWorkspace(db: Database, cipher: PhiCipher, auth: A
  * carrier refused, a texted address that was not sent (the number opted out) and a reminder to another household.
  * The demo's calls play against a messenger that records nothing, so these are written here, as the real messenger
  * writes them: number hashed, words encrypted. None is a request's failed text, which would raise the dashboard's notice.
+ * With 60 more for volume (texts polish TX3).
  */
 async function seedDemoTexts(db: Database, cipher: PhiCipher, pets: Record<string, string>, now: Date) {
   const clinicId = RIVERBEND_CLINIC.id;
   const ago = (hours: number) => new Date(now.getTime() - hours * 3_600_000);
   const [visit] = await withClinic(db, clinicId, (tx) => tx.select({ id: schema.appointments.id }).from(schema.appointments)
     .where(and(eq(schema.appointments.clinicId, clinicId), eq(schema.appointments.patientId, pets.biscuit!))).orderBy(desc(schema.appointments.startsAt)).limit(1));
-  const [refill] = await withClinic(db, clinicId, (tx) => tx.select({ id: schema.tasks.id }).from(schema.tasks)
+  const [refill] = await withClinic(db, clinicId, (tx) => tx.select({ id: schema.tasks.id, number: schema.tasks.number }).from(schema.tasks)
     .where(and(eq(schema.tasks.clinicId, clinicId), eq(schema.tasks.type, 'refill'))).orderBy(desc(schema.tasks.createdAt)).limit(1));
   const body = (words: string) => cipher.encrypt(words, phiContext(clinicId, 'sms_messages.body'));
-  const rows = [
-    { template: 'booking_confirmed', to: '+17205550172', status: 'delivered', hours: 50, patientId: pets.biscuit, appointmentId: visit?.id ?? null, bodyEnc: body(`${RIVERBEND_CLINIC.name}: Biscuit's wellness exam is booked. To change or cancel, call (720) 555-0170. Reply STOP to opt out.`) },
-    { template: 'request_ready', to: '+17205550172', status: 'delivered', hours: 26, patientId: pets.biscuit, taskId: refill?.id ?? null, bodyEnc: body(`${RIVERBEND_CLINIC.name}: Hi Linh, Biscuit's request is ready to pick up. Questions? Call (720) 555-0170. Reply STOP to opt out.`) },
+  // the words as the messenger renders them (core textPreview: the same parts the worker and the assistant send)
+  const words = (template: SmsTemplateName, vars: Record<string, string>) => body(textPreview(template, { clinic: RIVERBEND_CLINIC.name, clinicPhone: callUsNumber(RIVERBEND_CLINIC), ...vars }));
+  const when = (hours: number) => speakSlot(new Date(now.getTime() + hours * 3_600_000), RIVERBEND_CLINIC.timezone, 'en');
+  type Row = { template: SmsTemplateName; to: string; status: string; hours: number; patientId?: string; appointmentId?: string | null; taskId?: string | null; errorCode?: string; failureReason?: string; bodyEnc?: string };
+  const rows: Row[] = [
+    { template: 'booking_confirmed', to: '+17205550172', status: 'delivered', hours: 50, patientId: pets.biscuit, appointmentId: visit?.id ?? null, bodyEnc: words('booking_confirmed', { name: 'Linh', pet: 'Biscuit', visit: 'wellness exam', when: when(48) }) },
+    { template: 'request_ready', to: '+17205550172', status: 'delivered', hours: 26, patientId: pets.biscuit, taskId: refill?.id ?? null, bodyEnc: words('request_ready', { pet: 'Biscuit', ...(refill ? { ref: `R-${refill.number}` } : {}) }) },
     // refused by the carrier, and about no request: the dashboard's "a text was not sent" notice is for requests' texts
-    { template: 'hours', to: '+17205550172', status: 'failed', errorCode: '30006', failureReason: 'carrier', hours: 20, patientId: pets.biscuit, bodyEnc: body(`${RIVERBEND_CLINIC.name}: We're open Monday to Friday, 8 AM to 6 PM. Reply STOP to opt out.`) },
+    { template: 'hours', to: '+17205550172', status: 'failed', errorCode: '30006', failureReason: 'carrier', hours: 20, patientId: pets.biscuit, bodyEnc: words('hours', { hours: 'Mon-Fri 8 AM-6 PM, Sat 9 AM-1 PM' }) },
     { template: 'directions', to: '+17205550172', status: 'not_sent', failureReason: 'opted_out', hours: 3, patientId: pets.biscuit },
-    { template: 'reminder', to: '+17205550173', status: 'delivered', hours: 2, patientId: pets.pepper, bodyEnc: body(`${RIVERBEND_CLINIC.name}: A reminder: Pepper's visit is tomorrow. Reply C to confirm. Reply STOP to opt out.`) },
+    { template: 'reminder', to: '+17205550173', status: 'delivered', hours: 2, patientId: pets.pepper, bodyEnc: words('reminder', { name: 'Daniel', pet: 'Pepper', visit: 'vaccine appointment', when: when(22) }) },
+    ...volume(pets),
   ];
+  /**
+   * Volume for the Texts page (texts polish TX3, 2026-11-17): 60 more over the past 9 days, every kind, mostly
+   * delivered, a few not sent (none about a request), and the oldest few with no words kept, as texts from before the
+   * history feature have none (TX5). Made up throughout: the demo's four households and a number not on file.
+   */
+  function volume(p: Record<string, string>): Row[] {
+    const homes = [
+      { to: '+17205550172', patientId: p.mochi, name: 'Linh', pet: 'Mochi' }, { to: '+17205550172', patientId: p.biscuit, name: 'Linh', pet: 'Biscuit' },
+      { to: '+17205550173', patientId: p.pepper, name: 'Daniel', pet: 'Pepper' }, { to: '+17205550174', patientId: p.luna, name: 'Carmen', pet: 'Luna' },
+      { to: '+17205550188' },
+    ];
+    const kinds: SmsTemplateName[] = ['booking_confirmed', 'reminder', 'hours', 'directions', 'change_confirmed', 'answer', 'cancel_confirmed', 'link', 'reminder', 'booking_confirmed'];
+    const out: Row[] = [];
+    for (let i = 0; i < 60; i++) {
+      const home = homes[i % homes.length]!;
+      const template = home.patientId ? kinds[i % kinds.length]! : (['hours', 'directions', 'link', 'answer'] as const)[i % 4]!;
+      const hours = 4 + i * 3.4;
+      const status = i % 13 === 5 ? 'failed' : i % 17 === 8 ? 'not_sent' : i % 6 === 0 ? 'sent' : 'delivered';
+      const vars: Record<string, string> = { ...(home.name ? { name: home.name, pet: home.pet! } : {}), visit: 'wellness exam', provider: 'Dr. Elena Ruiz', when: when(24 - hours), from: when(30 - hours),
+        hours: 'Mon-Fri 8 AM-6 PM, Sat 9 AM-1 PM', address: RIVERBEND_CLINIC.address!, mapUrl: 'https://maps.google.com/?q=88%20Riverbend%20Road', answer: 'We take cards and cash.',
+        label: 'New client form', url: 'https://riverbend.example/new-client' };
+      out.push({
+        template, to: home.to, status, hours, ...(home.patientId ? { patientId: home.patientId } : {}),
+        ...(status === 'failed' ? { errorCode: '30003', failureReason: 'carrier' } : status === 'not_sent' ? { failureReason: 'rate_limited' } : {}),
+        // the oldest ones have no words: sent before the clinic kept them
+        ...(status === 'not_sent' || i >= 52 ? {} : { bodyEnc: words(template, vars) }),
+      });
+    }
+    return out;
+  }
   await withClinic(db, clinicId, async (tx) => {
     for (const [i, r] of rows.entries()) {
       const at = ago(r.hours);
