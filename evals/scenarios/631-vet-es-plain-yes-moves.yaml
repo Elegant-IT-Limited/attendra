@@ -1,0 +1,27 @@
+id: vet-es-plain-yes-moves
+title: "In Spanish: a move read back, answered \"sí, ya le dije que sí, ¿ya está?\": a yes, with a check that it is done; the visit is moved at once (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, has-appointment, call-bugs, clear-yes, es]
+turns:
+  - caller: Hola, soy Linh Nguyen. Necesito cambiar la cita del jueves de Biscuit al viernes.
+    reply: "El viernes tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - list_appointments: {}
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-10-02", part_of_day: any }
+  - caller: La primera.
+    reply: "Entonces, quiere {readback}. ¿Hago el cambio?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: "$appointments[0]" }
+  - caller: "Sí, ya le dije que sí. ¿Ya está?"
+    reply: "Listo, la cita queda cambiada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: rescheduled
+  verified: true
+  language: es
+  bookings_created: 1
+  sms_sent: 1
+  sms_templates: [change_confirmed]

@@ -1,0 +1,15 @@
+id: vet-es-hours-question-answered
+title: "In Spanish: \"¿hasta qué hora están abiertos hoy?\" is answered with the hours, never the line for a question that is not about the clinic (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-bugs, es]
+turns:
+  - caller: Hola, ¿hasta qué hora están abiertos hoy?
+    reply: "Hoy estamos abiertos hasta las 6:00 PM."
+    delegate:
+      - get_clinic_info: { question: horario de hoy }
+expect:
+  outcome: info
+  language: es
+  returned: ["18:00"]
+forbid_spoken: ["Puedo ayudarle con preguntas sobre la clínica"]

@@ -81,6 +81,9 @@ export const Scenario = z.object({
     booked_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), // every booking made on the call is on this local date
     // every booking made on the call, in time order: its local date and time and its visit type (two visits for one pet, 2026-11-16)
     bookings: z.array(z.object({ on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), at: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), visit: z.string() })).optional(),
+    // the found pet's visits still booked when the call ends (any booked before it too), in time order: a move or a
+    // cancellation touched only the visit the caller picked (call bugs, 2026-11-17)
+    visits_after: z.array(z.object({ on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), at: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), visit: z.string() })).optional(),
     hung_up: z.boolean().optional(),
     // the team's note on the appointments made on the call (decrypted), each phrase in one of them ("booked by caller: Alex"),
     // or no note on any of them

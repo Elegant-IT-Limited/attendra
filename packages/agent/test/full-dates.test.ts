@@ -105,8 +105,13 @@ describe('a day already gone (note 45, V2: a Vapi call searched from June 7, 202
     expect(String(data(past, 1).say)).toContain('Today at the clinic is Monday, September 28 (2026-09-28), so 2024-06-07 has already gone.');
     expect(JSON.stringify(data(past, 1))).not.toMatch(/fully booked|June 7/);
     expect(c.state.offered.size).toBe(0);
-    const next = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2026-09-29', part_of_day: 'afternoon', from_time: null } }]);
+    // the earlier tests left Biscuit a wellness exam that week: "move it, or book another?" comes first, and another it is
+    const next = await c.delegate([
+      { tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2026-09-29', part_of_day: 'afternoon', from_time: null } },
+      { tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2026-09-29', part_of_day: 'afternoon', from_time: null } },
+    ]);
     expect(data(next).today).toBe('Monday, September 28 (2026-09-28)');
-    expect((data(next).slots as unknown[]).length).toBeGreaterThan(0);
+    expect(data(next, 1).today).toBe('Monday, September 28 (2026-09-28)');
+    expect((data(next, 1).slots as unknown[]).length).toBeGreaterThan(0);
   });
 });

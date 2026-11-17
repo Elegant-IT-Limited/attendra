@@ -86,7 +86,9 @@ export function compactSchema(node: unknown): unknown {
     const other = o.anyOf.find((x) => (x as { type?: unknown }).type !== 'null') as Record<string, unknown>;
     if (other && typeof other.type === 'string' && !other.anyOf) {
       const rest = Object.fromEntries(Object.entries(o).filter(([k]) => k !== 'anyOf'));
-      return compactSchema({ ...rest, ...other, type: [other.type, 'null'] });
+      // an enum lists null too, or null is not allowed after all: a nullable enum collapsed without it left the model no
+      // way to say "none" for provider_gender or time_mode, and a move's find_slots came back invalid_arguments (2026-11-16)
+      return compactSchema({ ...rest, ...other, type: [other.type, 'null'], ...(Array.isArray(other.enum) ? { enum: [...(other.enum as unknown[]), null] } : {}) });
     }
   }
   const out: Record<string, unknown> = {};
@@ -123,6 +125,17 @@ export function transcriptionFor(clinic: Pick<ClinicConfig, 'languages'>): { mod
   const langs = [...new Set(clinic.languages)];
   if (langs.length === 1) return { model: TRANSCRIBE_MODEL, language: langs[0] };
   return { model: TRANSCRIBE_MODEL, prompt: `A phone call to a clinic. The caller speaks ${langs.map((l) => PACKS[l].name).join(' or ')}, nothing else.` };
+}
+
+/**
+ * A caller's line without what the transcriber echoed from its own prompt: on a quiet stretch it can write the prompt's
+ * first words ("A phone call to a clinic."), or the same words in Spanish, as if the caller said them (two test
+ * calls, 2026-11-16). That sentence goes, and a line that is nothing but it is no line at all; the caller's own words
+ * around it stay.
+ */
+export function withoutPromptEcho(transcript: string): string {
+  const rest = transcript.replace(/\ba phone call to a clinic\.?/gi, ' ').replace(/\s+/g, ' ').trim();
+  return /^(?:a phone call|(?:una )?llamada(?: (?:telefonica|telefónica))?(?: a una cl[ií]nica)?)[.!?]*$/i.test(rest) ? '' : rest;
 }
 
 /** A Realtime reply's usage, as response.done reports it. */
@@ -196,6 +209,8 @@ export function toolReplyInstructions(question: string | null, line: string | nu
 /** How the greeting is said, with the short instructions of the first reply (the session's tone lines are not in them). */
 const GREETING_VOICE = 'Speak warmly and naturally, at an easy pace, like a friendly receptionist answering the phone.';
 export const GO_WAIT_MS = 1200;
+/** How long a turn before the caller's first words waits for its transcript before it is answered anyway. */
+export const FIRST_WORDS_WAIT_MS = 2500;
 /**
  * Turn detection on the tools path: the turn ends once the caller has clearly finished, and the engine starts each reply
  * itself (at once, or after our go once replies are manual), so nothing about the session changes mid-call. The caller
@@ -435,6 +450,19 @@ export class RealtimeEngine implements VoiceEngine {
     // manual replies: whether the model waits for our go, and whether a turn that ended is waiting for it now
     let manual = false;
     let goDue = false;
+    // Until the caller's first words are in, a turn is answered only once its transcript says something: a cough or
+    // background noise right after the greeting was answered with a second introduction or a second "how can I help?"
+    // (two test calls, 2026-11-16). After that, replies start at the end of the turn, as before. Never waits long.
+    let callerHeard = false;
+    const firstTurns = new Map<string, NodeJS.Timeout>();
+    const answerFirst = (itemId: string, words: boolean) => {
+      const t = firstTurns.get(itemId);
+      if (!t) return;
+      clearTimeout(t);
+      firstTurns.delete(itemId);
+      if (words) respond();
+      else trace({ type: 'gate.no_words' });
+    };
     let goTimer: NodeJS.Timeout | null = null;
     const go = () => { if (goTimer) clearTimeout(goTimer); goTimer = null; if (!goDue) return; goDue = false; respond(); };
     const started = Date.now();
@@ -547,7 +575,10 @@ export class RealtimeEngine implements VoiceEngine {
           // a rule in the session prompt alone still let it say "let me check..." before most tool calls)
           if (toolsPath) turnNote();
           // the tools path starts its own replies: at once, or (manual) after the go, or by itself in a moment without one
-          if (toolsPath && !manual) respond();
+          if (toolsPath && !manual && !callerHeard && typeof e.item_id === 'string') {
+            const item = e.item_id;
+            firstTurns.set(item, setTimeout(() => answerFirst(item, true), FIRST_WORDS_WAIT_MS));
+          } else if (toolsPath && !manual) respond();
           else if (manual) { goDue = true; if (goTimer) clearTimeout(goTimer); goTimer = setTimeout(go, GO_WAIT_MS); }
           return;
         // the caller's turn, whole, once it is transcribed
@@ -556,16 +587,25 @@ export class RealtimeEngine implements VoiceEngine {
             const u = e.usage as { input_tokens?: number; output_tokens?: number };
             emit({ type: 'session.model_usage', event_id: `${id(e)}_usage`, model: TRANSCRIBE_MODEL, input: u.input_tokens ?? 0, cached: 0, output: u.output_tokens ?? 0 });
           }
-          if (typeof e.transcript === 'string' && e.transcript.trim()) {
+          if (typeof e.item_id === 'string' && firstTurns.has(e.item_id)) {
+            const words = typeof e.transcript === 'string' && !!withoutPromptEcho(e.transcript);
+            if (words) callerHeard = true;
+            answerFirst(e.item_id, words);
+          }
+          if (typeof e.transcript === 'string' && withoutPromptEcho(e.transcript)) {
+            callerHeard = true;
             const at = typeof e.item_id === 'string' ? spokenAt.get(e.item_id) : undefined;
             if (typeof e.item_id === 'string') spokenAt.delete(e.item_id);
+            const said = withoutPromptEcho(e.transcript);
             // the clinic's languages are all written in Latin letters: a line in another script is the transcriber's, not
             // words the rules may read (the language lock asks for English; the transcriber can still write another script)
-            const foreign = this.languages.has(callId) && inAnotherScript(e.transcript);
-            emit({ type: 'session.input_transcript.delta', event_id: id(e), delta: foreign ? NOT_UNDERSTOOD : e.transcript, start_ms: at?.start ?? ms(), end_ms: at?.end ?? ms() });
+            const foreign = this.languages.has(callId) && inAnotherScript(said);
+            emit({ type: 'session.input_transcript.delta', event_id: id(e), delta: foreign ? NOT_UNDERSTOOD : said, start_ms: at?.start ?? ms(), end_ms: at?.end ?? ms() });
           }
           return heard(e.item_id);
         case 'conversation.item.input_audio_transcription.failed':
+          // words that could not be written down are still words: answered, as before
+          if (typeof e.item_id === 'string') answerFirst(e.item_id, true);
           return heard(e.item_id);
         case 'response.output_audio_transcript.delta':
           if (typeof e.delta === 'string' && e.delta) { words += e.delta; spoken(e); }
@@ -684,6 +724,8 @@ export class RealtimeEngine implements VoiceEngine {
       onClose: (handler) => {
         ws.socket.on('close', (code: number) => {
           if (goTimer) clearTimeout(goTimer);
+          for (const t of firstTurns.values()) clearTimeout(t);
+          firstTurns.clear();
           release();
           if (code === 1000) emit({ type: 'session.closed', event_id: `rt_${callId}_closed`, reason: 'call_ended', usage: { seconds: Math.round(ms() / 1000) } });
           handler(code);

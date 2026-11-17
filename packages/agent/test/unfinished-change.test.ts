@@ -71,8 +71,10 @@ describe('a change read back and never confirmed', () => {
     const found = await c.delegate([
       { tool: 'verify_caller', args: { owner_name: null, pet_name: 'Biscuit', phone: null } },
       { tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: null, part_of_day: 'any', from_time: null } },
+      // the earlier tests left Biscuit a wellness exam this week: "move it, or book another?" comes first, and another it is
+      { tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: null, part_of_day: 'any', from_time: null } },
     ]);
-    await c.delegate([{ tool: 'propose_booking', args: { slot_id: (found.results[1]!.data.slots as { slot_id: string }[])[0]!.slot_id, replaces_appointment_id: null } }]);
+    await c.delegate([{ tool: 'propose_booking', args: { slot_id: (found.results[2]!.data.slots as { slot_id: string }[])[0]!.slot_id, replaces_appointment_id: null } }]);
     c.readBack('Shall I book it?');
     c.caller('Let me think about it, bye.');
     await c.agent.onCallEnd();

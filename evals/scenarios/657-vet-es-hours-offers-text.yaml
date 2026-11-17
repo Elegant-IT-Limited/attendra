@@ -1,0 +1,21 @@
+id: vet-es-hours-offers-text
+title: "In Spanish: asked for the hours, with the hours text on: the hours are said, then a text of them offered once, and sent on the yes (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-bugs, texts, es]
+turns:
+  - caller: Hola, ¿cuál es su horario esta semana?
+    reply: "Abrimos de 8 a 6 entre semana y de 9 a 1 el sábado. ¿Quiere que se lo envíe por mensaje al número desde el que llama?"
+    delegate:
+      - get_clinic_info: { question: horario de esta semana }
+  - assistant: "¿Quiere que se lo envíe por mensaje al número desde el que llama?"
+  - caller: Sí, por favor.
+    reply: "Se lo envío ahora por mensaje."
+    delegate:
+      - send_text: { kind: hours, ref: null, to: null }
+expect:
+  outcome: info
+  language: es
+  sms_sent: 1
+  sms_templates: [hours]
+  returned: ["send_text with kind hours"]

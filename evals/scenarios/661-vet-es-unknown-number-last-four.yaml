@@ -1,0 +1,25 @@
+id: vet-es-unknown-number-last-four
+title: "In Spanish: from a number with no pets on it, the owner gives their name, then the pet's: no try is spent on that number again, only the last four digits are asked, and they find the pet (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550188"
+tags: [no-demo, call-bugs, identity, es]
+turns:
+  - caller: Hola, soy Linh Nguyen.
+    reply: "No veo un perfil con ese número. ¿Cuáles son los últimos cuatro dígitos del número de la ficha, y el nombre de su mascota?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: null, phone: null }
+  - caller: Quiero una cita para Biscuit esta semana.
+    reply: "¿Cuáles son los últimos cuatro dígitos del número de teléfono de la ficha de Biscuit?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit, phone: null }
+  - caller: Termina en 0172.
+    reply: "Encontré a Biscuit, su perro."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit, phone: null, phone_last4: "0172" }
+expect:
+  outcome: abandoned
+  verified: true
+  language: es
+  refusals: [no_pets_on_number, last_four_needed]
+  returned: ["¿Cuáles son los últimos cuatro dígitos del número de teléfono de la ficha de Biscuit?"]

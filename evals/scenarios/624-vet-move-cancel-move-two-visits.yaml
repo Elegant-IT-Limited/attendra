@@ -1,0 +1,57 @@
+id: vet-move-cancel-move-two-visits
+title: "The test call's whole sequence with made-up data: a second visit booked, \"move it to Friday\", then \"cancel it\" and the time picked, then Friday again: only the visit the caller picked ever changes (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, has-appointment-today, call-bugs]
+turns:
+  - caller: Hi, this is Linh Nguyen. Can I book a wellness exam for Biscuit today, after 4?
+    reply: "Biscuit already has a visit booked: wellness exam, today at 2:00 PM, with Dr. Elena Ruiz. Would you like to move that one, or book another as well?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-28", part_of_day: any, from_time: "16:00", time_mode: after }
+  - caller: Another one.
+    reply: "Today I have {offered.0}, or {offered.1}."
+    delegate:
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-28", part_of_day: any, from_time: "16:00", time_mode: after }
+  - caller: The first one.
+    reply: "I have {readback}. Shall I book it?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "All set, that's booked."
+    delegate:
+      - commit_pending: {}
+  - caller: Actually, I'd like to move it to Friday instead.
+    reply: "So I'd {readback}. Shall I go ahead?"
+    delegate:
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-10-02", part_of_day: any }
+      - propose_booking: { slot_id: "$found[0]", replaces_appointment_id: "$put_forward" }
+      - propose_booking: { slot_id: "$found[0]", replaces_appointment_id: "$booked" }
+  - caller: No, let's just cancel it instead.
+    reply: "Biscuit has two visits today, at 2:00 PM and at 4:00 PM. Which one should I cancel?"
+    delegate:
+      - list_appointments: {}
+  - caller: "400."
+    reply: "So I'd {readback}. Is that right?"
+    delegate:
+      - propose_cancellation: { appointment_id: "$booked" }
+  - caller: Hang on, what about Friday? Could it go to Friday?
+    reply: "Okay, I won't cancel it. So I'd {readback}. Shall I go ahead?"
+    delegate:
+      - propose_booking: { slot_id: "$found[0]", replaces_appointment_id: "$put_forward" }
+      - propose_booking: { slot_id: "$found[0]", replaces_appointment_id: "$booked" }
+  - caller: "Okay, so we're all set."
+    reply: "All set, it's moved."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: rescheduled
+  verified: true
+  refusals: [which_visit, which_visit]
+  bookings_created: 2
+  sms_sent: 2
+  sms_templates: [booking_confirmed, change_confirmed]
+  visits_after:
+    - { on: "2026-09-28", at: "14:00", visit: vt_wellness }
+    - { on: "2026-10-02", at: "16:00", visit: vt_wellness }
+  returned: ["the visit booked on this call", "the one the caller named", "This replaces the change that was waiting for a yes"]

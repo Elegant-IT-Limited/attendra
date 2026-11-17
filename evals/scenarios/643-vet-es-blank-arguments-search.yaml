@@ -1,0 +1,27 @@
+id: vet-es-blank-arguments-search
+title: "In Spanish: a move's slot search sent with empty strings for \"none\" and the time left to the call memory: it searches, never invalid_arguments (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, has-appointment, call-bugs, es]
+turns:
+  - caller: Hola, soy Linh Nguyen. Biscuit tiene cita el jueves a las 9. ¿La puede cambiar al viernes, después de las 3?
+    reply: "El viernes después de las 3 tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - list_appointments: {}
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, provider_gender: "", specialty: "", from_date: "2026-10-02", part_of_day: any, from_time: null, time_mode: "", propose_if_exact: null }
+  - caller: La primera.
+    reply: "Entonces, quiere {readback}. ¿Hago el cambio?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: "$appointments[0]" }
+  - caller: "Sí."
+    reply: "Listo, la cita queda cambiada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: rescheduled
+  verified: true
+  language: es
+  bookings_created: 1
+  offered_from_time: "15:00"
+  sms_sent: 1

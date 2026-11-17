@@ -1,0 +1,32 @@
+id: vet-same-visit-move-that-one
+title: "A pet already has a wellness exam today and the owner asks for one this evening: asked \"move that one, or book another?\" before any time, and moving it moves that visit (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, has-appointment-today, call-bugs]
+turns:
+  - caller: Hi, this is Linh Nguyen. Can I book a wellness exam for Biscuit today, after 4?
+    reply: "Biscuit already has a visit booked: wellness exam, today at 2:00 PM, with Dr. Elena Ruiz. Would you like to move that one, or book another as well?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-28", part_of_day: any, from_time: "16:00", time_mode: after }
+  - caller: Move that one, please.
+    reply: "Today after 4 I have {offered.0}, or {offered.1}."
+    delegate:
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-28", part_of_day: any, from_time: "16:00", time_mode: after }
+  - caller: The first one.
+    reply: "So I'd {readback}. Shall I go ahead?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: "$put_forward" }
+  - caller: "Yes."
+    reply: "All set, it's moved."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: rescheduled
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  sms_templates: [change_confirmed]
+  visits_after:
+    - { on: "2026-09-28", at: "16:00", visit: vt_wellness }
+  returned: ["Would you like to move that one, or book another as well?", "offer no times yet"]
