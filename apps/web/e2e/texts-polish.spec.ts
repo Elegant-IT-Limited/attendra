@@ -11,8 +11,9 @@ type Text = { id: string; template: string; status: string; body: string | null;
 type Page_ = { texts: Text[]; next: string | null; wordsKeptSince: string | null };
 type Summary = { today: { sent: number; notSent: number }; week: { sent: number; notSent: number }; needsHandling: number; todayDate: string; weekFrom: string };
 const clinicOf = (page: Page) => new URL(page.url()).pathname.split('/')[2]!;
+let origin = '';
 async function call<T>(page: Page, method: string, path: string, data?: unknown): Promise<T> {
-  const res = await page.request.fetch(`/api/v1${path}`, { method, data, headers: { origin: new URL(page.url()).origin } });
+  const res = await page.request.fetch(`/api/v1${path}`, { method, data, headers: { origin } });
   expect(res.ok(), `${method} ${path}: ${res.status()}`).toBe(true);
   return (res.status() === 204 ? undefined : await res.json()) as T;
 }
@@ -27,6 +28,7 @@ test.describe.serial('texts polish', () => {
   test.beforeAll(async ({ browser }) => {
     page = await signInAgain(browser, 'Vet clinic manager');
     C = clinicOf(page);
+    origin = new URL(page.url()).origin;
   });
   // nothing left for the specs after this one to see on Today or in the notice
   test.afterAll(async () => {
@@ -55,7 +57,9 @@ test.describe.serial('texts polish', () => {
   });
 
   test('TX2: texts not sent are one Today item, after emergencies and unclaimed requests, and Handled takes one off', async () => {
-    // three refills closed as ready to pick up: the demo has no Twilio, so each text is recorded as not sent
+    // three refills closed as ready to pick up: the demo has no Twilio, so each text is recorded as not sent. No
+    // dashboard page is open meanwhile, so the notice on Today is the first to tell of them
+    await page.goto('about:blank');
     for (const i of [1, 2, 3]) {
       const made = await call<{ id: string }>(page, 'POST', `/clinics/${C}/tasks`, { type: 'refill', medication: `Carprofen ${i}`, callbackNumber: `(720) 555-01${80 + i}` });
       await call(page, 'POST', `/clinics/${C}/tasks/${made.id}/done`, { outcome: 'refill_ready' });
