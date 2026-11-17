@@ -27,3 +27,7 @@ overrides:
   drizzle-orm: 0.45.4
   '@electric-sql/pglite': 0.5.10
   zod: 4.6.7
+  # security (Dependabot, 2026-11-17): only the vulnerable ranges are lifted, to the latest patch in the same line
+  'body-parser@>=2.0.0 <2.4.0': 2.4.0
+  'hono@<4.13.16': 4.13.18
+  '@hono/node-server@>=2.0.0 <2.1.6': 2.1.8
