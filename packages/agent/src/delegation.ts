@@ -8,7 +8,7 @@ import { afterTool, type FlowMemory, flowStage, nextStep } from './flow/booking'
 import { speculativeLookup } from './flow/speculate';
 import { excerptFor, handoffFor, type HandoffEvent, lastSteps, noteNames, reasonFromSteps, seenNames, stepResult } from './handoff';
 import { answerTo, BORDERLINE, confirmsCleared, type EmergencyCase, lastQuestionIsOurs, MILD, pastAndFineNow, SEVERE, saysSevere, staffNote } from './flow/emergency';
-import { askedAboutRecording, askedIfHuman, askedWhy, claimsIn, DISPUTE_NOTE, disputes, humanLine, notInTheClinicsLanguages, recordingLine, sideTalkLine, WHY } from './flow/guards';
+import { askedAboutRecording, askedIfHuman, askedWhy, claimsIn, DISPUTE_NOTE, disputes, humanLine, notInTheClinicsLanguages, recordingLine, saysTextsNotArriving, sideTalkLine, textsNotArrivingNote, WHY } from './flow/guards';
 import { outOfScopeLine } from '@attendra/knowledge/scope';
 import { isVoiceTool, shapeForVoice, type VoiceToolOutput } from './flow/voice-tools';
 import { asksHours, type Backend, type CallContext, runTool, textOfferAfter, type ToolResult } from './tools';
@@ -944,6 +944,8 @@ export class CallAgent {
         : 'The caller asks why. Give the real reason from the last tool result once, in plain words, without repeating your last line. Then offer the next step.'));
     }
     if (disputes(said) && once(`dispute:${i}`)) out.push(say(DISPUTE_NOTE));
+    // texts that are not arriving: where texts go and the next step, never the clinic's details (2026-11-16)
+    if (saysTextsNotArriving(said) && once(`no_texts:${i}`)) out.push(say(textsNotArrivingNote(s, clinic)));
     return out;
   }
 
@@ -964,13 +966,18 @@ export class CallAgent {
       // a vet's day comes from the schedule: a slot search on this call (the clinic's information has the weekly hours,
       // and a live run read "away on Friday" into them for a vet who was only fully booked; batch 1d)
       vet_day: s.toolLog.some((t) => t.name === 'find_slots'),
+      // a text the caller asked for, handed over; a confirmation is only ever "I'll text", and an arrival never backed
+      texted: s.textsSent > 0,
+      text_arrived: false,
     };
     const out: Outbound[] = [];
     for (const claim of claimsIn(turn.text)) {
       if (backed[claim] || s.guardsSaid.has(`claim:${claim}`)) continue;
       s.guardsSaid.add(`claim:${claim}`);
       this.log.warn({ call_id: this.ctx.callId, claim }, 'claim without a tool: the assistant said a result no tool returned');
-      out.push({ type: 'instructions', delegationId: null, content: `You just said something no tool returned (${claim.replace('_', ' ')}). Correct it now, in a few words: say what is really happening ("Let me look that up now", or what the last tool said), and call the tool if it is still needed. Never state a result a tool did not give you.` });
+      out.push({ type: 'instructions', delegationId: null, content: claim === 'texted' || claim === 'text_arrived'
+        ? 'You just said a text was sent or arrived. Correct it now, in a few words: a confirmation goes to the number on file (or the number they are calling from, if that is what you said before), you\'ll text it, and you can\'t see when it arrives. Never say a text was sent or arrived.'
+        : `You just said something no tool returned (${claim.replace('_', ' ')}). Correct it now, in a few words: say what is really happening ("Let me look that up now", or what the last tool said), and call the tool if it is still needed. Never state a result a tool did not give you.` });
     }
     return out;
   }

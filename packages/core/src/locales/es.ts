@@ -114,7 +114,7 @@ export const es: LanguagePack = {
     reminder: (v) => `${v.clinic}: ${hola(v, `le recordamos ${citaDe(v)} el ${sinEl(v.when)}.`)} Responda C para confirmarla, o llame al ${v.clinicPhone} para cambiarla. Responda STOP para no recibir más mensajes.`,
   },
   textOffer: ({ target }) => (target === 'file' ? '¿Quiere que se lo envíe por mensaje de texto al número que tenemos en su ficha?' : '¿Quiere que se lo envíe por mensaje de texto al número desde el que llama?'),
-  textSent: 'Listo, se lo acabo de enviar.',
+  textSent: 'Se lo envío ahora por mensaje.',
   noProviderForVisit: ({ visit, pets }) => `Ningún ${pets ? 'veterinario' : 'médico'} ofrece ${visit}: quienes llaman no pueden reservarlo`,
   textRefused: ({ reason }) => (reason === 'opted_out' ? 'Ese número pidió no recibir mensajes nuestros, así que se lo leo.' : 'No puedo enviar mensajes de texto, así que se lo digo despacio.'),
   reminderOffer: '¿Quiere un recordatorio por mensaje de texto el día antes de la cita? Pueden aplicarse tarifas de mensajes y datos, y puede responder STOP cuando quiera.',
@@ -208,6 +208,7 @@ export const es: LanguagePack = {
     notAt: ({ time, day }) => { const h = hora(time.hour, time.minute); return `${mayuscula(h.at)} ${h.time} no, pero el ${fullDay(day.date)} tengo ${horas(day)}.`; },
     nearest: ({ day }) => `Lo más cercano es el ${fullDay(day.date)} ${horas(day)}.`,
     askedNotFree: ({ time }) => { const h = hora(time.hour, time.minute); return `${mayuscula(h.at)} ${h.time} no hay disponibilidad.`; },
+    moveOrAdd: '¿Quiere cambiar esa cita o reservar otra además?',
     alreadyBooked: ({ name, visit, when, provider, more }) => `${name} ya tiene una cita: ${visit}, ${when}${provider ? `, con ${provider}` : ''}${more ? `, y ${more === 1 ? 'una más' : `${more} más`} después` : ''}.`,
     vetHours: ({ provider, weekday, starts, ends }) => (starts
       ? `${provider} empieza ${aLas(starts)} ${losDias(weekday)}.`
@@ -235,13 +236,13 @@ export const es: LanguagePack = {
       ? `Entonces, quiere ${readback}. ${textNote ? `${sentence(textNote)}. ` : ''}¿Hago el cambio?`
       : `Tengo ${readback}. ${textNote ? `${sentence(textNote)}. ` : ''}¿Le reservo la cita?`),
     cancelReadback: ({ readback, textNote }) => `Entonces, quiere ${readback}. ${textNote ? `${sentence(textNote)}. ` : ''}¿Es correcto?`,
-    done: ({ kind, textSent, then }) => `${kind === 'booked' ? 'Listo, la cita queda reservada.' : kind === 'rescheduled' ? 'Listo, la cita queda cambiada.' : 'Listo, la cita queda cancelada.'}${textSent ? ' Le he enviado un mensaje de confirmación.' : ''} ${then}`,
+    done: ({ kind, textTo, then }) => `${kind === 'booked' ? 'Listo, la cita queda reservada.' : kind === 'rescheduled' ? 'Listo, la cita queda cambiada.' : 'Listo, la cita queda cancelada.'}${textTo ? ` Le enviaré una confirmación por mensaje ${textTo === 'calling' ? 'al número desde el que llama' : 'al número de su ficha'}.` : ''} ${then}`,
     anythingElse: '¿Hay algo más en lo que le pueda ayudar?',
     goodbye: 'Que le vaya bien. ¡Adiós!',
     callbackTaken: ({ sameNumber }) => `De acuerdo, se lo paso al equipo y alguien le llamará ${sameNumber ? 'a este número' : 'al número que me dio'}. ¿Hay algo más en lo que le pueda ayudar?`,
     refillTaken: 'He enviado la solicitud de la receta al equipo; la revisarán y se pondrán en contacto con usted. ¿Hay algo más en lo que le pueda ayudar?',
     urgentRequestTaken: 'Le envié esto al equipo como urgente, y alguien le llamará lo antes posible.',
-    textSent: 'Listo, se lo acabo de enviar. ¿Hay algo más en lo que le pueda ayudar?',
+    textSent: 'Se lo envío ahora por mensaje. ¿Hay algo más en lo que le pueda ayudar?',
     reminders: ({ agreed }) => `${agreed ? 'Perfecto, recibirá un recordatorio por mensaje de texto el día antes de la cita.' : 'De acuerdo, sin recordatorios por mensaje de texto.'} ¿Hay algo más en lo que le pueda ayudar?`,
     noVetForAnimal: ({ vet, animals, pet }) => `${vet && animals ? `${vet} solo atiende ${animals}` : 'Ninguno de nuestros veterinarios atiende ese tipo de animal'}, así que no puedo agendar eso aquí. ¿Quiere que deje una solicitud para que el equipo agende a ${pet}?`,
     visitNotOffered: ({ visits }) => `Eso no lo agendamos aquí.${visits.length ? ` Puedo agendarle: ${oList(visits.map((v) => v.toLowerCase()))}. ¿Quiere una de esas, o prefiere que deje una solicitud para el equipo?` : ' ¿Quiere que deje una solicitud para el equipo?'}`,

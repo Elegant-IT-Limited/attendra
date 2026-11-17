@@ -1,0 +1,26 @@
+id: vet-plain-yes-moves
+title: "A move read back, answered \"yes, I already told you yes, is it moved now?\": a yes, with a check that it is done; the visit is moved at once (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, has-appointment, call-bugs, clear-yes]
+turns:
+  - caller: Hi, Linh Nguyen. I need to move Biscuit's Thursday visit to Friday.
+    reply: "On Friday I have {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - list_appointments: {}
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-10-02", part_of_day: any }
+  - caller: The first one.
+    reply: "So I'd {readback}. Shall I go ahead?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: "$appointments[0]" }
+  - caller: "Yes, I already told you yes. Is it moved now?"
+    reply: "All set, it's moved."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: rescheduled
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  sms_templates: [change_confirmed]

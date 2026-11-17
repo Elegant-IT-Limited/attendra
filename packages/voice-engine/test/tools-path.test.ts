@@ -311,6 +311,10 @@ describe('round 2: manual replies on gpt-realtime', () => {
     for (const gone of ['$schema', '"default"', 'minLength', 'maxLength', 'anyOf']) expect(tools).not.toContain(gone);
     expect(tools).toContain('"enum"');
     expect(compactSchema({ anyOf: [{ type: 'string', minLength: 2 }, { type: 'null' }], default: null })).toEqual({ type: ['string', 'null'] });
+    // a nullable enum keeps null among its values: without it the model had no way to say "none" (call bugs, 2026-11-17)
+    expect(compactSchema({ anyOf: [{ type: 'string', enum: ['female', 'male'] }, { type: 'null' }], default: null })).toEqual({ type: ['string', 'null'], enum: ['female', 'male', null] });
+    const slots = (a!.tools as { name: string; parameters: { properties: Record<string, { enum?: unknown[] }> } }[]).find((t) => t.name === 'find_slots')!;
+    for (const k of ['provider_gender', 'time_mode']) expect(slots.parameters.properties[k]!.enum).toContain(null);
   });
 
   it('runs a clinic on its trial model, and prices that call\'s tokens as that model (batch 1d)', async () => {

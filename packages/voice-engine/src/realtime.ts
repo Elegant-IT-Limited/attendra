@@ -86,7 +86,9 @@ export function compactSchema(node: unknown): unknown {
     const other = o.anyOf.find((x) => (x as { type?: unknown }).type !== 'null') as Record<string, unknown>;
     if (other && typeof other.type === 'string' && !other.anyOf) {
       const rest = Object.fromEntries(Object.entries(o).filter(([k]) => k !== 'anyOf'));
-      return compactSchema({ ...rest, ...other, type: [other.type, 'null'] });
+      // an enum lists null too, or null is not allowed after all: a nullable enum collapsed without it left the model no
+      // way to say "none" for provider_gender or time_mode, and a move's find_slots came back invalid_arguments (2026-11-16)
+      return compactSchema({ ...rest, ...other, type: [other.type, 'null'], ...(Array.isArray(other.enum) ? { enum: [...(other.enum as unknown[]), null] } : {}) });
     }
   }
   const out: Record<string, unknown> = {};

@@ -1,0 +1,29 @@
+id: vet-es-confirmation-text-will-come
+title: "In Spanish: after a booking the caller hears that a confirmation text will come to the number they are calling from, never that it was sent (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-bugs, texts, es]
+turns:
+  - caller: Hola, soy Linh Nguyen. ¿Biscuit puede venir mañana en la mañana a una consulta por enfermedad?
+    reply: "Mañana en la mañana tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: "2026-09-29", part_of_day: morning }
+  - caller: La primera, por favor.
+    reply: "Tengo {readback}. Le enviaré una confirmación por mensaje de texto al número desde el que llama, si le parece bien. ¿Le reservo la cita?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Sí."
+    reply: "Listo, la cita queda reservada. Le enviaré una confirmación por mensaje al número desde el que llama. ¿Hay algo más en lo que le pueda ayudar?"
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  bookings_created: 1
+  sms_sent: 1
+  sms_templates: [booking_confirmed]
+  returned: ["Le enviaré una confirmación por mensaje al número desde el que llama"]
+  never_returned: ["Le he enviado un mensaje de confirmación", "confirmation text sent"]
+forbid_spoken: ["Le he enviado", "se lo acabo de enviar"]

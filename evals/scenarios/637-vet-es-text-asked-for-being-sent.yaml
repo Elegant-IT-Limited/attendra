@@ -1,0 +1,25 @@
+id: vet-es-text-asked-for-being-sent
+title: "In Spanish: a text the caller asked for, after the yes: \"se lo envío ahora por mensaje\", never \"se lo acabo de enviar\" (call bugs, 2026-11-17)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-bugs, texts, es]
+turns:
+  - caller: Hola, ¿dónde están exactamente? Nunca he ido a la clínica.
+    reply: "Estamos en 88 Riverbend Road, en Denver. ¿Quiere que se lo envíe por mensaje al número desde el que llama?"
+    delegate:
+      - get_clinic_info: { question: dirección de la clínica }
+      - send_text: { kind: directions, ref: null, to: null }
+  - assistant: "Estamos en 88 Riverbend Road, en Denver. ¿Quiere que se lo envíe por mensaje al número desde el que llama?"
+  - caller: Sí, por favor.
+    reply: "Se lo envío ahora por mensaje. ¿Hay algo más en lo que le pueda ayudar?"
+    delegate:
+      - send_text: { kind: directions, ref: null, to: null }
+expect:
+  outcome: info
+  language: es
+  refusals: [consent_required]
+  sms_sent: 1
+  sms_templates: [directions]
+  returned: ["Se lo envío ahora por mensaje"]
+  never_returned: ["acabo de enviar"]
+forbid_spoken: ["acabo de enviar", "Le he enviado"]

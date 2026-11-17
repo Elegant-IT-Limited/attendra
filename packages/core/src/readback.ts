@@ -58,3 +58,23 @@ export function saysSlot(spoken: string, start: Date, timeZone: string, now: Dat
   const t = normalise(spoken).replace(/\s+/g, ' ');
   return saysDay(t, start, timeZone, now) && saysTime(t, start, timeZone);
 }
+
+/**
+ * Whether a caller's words name this visit's clock time: as the read-back says it ("3:15", "three fifteen"), or run
+ * together the way a transcriber writes a time said quickly ("315", "3 15", "1515"). Digits that are part of a longer
+ * run (a phone number: "720 555 0172") are not a time.
+ */
+export function saysClockTime(spoken: string, start: Date, timeZone: string): boolean {
+  const t = normalise(spoken).replace(/\s+/g, ' ');
+  if (saysTime(t, start, timeZone)) return true;
+  const { minutes } = localParts(start, timeZone);
+  const h24 = Math.floor(minutes / 60);
+  const mm = String(minutes % 60).padStart(2, '0');
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return [...new Set([h12, h24])].some((h) => new RegExp(`(?<![\\d:.])(?<!\\d )${h} ?${mm}(?! ?\\d|:|\\.\\d)`).test(t));
+}
+
+/** Whether a caller's words name this visit's day: its weekday, or "today" or "tomorrow" when it is one. */
+export function saysVisitDay(spoken: string, start: Date, timeZone: string, now: Date): boolean {
+  return saysDay(normalise(spoken).replace(/\s+/g, ' '), start, timeZone, now);
+}
