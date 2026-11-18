@@ -493,7 +493,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         const body = TakeOver.safeParse(jsonBody(req.body));
         if (!body.success) return reply.code(400).send({ error: 'invalid body' });
         const callId = (req.params as { callId: string }).callId;
-        const uri = body.data.target.kind === 'number' ? `tel:${body.data.target.number}` : frontDesk.get(callId) ?? null;
+        // a Vapi call's front desk is kept with its live entry (vapi.ts openLive)
+        const uri = body.data.target.kind === 'number' ? `tel:${body.data.target.number}` : frontDesk.get(callId) ?? live.frontDeskOf(body.data.clinicId, callId);
         if (!uri) return live.has(body.data.clinicId, callId) ? reply.code(409).send({ error: 'no_front_desk' }) : reply.code(404).send({ error: 'not_live' });
         return answer(reply, await live.claim(body.data.clinicId, callId, body.data.key, body.data.userId, 'take_over', (c) => c.takeOver(uri, body.data.byName ?? null)));
       });
@@ -809,7 +810,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
   }
 
   if (deps.vapi) {
-    vapiLive = registerVapi(app, { ...deps.vapi, clinicById: deps.clinicById, openCall: deps.openCall, recorderFor: deps.recorderFor, callEventsFor: deps.callEventsFor, actionsFor: deps.actionsFor, backend: deps.backend, planner: deps.planner, log: deps.log, alerts: deps.alerts, now, demoLimitFor }).liveCalls;
+    vapiLive = registerVapi(app, { ...deps.vapi, clinicById: deps.clinicById, openCall: deps.openCall, recorderFor: deps.recorderFor, callEventsFor: deps.callEventsFor, actionsFor: deps.actionsFor, backend: deps.backend, planner: deps.planner, log: deps.log, alerts: deps.alerts, now, demoLimitFor, live }).liveCalls;
   }
   // tests read a live tools-path call's token here; nothing else does, and it is never logged
   app.decorate('toolTokenFor', (callId: string) => toolLines.get(callId)?.token ?? null);

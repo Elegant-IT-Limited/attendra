@@ -36,6 +36,8 @@ interface Entry {
   claimed: { key: string; action: 'take_over' | 'end'; by: string } | null;
   coachKeys: Set<string>;
   ended: boolean;
+  /** Where "Take the call" puts the caller through when no number is given: the clinic's front desk; null for none. */
+  frontDesk: string | null;
 }
 
 export type ActionResult = { ok: true; repeat: boolean } | { ok: false; error: 'not_live' | 'already_taken' | 'web_call' | 'emergency_script'; by?: string };
@@ -55,9 +57,9 @@ export class LiveRegistry {
   /** `onChange`: a clinic's list of live calls changed (one started or ended, or what one is doing), for the dashboard's 'live' notice. */
   constructor(private readonly buffer = 2000, private readonly lingerMs = 60_000, private readonly onChange: (clinicId: string) => void = () => {}) {}
 
-  open(callId: string, meta: { clinicId: string; channel: 'phone' | 'web'; startedAt: Date }, control: LiveControl) {
+  open(callId: string, meta: { clinicId: string; channel: 'phone' | 'web'; startedAt: Date; frontDesk?: string | null }, control: LiveControl) {
     this.calls.set(callId, {
-      clinicId: meta.clinicId, pending: null, events: [], next: 1, listeners: new Set(), control, claimed: null, coachKeys: new Set(), ended: false,
+      clinicId: meta.clinicId, pending: null, events: [], next: 1, listeners: new Set(), control, claimed: null, coachKeys: new Set(), ended: false, frontDesk: meta.frontDesk ?? null,
       summary: { callId, channel: meta.channel, startedAt: meta.startedAt.toISOString(), verified: null, doing: null, waitingForYes: false, emergency: false },
     });
     this.onChange(meta.clinicId);
@@ -99,6 +101,12 @@ export class LiveRegistry {
 
   has(clinicId: string, callId: string) {
     return this.calls.get(callId)?.clinicId === clinicId;
+  }
+
+  /** The front desk a live call of this clinic is put through to by "Take the call"; null when none was given. */
+  frontDeskOf(clinicId: string, callId: string): string | null {
+    const e = this.calls.get(callId);
+    return e && e.clinicId === clinicId ? e.frontDesk : null;
   }
 
   /**

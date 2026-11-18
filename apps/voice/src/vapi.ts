@@ -5,6 +5,7 @@ import { type Alerter, isVapiCreditEnd, isVapiOpenAiQuotaEnd, type Logger } from
 import { type CallRecorder, callFactsNote, VAPI_EVENTS_PATH, VAPI_SECRET_HEADER } from '@attendra/voice-engine';
 import type { FastifyInstance } from 'fastify';
 import { createHash, timingSafeEqual } from 'node:crypto';
+import type { LiveRegistry } from './live';
 
 export { VAPI_EVENTS_PATH } from '@attendra/voice-engine';
 
@@ -49,6 +50,12 @@ export interface VapiDeps extends VapiOptions {
   now: () => Date;
   /** A demo clinic's limits (core demo-clinic.ts), checked when its phone call opens; the voice service's own check. */
   demoLimitFor?(clinic: ClinicConfig, from: string | null): Promise<DemoLimitCode | null>;
+  /**
+   * The calls staff watch live (live.ts), the same registry path A's calls are in: a Vapi call is on the dashboard's
+   * live strip from its first message, with its captions, tool steps and state, and "Take the call", a staff note and
+   * "End" act on it through its control URL (V1, 2026-11-18: a Vapi call showed nothing until it ended).
+   */
+  live?: LiveRegistry;
 }
 
 /** A demo call turned away on Vapi is ended this long after it opened, whatever Vapi's assistant does. */
@@ -225,25 +232,29 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
     });
   }
 
-  /** Sends one command to the call at Vapi; a failure is logged and said, never thrown into the call. */
-  async function control(s: Session, body: Record<string, unknown>) {
-    if (!s.controlUrl || s.closed) return;
+  /** Sends one command to the call at Vapi; a failure is logged and said, never thrown into the call. Whether it went. */
+  async function control(s: Session, body: Record<string, unknown>): Promise<boolean> {
+    if (!s.controlUrl || s.closed) return false;
     try {
       // never follows a redirect (a redirect is a failure, like any answer that is not 2xx), and gives up after 5 s
       const res = await post(s.controlUrl, { method: 'POST', redirect: 'error', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) });
       if (!res.ok || res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) throw new Error(`control ${String(body.type)}: ${res.status}`);
+      return true;
     } catch (err) {
       deps.log.error({ call_id: s.callId, type: body.type, err: { message: (err as Error).message } }, 'vapi: a call control command failed');
       deps.alerts?.alert('vapi_control_failed', `A Vapi call could not be ${body.type === 'transfer' ? 'transferred' : body.type === 'end-call' ? 'ended' : 'told what to say'} (${(err as Error).message.slice(0, 80)}).`, { clinicId: s.clinicId, callId: s.callId });
+      return false;
     }
   }
 
   /**
    * What our rules decided, on Vapi's call: a script the caller must hear (the emergency lines, word for word) is said at
    * once over whatever the model was saying, and the whole instruction goes into the conversation for the model; a
-   * transfer or the end of the call follows the line before it, as on our engines (afterMs).
+   * transfer or the end of the call follows the line before it, as on our engines (afterMs). `staff`: a staff member's
+   * take-over or end (the live page): one that does not go through gives the call back to staff and the assistant offers
+   * a callback, as on path A (CallAgent.onControlFailed).
    */
-  function act(s: Session, outs: Outbound[]) {
+  function act(s: Session, outs: Outbound[], staff = false) {
     for (const o of outs) {
       if (o.type === 'instructions') {
         // without a control URL (none in the message), it goes with the next tool result, as before
@@ -254,11 +265,37 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
       } else if (o.type === 'transfer') {
         const destination = vapiDestination(o.uri);
         if (!destination) { deps.log.error({ call_id: s.callId }, 'vapi: a transfer to an address Vapi cannot dial'); continue; }
-        later(o.afterMs ?? 0, () => void control(s, { type: 'transfer', destination }));
+        later(o.afterMs ?? 0, () => void control(s, { type: 'transfer', destination }).then((ok) => { if (staff && !ok && !s.closed) act(s, s.agent.onControlFailed('transfer')); }));
       } else if (o.type === 'hangup') {
-        later(o.afterMs ?? 0, () => void control(s, { type: 'end-call' }));
+        later(o.afterMs ?? 0, () => void control(s, { type: 'end-call' }).then((ok) => { if (staff && !ok && !s.closed) act(s, s.agent.onControlFailed('hangup')); }));
       }
     }
+  }
+
+  /**
+   * The call on the live strip (live.ts), as path A opens it (server.ts): every agent event is published (captions from
+   * Vapi's conversation, tool steps, state, the emergency), and staff act on the call through its control URL. A staff
+   * note goes to the model as a system message only: its words are quoted, and act() says quoted lines aloud.
+   */
+  function openLive(s: Session, clinic: ClinicConfig, web: boolean) {
+    const live = deps.live;
+    if (!live) return;
+    const { agent, callId } = s;
+    const frontDesk = clinic.routing.find((r) => r.target === 'front_desk')?.uri ?? null;
+    live.open(callId, { clinicId: s.clinicId, channel: web ? 'web' : 'phone', startedAt: deps.now(), frontDesk }, {
+      coach: async (note, by) => {
+        const [first, ...rest] = agent.coach(note, by);
+        const content = first?.type === 'instructions' ? first.content : '';
+        if (!(await control(s, { type: 'add-message', message: { role: 'system', content }, triggerResponseEnabled: false }))) throw new Error('the staff note did not reach the Vapi call');
+        agent.onCoachDelivered();
+        // the emergency script, sent again after a note (CallAgent.coach), is said as any rule's script
+        act(s, rest);
+      },
+      takeOver: async (uri, by) => { act(s, agent.takeOver(uri, by), true); },
+      end: async (by) => { act(s, agent.endByStaff(by), true); },
+      canEnd: () => agent.canEndByStaff(),
+    });
+    agent.observer = (e) => live.publish(callId, e);
   }
 
   /** A command that must reach the call even when its control URL is not known yet: kept until it is. */
@@ -334,6 +371,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
     const s: Session = { agent, clinicId: clinic.id, callId, fed: [], startedAt: Date.now(), notes: [], controlUrl: controlUrlOf(m), closed: false,
       facts: demoLimit ? null : callFactsNote(clinic, callFacts(clinic, deps.now(), from)), refused: !!demoLimit, pending: [], events: deps.callEventsFor?.(clinic.id, callId, 'vapi/tools') ?? NO_EVENTS };
     sessions.set(vapiId, s);
+    openLive(s, clinic, web);
     if (demoLimit) {
       // over a limit: the one fixed line over whatever Vapi's assistant began, then the end; recorded with the limit's code
       agent.demoLimited(demoLimit);
@@ -384,7 +422,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
     if (!clinicId || !CLINIC_ID.test(clinicId) || !(await authorised(clinicId, presentedOf(req.headers)))) return reply.code(401).send({ error: 'unauthorized' });
     let m: VapiMessage;
     try { m = (JSON.parse(req.body as string) as { message?: VapiMessage }).message ?? {}; } catch { return reply.code(400).send({ error: 'invalid body' }); }
-    for (const [id, s] of sessions) if (Date.now() - s.startedAt > SESSION_TTL_MS) { sessions.delete(id); void s.events.close(); }
+    for (const [id, s] of sessions) if (Date.now() - s.startedAt > SESSION_TTL_MS) { sessions.delete(id); deps.live?.end(s.callId, s.agent.state.outcome); void s.events.close(); }
     if (refused.size > 10_000) refused.clear();
     const vapiId = m.call?.id;
 
@@ -392,7 +430,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
     if (vapiId && m.type === 'status-update' && m.status === 'in-progress') await live(vapiId);
     if (vapiId && ((m.type === 'status-update' && m.status === 'ended') || m.type === 'end-of-call-report')) {
       const known = sessions.get(vapiId);
-      if (known) known.over = true;
+      if (known) { known.over = true; deps.live?.end(known.callId, known.agent.state.outcome); }
       await ended(vapiId);
     }
     // money: Vapi has no API for its credit, so a call it would not start for credit is how we hear it ran out (P0)
@@ -434,6 +472,8 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
       const lines = m.artifact?.messages ?? [];
       sync(s, lines);
       s.closed = true;
+      // off the live strip (if Vapi's ended status did not already take it off), with how it ended
+      deps.live?.end(s.callId, s.agent.state.outcome);
       // a change waiting for a yes when the call ended becomes a request for the team (note 45, A4), as on our engines
       await s.agent.onCallEnd();
       // the waits for an answer that needed our tools, and the first audio, from Vapi's own times: as exact as our engines'
