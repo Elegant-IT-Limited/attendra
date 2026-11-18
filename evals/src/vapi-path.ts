@@ -184,8 +184,10 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
     // what the tools handed the voice, as on the planner path: the same facts and words
     const handed = JSON.stringify(outputs).toLowerCase();
     // a phrase in the words Vapi's voice gets (forVapiVoice: "Dr. Vance" is "Doctor Vance" there), so a check means the same
-    for (const phrase of e.returned) check(handed.includes(forVapiVoice(phrase).toLowerCase()), `no tool result gave "${phrase}"`);
-    for (const phrase of e.never_returned) check(!handed.includes(forVapiVoice(phrase).toLowerCase()), `a tool result gave "${phrase}", which it must not`);
+    // (a phrase written in lower case, "dr. elena ruiz", is the title in full too)
+    const vapiWords = (p: string) => forVapiVoice(p).toLowerCase().replace(/\bdra\. /g, 'doctora ').replace(/\bdr\. /g, 'doctor ');
+    for (const phrase of e.returned) check(handed.includes(vapiWords(phrase)), `no tool result gave "${phrase}"`);
+    for (const phrase of e.never_returned) check(!handed.includes(vapiWords(phrase)), `a tool result gave "${phrase}", which it must not`);
     for (const phrase of e.vapi_returned) check(handed.includes(phrase.toLowerCase()), `no tool result gave "${phrase}" on the Vapi path`);
     for (const phrase of e.vapi_never_returned) check(!handed.includes(phrase.toLowerCase()), `a tool result gave "${phrase}" on the Vapi path, which it must not`);
     const said = controls.filter((c) => c.type === 'say').map((c) => String(c.body.content));
