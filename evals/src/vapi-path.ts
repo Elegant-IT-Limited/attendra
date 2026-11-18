@@ -4,7 +4,7 @@
 // each scripted tool step as a tool-calls message, then the end-of-call report. What our rules send back to the call
 // (a script to say, a transfer, the end of the call) goes to a stand-in for the call's control URL. The same outcomes as
 // on our own engines are checked. Never a call to Vapi, never a model.
-import { addDays, type ClinicConfig, localDateOf, type Messenger, weekdayOf, zonedInstant } from '@attendra/core';
+import { addDays, type ClinicConfig, forVapiVoice, localDateOf, type Messenger, weekdayOf, zonedInstant } from '@attendra/core';
 import { CallRepository, createPhiCipher, KnowledgeRepository, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, schema, withClinic } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { HybridKnowledgeBase, LocalEmbedder, seedDemoKnowledge } from '@attendra/knowledge';
@@ -36,6 +36,8 @@ export const VAPI_PATH_SCENARIOS = [
   'vet-visit-not-offered', 'vet-es-visit-not-offered', 'vet-what-visits', 'vet-es-what-visits', 'vet-not-offered-common-question-wins',
   // a demo clinic's emergency: the demo line, recorded as demo_line, never "sent to hospital" (V4, 2026-11-18)
   'demo-emergency-refer-setting', 'demo-emergency-refer-setting-es', 'demo-emergency-handle-open', 'demo-emergency-handle-open-es',
+  // Vapi's voice: "Doctor Nkem Okafor" with no pause, and "8, 8:30 or 9 AM" (V3, 2026-11-18)
+  'vapi-speech-times-and-title', 'vapi-es-speech-times-and-title',
 ] as const;
 
 export interface VapiPathResult { id: string; passed: boolean; failures: string[]; outcome: string; ms: number }
@@ -179,8 +181,11 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
     if (e.emergency_result !== undefined) check(row.emergencyResult === e.emergency_result, `emergency result ${row.emergencyResult ?? 'none'}, expected ${e.emergency_result}`);
     // what the tools handed the voice, as on the planner path: the same facts and words
     const handed = JSON.stringify(outputs).toLowerCase();
-    for (const phrase of e.returned) check(handed.includes(phrase.toLowerCase()), `no tool result gave "${phrase}"`);
-    for (const phrase of e.never_returned) check(!handed.includes(phrase.toLowerCase()), `a tool result gave "${phrase}", which it must not`);
+    // a phrase in the words Vapi's voice gets (forVapiVoice: "Dr. Vance" is "Doctor Vance" there), so a check means the same
+    for (const phrase of e.returned) check(handed.includes(forVapiVoice(phrase).toLowerCase()), `no tool result gave "${phrase}"`);
+    for (const phrase of e.never_returned) check(!handed.includes(forVapiVoice(phrase).toLowerCase()), `a tool result gave "${phrase}", which it must not`);
+    for (const phrase of e.vapi_returned) check(handed.includes(phrase.toLowerCase()), `no tool result gave "${phrase}" on the Vapi path`);
+    for (const phrase of e.vapi_never_returned) check(!handed.includes(phrase.toLowerCase()), `a tool result gave "${phrase}" on the Vapi path, which it must not`);
     if (e.hung_up !== undefined) {
       const byRule = controls.some((c) => c.type === 'end-call' && c.onCallerWords);
       check(byRule === e.hung_up, `the assistant ${byRule ? 'ended the call itself' : 'did not end the call itself'}, expected ${e.hung_up ? 'it to' : 'not to'}`);

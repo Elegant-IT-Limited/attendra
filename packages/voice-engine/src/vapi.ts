@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { voiceToolDefinitions } from '@attendra/agent';
-import { type ClinicConfig, VAPI_DEFAULT_VOICE_ID, VAPI_VOICE_MODEL, type VapiVoiceChoice, vapiDefaultVoice } from '@attendra/core';
+import { type ClinicConfig, forVapiVoice, VAPI_DEFAULT_VOICE_ID, VAPI_VOICE_MODEL, type VapiVoiceChoice, vapiDefaultVoice } from '@attendra/core';
 import { createHash } from 'node:crypto';
 import { toolsVapiPrompt } from './tools-prompt';
 
@@ -134,13 +134,14 @@ export function vapiAssistant(clinic: ClinicConfig, input: VapiAssistantInput) {
   const st = VAPI_DEFAULTS.stopSpeaking;
   return {
     name: input.name ?? `Attendra ${clinic.id}`.slice(0, 40),
-    firstMessage: clinic.greeting,
+    // in the words Vapi's voice says right ("Doctor Maya Chen", "8, 8:30 or 9 AM"): core forVapiVoice (V3)
+    firstMessage: forVapiVoice(clinic.greeting),
     firstMessageMode: VAPI_DEFAULTS.firstMessageMode,
     firstMessageInterruptionsEnabled: VAPI_DEFAULTS.firstMessageInterruptionsEnabled,
     model: {
       ...VAPI_DEFAULTS.model,
       // the same on every call of the location: each call's own facts are sent as it opens (apps/voice vapi.ts)
-      messages: [{ role: 'system', content: toolsVapiPrompt(clinic) }],
+      messages: [{ role: 'system', content: forVapiVoice(toolsVapiPrompt(clinic)) }],
       tools: voiceToolDefinitions(clinic).map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: forVapi(t.parameters) }, server })),
     },
     voice: vapiVoice(clinic.vapi?.voice),

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, type Backend, CallAgent, CallCache, cachedBackend, CallState, type Outbound, type Planner } from '@attendra/agent';
-import { callFacts, type CallEventSink, ClinicConfig, DEMO_BUSY_LINE, DEMO_GOODBYE_LINE, DEMO_LIMITS, DEMO_WRAP_UP_LINE, type DemoLimitCode, isDemoClinic, isVapiTestClinic, maxGapMs, repeatedQuestions, vapiAlertAt } from '@attendra/core';
+import { callFacts, type CallEventSink, ClinicConfig, DEMO_BUSY_LINE, DEMO_GOODBYE_LINE, DEMO_LIMITS, DEMO_WRAP_UP_LINE, type DemoLimitCode, forVapiVoice, fromVapiVoice, isDemoClinic, isVapiTestClinic, maxGapMs, repeatedQuestions, vapiAlertAt } from '@attendra/core';
 import { type Alerter, isVapiCreditEnd, isVapiOpenAiQuotaEnd, type Logger } from '@attendra/observability';
 import { type CallRecorder, callFactsNote, VAPI_EVENTS_PATH, VAPI_SECRET_HEADER } from '@attendra/voice-engine';
 import type { FastifyInstance } from 'fastify';
@@ -139,7 +139,8 @@ const overlaps = (a: { start: number; end: number }, b: { start: number; end: nu
 export function vapiRecordLines(lines: VapiLine[]): { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }[] {
   const out: { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }[] = [];
   for (const l of [...lines].filter(spoken).sort((a, b) => startOf(a) - startOf(b))) {
-    const line = { speaker: whoOf(l), text: (l.message ?? '').trim(), startMs: startOf(l), endMs: endOf(l) };
+    const text = (l.message ?? '').trim();
+    const line = { speaker: whoOf(l), text: whoOf(l) === 'agent' ? fromVapiVoice(text) : text, startMs: startOf(l), endMs: endOf(l) };
     const same = out.findLast((o) => o.speaker === line.speaker && overlaps({ start: o.startMs, end: o.endMs }, { start: line.startMs, end: line.endMs }));
     if (!same) { out.push(line); continue; }
     if (line.text.length > same.text.length) Object.assign(same, line);
@@ -232,9 +233,17 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
     });
   }
 
+  /** A command's words as Vapi's voice should say them (forVapiVoice): a line to say, or a message for its model. */
+  const spokenForVapi = (c: Record<string, unknown>): Record<string, unknown> => {
+    if (typeof c.content === 'string') return { ...c, content: forVapiVoice(c.content) };
+    const m = c.message as { role?: string; content?: unknown } | undefined;
+    return m && typeof m.content === 'string' ? { ...c, message: { ...m, content: forVapiVoice(m.content) } } : c;
+  };
+
   /** Sends one command to the call at Vapi; a failure is logged and said, never thrown into the call. Whether it went. */
-  async function control(s: Session, body: Record<string, unknown>): Promise<boolean> {
+  async function control(s: Session, command: Record<string, unknown>): Promise<boolean> {
     if (!s.controlUrl || s.closed) return false;
+    const body = spokenForVapi(command);
     try {
       // never follows a redirect (a redirect is a failure, like any answer that is not 2xx), and gives up after 5 s
       const res = await post(s.controlUrl, { method: 'POST', redirect: 'error', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) });
@@ -401,7 +410,9 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
       const span = { who: whoOf(l), start: startOf(l), end: endOf(l) };
       if (s.fed.some((f) => f.who === span.who && overlaps(f, span))) continue;
       s.fed.push(span);
-      const text = (l.message ?? '').trim();
+      const said = (l.message ?? '').trim();
+      // the assistant's words with Vapi's spaced times read as clock times ("8 30 AM" is 8:30), for the read-back check
+      const text = l.role === 'user' ? said : fromVapiVoice(said);
       // duration is already in ms: read as seconds, every line ended ~1000x too late, so a caller's yes always fell
       // before the read-back's end and the number was never confirmed (bake-off call, 2026-11-07: verify_caller looped)
       const at = startOf(l);
@@ -454,7 +465,8 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
         act(s, controls);
         // Vapi's voice hears what could not go through the control URL with the result: an emergency script first
         const notes = s.notes.splice(0);
-        results.push({ toolCallId: t.id, result: JSON.stringify(notes.length ? { ...output, say: [notes.join(' '), output.say].filter(Boolean).join(' ') } : output) });
+        // in the words Vapi's voice says right: "Doctor Maya Chen", "8, 8:30 or 9 AM" (forVapiVoice, V3)
+        results.push({ toolCallId: t.id, result: forVapiVoice(JSON.stringify(notes.length ? { ...output, say: [notes.join(' '), output.say].filter(Boolean).join(' ') } : output)) });
       }
       return reply.code(200).send({ results });
     }

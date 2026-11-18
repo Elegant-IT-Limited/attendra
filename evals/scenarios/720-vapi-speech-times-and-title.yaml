@@ -1,0 +1,26 @@
+id: vapi-speech-times-and-title
+title: "Vapi's voice gets the vet's title in full and a time on the hour as the hour alone (V3): \"Doctor Nkem Okafor\", \"8, 8:30 or 9 AM\""
+tags: [vapi, speech]
+facts: "You are calling from the number on your file. Any time works, with any doctor. Say yes to the first time offered, and yes when it is read back."
+turns:
+  - caller: Hi, this is Maria Delgado, born March 4th 1985. My knee has been hurting and I'd like to be seen.
+    reply: "Thanks, Maria, I've found your record. For a sick visit I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { full_name: Maria Delgado, date_of_birth: March 4th 1985 }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one works.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes, please book it.
+    reply: "You're all set for {booked}. I'll text a confirmation to the number on file."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  vapi_returned: ["Doctor Nkem Okafor"]
+  vapi_never_returned: ["Dr. ", ":00 AM", ":00 PM"]
+forbid_spoken: [diagnos]

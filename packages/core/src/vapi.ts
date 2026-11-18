@@ -123,3 +123,34 @@ export const listedVapiVoice = (voiceId: string) => VAPI_VOICES.find((v) => v.vo
  */
 export const vapiTestCallLine = (number: string | null) =>
   `This test call uses Attendra's engine. ${number ? `To hear Vapi, call ${number}.` : 'To hear Vapi, call the location\'s number.'}`;
+
+/** A time's part of the day, after it: "AM", "p.m.", "de la mañana". */
+const PART_OF_DAY = String.raw`(?:[AaPp]\.?\s?[Mm]\.?(?![A-Za-z])|de la mañana|de la tarde|de la noche|del mediodía)`;
+/** The rest of a run of times up to its part of the day: ", 8:30 or 9:00 AM", " o 9:20 de la mañana", " PM". */
+const REST_OF_RUN = String.raw`(?=(?:(?:,?\s+(?:or|and|o|y)\s+|,\s*)(?:1[0-2]|[1-9])(?:[: ][0-5]\d)?)*\s*${PART_OF_DAY})`;
+const ON_THE_HOUR = new RegExp(String.raw`(?<![\d:.])(1[0-2]|[1-9]):00(?![\d:])${REST_OF_RUN}`, 'g');
+const SPACED_TIME = new RegExp(String.raw`(?<![\d:.])(1[0-2]|[1-9]) ([0-5]\d)(?![\d:])${REST_OF_RUN}`, 'g');
+
+/**
+ * Text Vapi's voice speaks, as a front desk says it (V3, 2026-11-18). Vapi's voice formatting and its sentence chunks
+ * rewrote what we sent: "with Dr. Maya Chen" was said "with Doctor. Maya Chen", a pause after the title (the period ends
+ * a chunk), and "8:00, 8:30 or 9:00 AM" was said "8 8 30, or 9 AM". So what reaches Vapi's model and voice (its prompt and
+ * greeting, each tool result, each line said through the control URL, the call's facts) has the title in full, with no
+ * period ("Doctor Maya Chen", "Doctora Ana Ruiz"), and a time on the hour as the hour alone in a run of times that ends in
+ * its part of the day ("8, 8:30 or 9 AM", "a las 8, 8:40 o 9 de la mañana"). A 24-hour time ("08:00 to 12:00") and an id
+ * are left as they are. Our engines' text is unchanged: OpenAI's voices say it right.
+ */
+export function forVapiVoice(text: string): string {
+  return text
+    .replace(/\bDra\.(?=\s+\p{Lu})/gu, 'Doctora')
+    .replace(/\bDr\.(?=\s+\p{Lu})/gu, 'Doctor')
+    .replace(ON_THE_HOUR, '$1');
+}
+
+/**
+ * The assistant's words as Vapi reports them, with a time its voice formatting wrote with a space ("8 30 AM") as the
+ * clock time it is ("8:30 AM"): the read-back check (core saysSlot) and the transcript read times with a colon.
+ */
+export function fromVapiVoice(text: string): string {
+  return text.replace(SPACED_TIME, '$1:$2');
+}
