@@ -150,7 +150,7 @@ describe('booking over the phone', () => {
     // a pet: the same owner, pet and phone again use no try either
     const vet = await w.call(null, { clinic: RIVERBEND_CLINIC });
     await vet.delegate([{ tool: 'verify_caller', args: { owner_name: 'Jamie Cole', pet_name: 'Pepper', phone: '+17205550165' } }]); // read back first
-    vet.assistant("That's 720-555-0165?");
+    vet.assistant("That's 7 2 0, 5 5 5, 0 1 6 5?");
     vet.caller('Yes.');
     for (let i = 0; i < 3; i++) await vet.delegate([{ tool: 'verify_caller', args: { owner_name: 'Jamie Cole', pet_name: 'Pepper', phone: '+17205550165' } }]);
     await vet.delegate([{ tool: 'verify_caller', args: { owner_name: 'jamie cole', pet_name: 'PEPPER', phone: '(720) 555-0165' } }]);
@@ -361,11 +361,11 @@ describe('safety', () => {
     const c = await w.call(null, { clinic: RIVERBEND_CLINIC });
     c.caller('This is Jamie, about Pepper. My number is 720 555 0165.');
     expect((await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Jamie', pet_name: 'Pepper', phone: '+17205550165' } }])).errors).toEqual(['confirm_number']);
-    c.assistant("That's 720-555-0165?");
+    c.assistant("That's 7 2 0, 5 5 5, 0 1 6 5?");
     c.caller('Yes.');
     const one = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Jamie', pet_name: 'Pepper', phone: '+17205550165' } }]);
     // not refused for a missing last name; the number has no owner on file, so the one answer for an unconfirmed number (2026-11-09)
-    expect(one.errors).toEqual(['number_not_opened']);
+    expect(one.errors).toEqual(['number_again']);
     expect(JSON.stringify(one.results)).not.toMatch(/last name/);
   });
 

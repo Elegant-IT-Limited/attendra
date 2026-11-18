@@ -1,0 +1,17 @@
+id: vet-es-volunteered-last-four-one-step
+title: "In Spanish: the owner's name, the pet's name and the last four digits from another phone, before anyone asked, find the pet in one step (call quality Q1, 2026-11-18)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550199"
+tags: [no-demo, call-quality, identity, es]
+turns:
+  - caller: Hola, soy Carmen Ortiz. Mi perra es Luna. El número termina en 0174.
+    reply: "Encontré a Luna, su perra."
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna, phone: null, phone_last4: "0174" }
+expect:
+  outcome: abandoned
+  verified: true
+  language: es
+  refusals: []
+  never_returned: ["720-555-0174", "Ortiz"]

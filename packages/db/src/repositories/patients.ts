@@ -204,8 +204,10 @@ export class PostgresPatientDirectory implements PatientDirectory {
    * then decrypts only those rows' first names to compare the pet's, as findPet does. Found only when exactly one pet
    * in exactly one household (one number) matches: two households sharing the last four digits with a pet of that name
    * are 'ambiguous', and the caller goes to the team. Audited like findPet.
+   * With `ownerName` (four digits the caller gave before anyone asked, 2026-11-18): only pets whose owner on file is that
+   * name, compared as the owner check compares it, so four digits and a pet's name alone never open a profile.
    */
-  async findPetByLastFour(clinicId: string, lastFour: string, petName: string, callId: string): Promise<PatientLookup> {
+  async findPetByLastFour(clinicId: string, lastFour: string, petName: string, callId: string, ownerName?: string | null): Promise<PatientLookup> {
     const digits = lastFour.replace(/\D/g, '');
     if (digits.length !== PHONE_SUFFIX_DIGITS) return { status: 'not_found' };
     return withClinic(this.db, clinicId, async (tx) => {
@@ -215,7 +217,10 @@ export class PostgresPatientDirectory implements PatientDirectory {
       const pet = firstName(petName);
       const named = rows.map((r) => ({ r, name: firstName(this.cipher.decrypt(r.firstNameEnc, ctx('first_name'))) }));
       const exact = named.filter((x) => x.name === pet);
-      const matches = (exact.length ? exact : named.filter((x) => soundsLike(pet, x.name))).map((x) => x.r);
+      let matches = (exact.length ? exact : named.filter((x) => soundsLike(pet, x.name))).map((x) => x.r);
+      if (ownerName != null) {
+        matches = matches.filter((r) => r.guardianNameEnc && sameOwnerName(ownerName, this.cipher.decrypt(r.guardianNameEnc, ctx('guardian_name'))));
+      }
       if (!matches.length) return { status: 'not_found' } as const;
       const households = new Set(matches.map((r) => r.phoneHash ?? r.id));
       if (matches.length > 1 || households.size > 1) return { status: 'ambiguous' } as const;

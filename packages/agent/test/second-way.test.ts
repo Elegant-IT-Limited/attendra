@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { RIVERBEND_CLINIC } from '@attendra/core';
+import { PACKS, RIVERBEND_CLINIC } from '@attendra/core';
 import { seedRiverbend } from '@attendra/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { world } from './support';
@@ -21,8 +21,8 @@ describe('a spoken country prefix', () => {
     c.caller('It\'s 52 720 555 0174.'); // the caller says the number first, as on a call (note 52 B5)
     const out = await c.delegate([verify('52 720 555 0174', 'Luna')]);
     expect(out.errors).toEqual(['confirm_number']);
-    expect(said(out)).toContain("That's 720-555-0174?");
-    c.assistant("That's 720-555-0174?");
+    expect(said(out)).toContain("That's 7 2 0, 5 5 5, 0 1 7 4?");
+    c.assistant("That's 7 2 0, 5 5 5, 0 1 7 4?");
     c.caller('Yes.');
     const named = await c.delegate([verify('52 720 555 0174', 'Luna')]);
     expect(named.errors).toEqual(['owner_check']);
@@ -39,11 +39,11 @@ describe('after two wrong read-backs', () => {
     const c = await w.call(null, { clinic, channel: 'web' });
     c.caller('It\'s 720 555 0177.'); // the caller says the number first, as on a call (note 52 B5)
     await c.delegate([verify('720 555 0177', 'Luna')]);
-    c.assistant("That's 720-555-0177?");
+    c.assistant("That's 7 2 0, 5 5 5, 0 1 7 7?");
     c.caller('No, it is 720 555 0178.');
     const second = await c.delegate([verify('720 555 0178', 'Luna')]);
     expect(second.errors).toEqual(['confirm_number']);
-    c.assistant("That's 720-555-0178?");
+    c.assistant("That's 7 2 0, 5 5 5, 0 1 7 8?");
     c.caller('No, sorry.');
     c.caller('It\'s 720 555 0179.'); // the caller says the number first, as on a call (note 52 B5)
     const third = await c.delegate([verify('720 555 0179', 'Luna')]);
@@ -66,10 +66,10 @@ describe('after two wrong read-backs', () => {
     const c = await w.call(null, { clinic, channel: 'web' });
     c.caller('It\'s 720 555 0175.'); // the caller says the number first, as on a call (note 52 B5)
     await c.delegate([verify('720 555 0175', 'Luna')]);
-    c.assistant("That's 720-555-0175?");
+    c.assistant("That's 7 2 0, 5 5 5, 0 1 7 5?");
     c.caller('No, it ends 0174.');
     await c.delegate([verify('720 555 0174', 'Luna')]);
-    c.assistant("That's 720-555-0174?");
+    c.assistant("That's 7 2 0, 5 5 5, 0 1 7 4?");
     c.caller('Yes, that is it.');
     const out = await c.delegate([verify('720 555 0174', 'Luna')]);
     expect(out.errors).toEqual(['owner_check']);
@@ -82,10 +82,10 @@ describe('after two wrong read-backs', () => {
     await w.backend.patients.create(RIVERBEND_CLINIC.id, { firstName: 'Mochi', lastName: 'Quinn', dob: '2021-01-01', phone: '+13035550172', guardianName: 'Avery Quinn', gender: 'female', species: 'cat' });
     c.caller('It\'s 720 555 0170.'); // the caller says the number first, as on a call (note 52 B5)
     await c.delegate([verify('720 555 0170', 'Mochi')]);
-    c.assistant("That's 720-555-0170?");
+    c.assistant("That's 7 2 0, 5 5 5, 0 1 7 0?");
     c.caller('No.');
     await c.delegate([verify('720 555 0170', 'Mochi')]);
-    c.assistant("That's 720-555-0170?");
+    c.assistant("That's 7 2 0, 5 5 5, 0 1 7 0?");
     c.caller('No, 720 555 0171.');
     const ask = await c.delegate([verify('720 555 0171', 'Mochi')]);
     expect(ask.errors).toEqual(['ask_last_four']);
@@ -99,10 +99,11 @@ describe('after two wrong read-backs', () => {
     expect((await c.delegate([verify(null, 'Mochi', '0172')])).errors).toEqual(['not_verified']);
   });
 
-  it('is never a way to search before the backend asked for it', async () => {
+  it('given before anyone asked, with no owner\'s name, is never a way to search: the owner\'s name is asked first (2026-11-18)', async () => {
     const c = await w.call(null, { clinic, channel: 'web' });
     const out = await c.delegate([verify(null, 'Luna', '0174')]);
-    expect(out.errors).toEqual(['last_four_not_asked']);
+    expect(out.errors).toEqual(['owner_for_last_four']);
+    expect(said(out)).toContain(PACKS.en.ownerNameQuestion);
     expect(c.state.verifiedPatient).toBeNull();
   });
 });
@@ -112,12 +113,12 @@ describe('a number with no profile', () => {
     const c = await w.call(null, { clinic, channel: 'web' });
     c.caller('It\'s 720 555 0190.'); // the caller says the number first, as on a call (note 52 B5)
     await c.delegate([verify('720 555 0190')]);
-    c.assistant("That's 720-555-0190?");
+    c.assistant("That's 7 2 0, 5 5 5, 0 1 9 0?");
     c.caller('Yes.');
     const asked = await c.delegate([verify('720 555 0190')]);
     expect(asked.errors).toEqual(['owner_check']);
     const out = await c.delegate([{ ...verify('720 555 0190'), args: { ...verify('720 555 0190').args, owner_name: 'Jordan Lee' } }]);
-    expect(out.errors).toEqual(['number_not_opened']);
+    expect(out.errors).toEqual(['number_again']);
     expect(said(out)).not.toContain("I don't see a profile under that number.");
     expect(c.state.lastFourAsked).toBeNull();
   });
@@ -140,7 +141,7 @@ describe('a number with no profile', () => {
     c.caller('I want to register my new puppy.');
     c.caller('It\'s 720 555 0191.'); // the caller says the number first, as on a call (note 52 B5)
     await c.delegate([verify('720 555 0191')]);
-    c.assistant("That's 720-555-0191?");
+    c.assistant("That's 7 2 0, 5 5 5, 0 1 9 1?");
     c.caller('Yes.');
     const out = await c.delegate([verify('720 555 0191')]);
     expect(said(out)).not.toContain('last four digits');
@@ -150,11 +151,11 @@ describe('a number with no profile', () => {
     const c = await w.call(null, { clinic, channel: 'web' });
     c.caller('It\'s 720 555 0177.'); // the caller says the number first, as on a call (note 52 B5)
     await c.delegate([verify('720 555 0177', 'Luna')]);
-    c.assistant("That's 720-555-0177?");
+    c.assistant("That's 7 2 0, 5 5 5, 0 1 7 7?");
     c.caller('No, ese no es.');
     c.caller('It\'s 720 555 0178.'); // the caller says the number first, as on a call (note 52 B5)
     await c.delegate([verify('720 555 0178', 'Luna')]);
-    c.assistant("That's 720-555-0178?");
+    c.assistant("That's 7 2 0, 5 5 5, 0 1 7 8?");
     c.caller('No, ese tampoco.');
     c.assistant('¿Cuáles son los últimos cuatro dígitos del número de la ficha?');
     c.caller('0174; Luna.');

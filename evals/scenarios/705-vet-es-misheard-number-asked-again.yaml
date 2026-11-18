@@ -1,0 +1,32 @@
+id: vet-es-misheard-number-asked-again
+title: "In Spanish: a spoken number heard one digit wrong gets one more try, read back digit by digit, and the right one opens the profile (call quality Q1, 2026-11-18)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550199"
+tags: [no-demo, call-quality, identity, es]
+turns:
+  - caller: Hola, soy Carmen, llamo por Luna. Mi número es 720 555 0164.
+    reply: "¿Es el 7 2 0, 5 5 5, 0 1 6 4?"
+    delegate:
+      - verify_caller: { owner_name: Carmen, pet_name: Luna, phone: "720 555 0164" }
+  - assistant: "¿Es el 7 2 0, 5 5 5, 0 1 6 4?"
+  - caller: Sí.
+    reply: "No pude abrir una ficha con eso. ¿Me puede dar otra vez el número de teléfono completo de la ficha de Luna, y el nombre del dueño?"
+    delegate:
+      - verify_caller: { owner_name: Carmen, pet_name: Luna, phone: "720 555 0164" }
+  - assistant: "No pude abrir una ficha con eso. ¿Me puede dar otra vez el número de teléfono completo de la ficha de Luna, y el nombre del dueño?"
+  - caller: Perdón, es el 720 555 0174, y soy Carmen Ortiz.
+    reply: "¿Es el 7 2 0, 5 5 5, 0 1 7 4?"
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna, phone: "720 555 0174" }
+  - assistant: "¿Es el 7 2 0, 5 5 5, 0 1 7 4?"
+  - caller: Sí, ese es.
+    reply: "Encontré a Luna, su perra."
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna, phone: "720 555 0174" }
+expect:
+  outcome: abandoned
+  verified: true
+  language: es
+  refusals: [confirm_number, number_again, confirm_number]
+  never_returned: ["No puedo abrir una ficha"]

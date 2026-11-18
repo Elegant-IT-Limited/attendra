@@ -1,0 +1,20 @@
+id: vet-text-caller-asks-is-consent
+title: "The caller asking for the text is their consent: 'Can you send me the text?' sends it, never 'I can't send it right now' (call quality Q2, 2026-11-18)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-quality, texts, clear-yes]
+turns:
+  - caller: Where are you? What's the address?
+    reply: "We're at 88 Riverbend Road in Denver."
+    delegate:
+      - get_clinic_info: { question: where is the clinic address }
+  - caller: Can you send me the text?
+    reply: "I'm texting it to you now."
+    delegate:
+      - send_text: { kind: directions, ref: null, to: null }
+expect:
+  outcome: info
+  refusals: []
+  sms_sent: 1
+  sms_templates: [directions]
+  never_returned: ["no clear yes", "can't send"]

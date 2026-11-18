@@ -18,7 +18,7 @@ interface PendingBase {
 }
 
 /** A text the assistant offered: what, and where, and when the question was spoken. */
-export interface TextOffer { kind: string; ref: string | null; to: 'this' | 'file'; offeredAtMs: number; askedAtMs: number | null }
+export interface TextOffer { kind: string; ref: string | null; to: 'this' | 'file'; offeredAtMs: number; askedAtMs: number | null; /** An unclear answer was asked about once more (call quality Q2). */ reasked?: boolean }
 
 /** The details a caller gives about who they are, by the names the tools take them in, and how the state line says each. */
 const DETAILS: Record<string, string> = {
@@ -87,6 +87,8 @@ export class CallState {
   lastFourAsked: 'wrong_readbacks' | 'no_profile' | null = null;
   /** The numbers (digits) the call found no pets on: a pet is never looked up on one again (CB11, 2026-11-17). */
   readonly numbersWithoutPets = new Set<string>();
+  /** After a lookup that found nothing, the whole number was asked for once more (2026-11-18); a second miss goes to the team. */
+  numberAskedAgain = false;
   /** The pet was found by the last four digits and its name: the booking tells the team so. */
   foundByLastFour = false;
   /** The digits of a number the caller gave that is not a whole one for the clinic's country: read back once, then kept as given. */

@@ -1,0 +1,17 @@
+id: vet-volunteered-last-four-one-step
+title: "The owner's name, the pet's name and 'the number ends 0174' from another phone, before anyone asked, find the pet in one step (call quality Q1, 2026-11-18)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550199"
+tags: [no-demo, call-quality, identity]
+turns:
+  - caller: Hi, this is Carmen Ortiz. My pet is Luna. The number is 0174.
+    reply: "I found Luna, your dog."
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna, phone: null, phone_last4: "0174" }
+expect:
+  outcome: abandoned
+  verified: true
+  refusals: []
+  returned: ["I found Luna, your dog."]
+  never_returned: ["720-555-0174", "Ortiz"]

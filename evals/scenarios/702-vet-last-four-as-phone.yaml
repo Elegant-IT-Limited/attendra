@@ -1,0 +1,17 @@
+id: vet-last-four-as-phone
+title: "'It's a different number' with only its last four digits passed as the phone is searched as the last four, never 'I can't open a profile' (call quality Q1, 2026-11-18)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550199"
+tags: [no-demo, call-quality, identity]
+turns:
+  - caller: Hi, this is Carmen Ortiz, calling about Luna.
+    reply: "Is Luna's profile under the number you're calling from, ending 0199, or should I use a different phone number?"
+  - caller: It's a different phone number, not this one. It ends 0174.
+    reply: "I found Luna, your dog."
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna, phone: "0174" }
+expect:
+  outcome: abandoned
+  verified: true
+  refusals: []

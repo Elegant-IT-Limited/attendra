@@ -37,7 +37,7 @@ const ASKS_FOR: Record<Language, RegExp> = {
  * Words that say which language a sentence is in, for switching a call (after `normalise`): common words of each
  * language that the other does not use. Words both share ("no", "me", "a", "si") are in neither.
  */
-const SENTENCE_WORDS: Record<Language, Set<string>> = {
+export const SENTENCE_WORDS: Record<Language, Set<string>> = {
   en: new Set('the my your his her our is are was were i i\'m im it it\'s its this that these and to for of in on at with have has had need want would could can please thanks thank hi hello yes yeah what when where how book appointment dog cat number call today tomorrow about'.split(' ')),
   es: new Set('el la los las de del que por para con un una unos unas mi mis su sus se le lo les y en es son soy esta estoy esto ese esa tengo tiene quiero quisiera necesito necesita puede puedo podria podemos cita citas gracias hola buenos buenas dias tardes noches senor senora manana hoy usted ustedes ya muy pero como cuando donde porque tambien perro perra gato gata mascota mascotas perros gatos numero termina llama llamar ayuda favor aqui ahora otra otro'.split(' ')),
 };
