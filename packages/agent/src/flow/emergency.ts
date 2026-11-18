@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type EmergencyRoute, isClearYes, normalise } from '@attendra/core';
+import { askedToHangUp, type EmergencyRoute, isClearYes, normalise, saidGoodbye } from '@attendra/core';
 
 /**
  * An animal's emergency on a call, as a small state machine in code (batch 1b; FRIDAY notes, Vetra call 29b3d0a6):
@@ -58,7 +58,7 @@ export type EmergencyAnswer = 'yes' | 'unsure' | 'clear_no' | 'bare_not' | null;
 // accents folded and lower case (normalise): "sí" is "si", and "no sé" (I don't know) reads like "no se" in "no se le
 // hincha" (it isn't swelling): only the first, by what follows it
 const UNSURE = /\b(?:not sure|i'?m not sure|i don'?t know|i dunno|dunno|maybe|possibly|i guess|hard to say|no (?:lo )?se(?=$|,| si\b| que\b| bien\b| nada\b| muy\b| la verdad\b)|no estoy segur[oa]|quizas|tal vez|a lo mejor)\b/;
-const YES = /^(?:yes|yeah|yep|yup|ya|i think so|it is|(?:she|he|it|they) (?:is|are|still)|please help|help|right now|si|claro|creo que si|ahora mismo|necesito ayuda|ayuda)\b(?! (?:not|no longer) (?:an? )?(?:emergency|urgent))|\b(?:still (?:is|can'?t|cannot|not|having|swelling|bleeding)|getting worse|worse now|sigue (?:igual|mal|sin)|peor)\b/;
+const YES = /^(?:yes|yeah|yep|yup|ya|i think so|it is|(?:she|he|it|they) (?:is|are|still)|please help|help|right now|si|claro|creo que si|ahora mismo|necesito ayuda|ayuda)\b(?! (?:not|no longer) (?:an? )?(?:emergency|urgent))|\b(?:still (?:is|can'?t|cannot|not|having|swelling|bleeding)|getting worse|worse now|sigue (?:igual|mal|sin)|peor)\b|\b(?:esta|estan|sigue|siguen) (?!bien\b)\w+(?:ando|iendo)\b(?! bien\b)|\b(?:she|he|it|they)(?:'?s| is| are|'?re) (?:still )?(?!fine\b|ok\b|okay\b|good\b|doing\b)\w+ing\b/;
 /** "It's not an emergency", alone: it denies the word, not the sign. */
 // "an" is optional: "this is not emergency anymore" (a test call, 2026-11-10, said it twice and stayed held)
 const NOT_AN_EMERGENCY = /\b(?:not (?:an? )?emergency|isn'?t (?:an? )?emergency|no longer (?:an? )?emergency|no emergency|not urgent|no longer urgent|no es (?:una )?emergencia|no es urgente|ya no es (?:una )?emergencia|ya no es urgente)\b/;
@@ -169,3 +169,13 @@ export function saysSevere(normalised: string): boolean {
 }
 /** Mild, in the caller's words about the sign: once, a little, it stopped. */
 export const MILD = /\b(?:once|just once|one time|a little|a bit|not much|not really|mild|small|stopped|it'?s stopped|seems fine|una vez|solo una vez|un poco|poquito|leve|ya paro|ya se le paso)\b/;
+
+/**
+ * After an emergency line has been said: the caller is done ("ya está bien, gracias", "thanks, bye", "hang up"), not
+ * telling us the pet is fine (call quality Q9, 2026-11-18: the call went on to booking and identity instead).
+ */
+export function doneAfterEmergency(words: string): boolean {
+  const t = normalise(words).replace(/[¿?¡!.,;:]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return askedToHangUp(t) || saidGoodbye(t) || /\b(?:gracias|thanks|thank you|that'?s all|eso es todo|nada mas)\b/.test(t);
+}
+

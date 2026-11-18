@@ -12,10 +12,10 @@ turns:
     delegate:
       - verify_caller: { owner_name: Linh, pet_name: null, phone: null }
   - caller: El 720 555 0172.
-    reply: "¿Es el 720-555-0172?"
+    reply: "¿Es el 7 2 0, 5 5 5, 0 1 7 2?"
     delegate:
       - verify_caller: { owner_name: Linh, pet_name: null, phone: "720 555 0172" }
-  - assistant: "¿Es el 720-555-0172?"
+  - assistant: "¿Es el 7 2 0, 5 5 5, 0 1 7 2?"
   - caller: Sí, ese.
     reply: "Gracias, Linh. ¿Es para Biscuit o para Mochi, o para una mascota nueva?"
     delegate:

@@ -43,10 +43,11 @@ describe('an owner caller ID knows picks from their pets', () => {
       wrong.caller(lang === 'es' ? 'Es el 720 555 0172.' : 'It is 720 555 0172.');
       const readBack = await wrong.delegate([{ tool: 'verify_caller', args: { owner_name: 'Jordan Lee', pet_name: null, phone: '720 555 0172' } }]);
       expect(readBack.errors).toEqual(['confirm_number']);
-      wrong.assistant(lang === 'es' ? '¿Es el 720-555-0172?' : "That's 720-555-0172?");
+      wrong.assistant(lang === 'es' ? '¿Es el 7 2 0, 5 5 5, 0 1 7 2?' : "That's 7 2 0, 5 5 5, 0 1 7 2?");
       wrong.caller(lang === 'es' ? 'Sí.' : 'Yes.');
       const out = await wrong.delegate([{ tool: 'verify_caller', args: { owner_name: 'Jordan Lee', pet_name: null, phone: '720 555 0172' } }]);
-      expect(out.errors).toEqual(['number_not_opened']);
+      // the first miss asks for the whole number and the owner's name once more (2026-11-18), still naming nothing
+      expect(out.errors).toEqual(['number_again']);
       expect(handed(out)).not.toMatch(/biscuit|mochi|linh/i);
       expect(out.results[0]!.data.pets_on_number).toBeUndefined();
       expect(wrong.state.memory.verified).toBeNull();
@@ -59,12 +60,12 @@ describe('an owner caller ID knows picks from their pets', () => {
       const nameless = await w.call(null, { clinic, channel: 'web' });
       nameless.caller(lang === 'es' ? 'Es el 720 555 0172.' : 'It is 720 555 0172.');
       await nameless.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: null, phone: '720 555 0172' } }]);
-      nameless.assistant("That's 720-555-0172?");
+      nameless.assistant("That's 7 2 0, 5 5 5, 0 1 7 2?");
       nameless.caller('Yes.');
       const asked = await nameless.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: null, phone: '720 555 0172' } }]);
       expect(asked.errors).toEqual(['owner_check']);
       const still = await nameless.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: null, phone: '720 555 0172' } }]);
-      expect(still.errors).toEqual(['number_not_opened']);
+      expect(still.errors).toEqual(['number_again']);
       expect(handed(still)).not.toMatch(/biscuit|mochi|linh/i);
       expect(await audited('patient.pets_on_number.read', nameless.callId)).toBe(0);
     }
@@ -94,10 +95,12 @@ describe('an owner caller ID knows picks from their pets', () => {
       const client = await said('720 555 0172', '720-555-0172', 'Jordan Lee');
       const stranger = await said('720 555 0199', '720-555-0199', 'Jordan Lee');
       for (const r of [client, stranger]) {
-        expect(r.out.errors).toEqual(['number_not_opened']);
+        // the first miss: the whole number and the owner's name asked once more (2026-11-18); the second: the one answer
+        expect(r.out.errors).toEqual(['number_again']);
+        expect(handed(r.out)).toContain(PACKS[lang].numberAgain({ pet: null }));
         expect(r.named.errors).toEqual(['number_not_opened']);
-        expect(handed(r.out)).toContain(PACKS[lang].numberNotOpened);
-        expect(handed(r.out)).toContain('create_callback');
+        expect(handed(r.named)).toContain(PACKS[lang].numberNotOpened);
+        expect(handed(r.named)).toContain('create_callback');
         expect(handed(r.out)).not.toMatch(/biscuit|mochi|linh|don't see|no veo/i);
         expect(r.request.errors).toEqual([null]);
         expect(r.c.state.verifiedPatient).toBeNull();
@@ -132,9 +135,9 @@ describe('an owner caller ID knows picks from their pets', () => {
     web.caller('It is 720 555 0172.');
     const readBack = await web.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: null, phone: '720 555 0172' } }]);
     expect(readBack.errors).toEqual(['confirm_number']);
-    expect(handed(readBack)).toContain("That's 720-555-0172?");
+    expect(handed(readBack)).toContain("That's 7 2 0, 5 5 5, 0 1 7 2?");
     expect(await audited('patient.pets_on_number.read', web.callId)).toBe(0);
-    web.assistant("That's 720-555-0172?");
+    web.assistant("That's 7 2 0, 5 5 5, 0 1 7 2?");
     web.caller('Yes.');
     const out = await web.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: null, phone: '720 555 0172' } }]);
     expect(out.results[0]!.data).toMatchObject({ pets_on_number: ['Biscuit', 'Mochi'], more: false });
@@ -147,11 +150,11 @@ describe('an owner caller ID knows picks from their pets', () => {
     const unknown = await w.call(null, { clinic, channel: 'web' });
     unknown.caller('It is 720 555 0199.');
     await unknown.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: null, phone: '720 555 0199' } }]);
-    unknown.assistant("That's 720-555-0199?");
+    unknown.assistant("That's 7 2 0, 5 5 5, 0 1 9 9?");
     unknown.caller('Yes, that is right.');
     const none = await unknown.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: null, phone: '720 555 0199' } }]);
-    expect(none.errors).toEqual(['number_not_opened']);
-    expect(handed(none)).toContain(PACKS.en.numberNotOpened);
+    expect(none.errors).toEqual(['number_again']);
+    expect(handed(none)).toContain(PACKS.en.numberAgain({ pet: null }));
     expect(handed(none)).not.toMatch(/biscuit|mochi|don't see a profile/i);
   });
 

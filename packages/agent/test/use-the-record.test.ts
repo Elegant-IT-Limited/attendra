@@ -46,7 +46,7 @@ describe('a number the caller says', () => {
     const c = await w.call(null, { clinic, channel: 'web' });
     c.caller('It is 720 555 0172.');
     await c.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: null, phone: '720 555 0172' } }]);
-    c.assistant("That's 720-555-0172?");
+    c.assistant("That's 7 2 0, 5 5 5, 0 1 7 2?");
     c.caller('Yes.');
     return c;
   }
@@ -70,7 +70,8 @@ describe('a number the caller says', () => {
     c.assistant('And the owner\'s name on that profile?');
     c.caller('Alex.');
     const pick = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Alex', pet_name: null, phone: '720 555 0172' } }]);
-    expect(pick.errors).toEqual(['number_not_opened']);
+    // the first miss asks for the whole number and the owner's name once more (2026-11-18); the next is the one answer
+    expect(pick.errors).toEqual(['number_again']);
     expect(pick.results[0]!.data.pets_on_number).toBeUndefined();
     expect(handed(pick)).not.toMatch(/linh|nguyen|thanks,|biscuit|mochi/i);
     c.caller('Biscuit.');
@@ -93,8 +94,12 @@ describe('a number the caller says', () => {
     expect(asked.errors).toEqual(['owner_check']);
     c.caller('Why do you need that? It\'s for Biscuit.');
     const out = await c.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: 'Biscuit', phone: '720 555 0172' } }]);
-    expect(out.errors).toEqual(['number_not_opened']);
+    expect(out.errors).toEqual(['number_again']);
     expect(c.state.verifiedPatient).toBeNull();
+    const still = await c.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: 'Biscuit', phone: '720 555 0172' } }]);
+    expect(still.errors).toEqual(['owner_check']);
+    const last = await c.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: 'Biscuit', phone: '720 555 0172' } }]);
+    expect(last.errors).toEqual(['number_not_opened']);
     expect(c.state.memory.nameCheck).toMatchObject({ result: 'not_given' });
     expect((await c.delegate([{ tool: 'visit_summary', args: {} }])).errors).toEqual(['not_verified']);
   });

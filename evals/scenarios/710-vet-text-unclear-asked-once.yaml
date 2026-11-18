@@ -1,0 +1,26 @@
+id: vet-text-unclear-asked-once
+title: "An answer to the text offer that is neither yes nor no is asked about once more, plainly, never taken as a no; the yes then sends it (call quality Q2, 2026-11-18)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-quality, texts, clear-yes]
+turns:
+  - caller: Where are you? What's the address?
+    reply: "We're at 88 Riverbend Road in Denver. Would you like me to text that to the number you're calling from?"
+    delegate:
+      - get_clinic_info: { question: where is the clinic address }
+      - send_text: { kind: directions, ref: null, to: null }
+  - assistant: "We're at 88 Riverbend Road in Denver. Would you like me to text that to the number you're calling from?"
+  - caller: Hello
+    reply: "Just to be sure: shall I text it to the number you're calling from? A simple yes is fine."
+    delegate:
+      - send_text: { kind: directions, ref: null, to: null }
+  - assistant: "Just to be sure: shall I text it to the number you're calling from? A simple yes is fine."
+  - caller: Yes.
+    reply: "I'm texting it to you now."
+    delegate:
+      - send_text: { kind: directions, ref: null, to: null }
+expect:
+  outcome: info
+  refusals: [consent_required, text_yes_again]
+  sms_sent: 1
+  never_returned: ["won't send"]

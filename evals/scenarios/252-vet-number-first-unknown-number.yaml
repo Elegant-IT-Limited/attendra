@@ -10,10 +10,10 @@ turns:
   - caller: Hi, I'd like to book a check-up for my dog.
     reply: "Sure. What phone number is your pet's profile under?"
   - caller: 720 555 0186.
-    reply: "That's 720-555-0186?"
+    reply: "That's 7 2 0, 5 5 5, 0 1 8 6?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: null, phone: "720 555 0186" }
-  - assistant: "That's 720-555-0186?"
+  - assistant: "That's 7 2 0, 5 5 5, 0 1 8 6?"
   - caller: Yes.
     reply: "And the owner's name on that profile?"
     delegate:
@@ -36,6 +36,6 @@ expect:
   verified: true
   refusals: [confirm_number, owner_check]
   bookings_created: 1
-  returned: ["That's 720-555-0186?", "And the owner's name on that profile?"]
+  returned: ["That's 7 2 0, 5 5 5, 0 1 8 6?", "And the owner's name on that profile?"]
   never_returned: ["I don't see a profile under that number."]
   household: { phone: "+17205550186", names: [Rex] }

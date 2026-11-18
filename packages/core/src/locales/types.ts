@@ -154,6 +154,8 @@ export interface LanguagePack {
   noPetsOnNumber: string;
   /** A number the caller said, not confirmed by the owner's name (or with no profile on it): the one answer for both, so a caller can't tell whether the number belongs to a client (2026-11-09). */
   numberNotOpened: string;
+  /** After a lookup that found nothing, the whole number and the owner's name asked once more (2026-11-18). */
+  numberAgain: (v: { pet: string | null }) => string;
   /**
    * The second way to find a pet's profile, asked once: after two read-backs the caller said were wrong
    * ('wrong_readbacks'), or a number with no profile on it ('no_profile', which also offers to add a new pet). The
@@ -214,6 +216,10 @@ export interface LanguagePack {
     callbackTaken: (v: { sameNumber: boolean }) => string;
     /** A refill request logged: with the team, never approved or timed. */
     refillTaken: string;
+    /** The refill request already made on the call, changed with what the caller just said (call quality Q7). */
+    refillUpdated: string;
+    /** A caller who only greeted us, or asked how we are, answered in kind (call quality Q10). */
+    smallTalk: string;
     /** A request taken during an animal's emergency: with the team as urgent, at the top of their list. */
     urgentRequestTaken: string;
     /** A text just handed over, as textSent: being sent now, never "sent" or "arrived". */

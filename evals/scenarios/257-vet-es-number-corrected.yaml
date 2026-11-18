@@ -8,15 +8,15 @@ tags: [no-demo, number-first, language, es]
 facts: "Llamada de prueba. Usted es Carmen Ortiz; el número registrado es 720 555 0174. Su perra es Luna. Diga su nombre cuando se lo pidan. Solo quiere confirmar que Luna está registrada: cuando la encuentren, diga gracias, que llamará para reservar, y adiós."
 turns:
   - caller: Es para Luna, el número es 720 555 0175.
-    reply: "¿Es el 720-555-0175?"
+    reply: "¿Es el 7 2 0, 5 5 5, 0 1 7 5?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: Luna, phone: "720 555 0175" }
-  - assistant: "¿Es el 720-555-0175?"
+  - assistant: "¿Es el 7 2 0, 5 5 5, 0 1 7 5?"
   - caller: No, perdón, termina en 0174.
-    reply: "¿Es el 720-555-0174?"
+    reply: "¿Es el 7 2 0, 5 5 5, 0 1 7 4?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: Luna, phone: "720 555 0174" }
-  - assistant: "¿Es el 720-555-0174?"
+  - assistant: "¿Es el 7 2 0, 5 5 5, 0 1 7 4?"
   - caller: Sí, ese.
     reply: "¿Y el nombre del dueño en ese perfil?"
     delegate:
@@ -31,4 +31,4 @@ expect:
   verified: true
   refusals: [confirm_number, confirm_number, owner_check]
   language: es
-  returned: ["¿Y el nombre del dueño en ese perfil?", "¿Es el 720-555-0175?", "¿Es el 720-555-0174?", "Encontré a Luna, su perro."]
+  returned: ["¿Y el nombre del dueño en ese perfil?", "¿Es el 7 2 0, 5 5 5, 0 1 7 5?", "¿Es el 7 2 0, 5 5 5, 0 1 7 4?", "Encontré a Luna, su perro."]

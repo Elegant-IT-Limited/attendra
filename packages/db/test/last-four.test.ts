@@ -47,4 +47,14 @@ describe('a pet by the last four digits and its name', () => {
     // the name still tells the households apart when it can
     expect(await dir.findPetByLastFour(C, '0172', 'Mochi', callId)).toMatchObject({ status: 'found', patient: { id: ids.mochi } });
   });
+
+  it('with the owner\'s name given (four digits nobody asked for yet), finds the pet only when that name is its owner\'s (2026-11-18)', async () => {
+    const dir = new PostgresPatientDirectory(t.db, cipher);
+    expect(await dir.findPetByLastFour(C, '0174', 'Luna', callId, 'Carmen Ortiz')).toMatchObject({ status: 'found', patient: { id: ids.luna } });
+    expect(await dir.findPetByLastFour(C, '0174', 'Luna', callId, 'carmen')).toMatchObject({ status: 'found', patient: { id: ids.luna } });
+    expect(await dir.findPetByLastFour(C, '0174', 'Luna', callId, 'Daniel Brooks')).toEqual({ status: 'not_found' });
+    // the owner's name also tells two households sharing the last four digits and a pet's name apart
+    expect(await dir.findPetByLastFour(C, '0172', 'Biscuit', callId, 'Linh Nguyen')).toMatchObject({ status: 'found', patient: { id: ids.biscuit } });
+    expect(await dir.findPetByLastFour(C, '0172', 'Biscuit', callId, 'Robin Marsh')).toMatchObject({ status: 'found' });
+  });
 });

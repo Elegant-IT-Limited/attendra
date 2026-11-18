@@ -1,0 +1,26 @@
+id: vet-es-time-named-is-yes
+title: "In Spanish: an answer that names the time offered ('A las 8:00.') books it (call quality Q3, 2026-11-18)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-quality, clear-yes, es]
+turns:
+  - caller: Hola, soy Linh Nguyen. ¿Biscuit puede venir mañana por la mañana a una consulta por enfermedad?
+    reply: "{offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: "2026-09-29", part_of_day: morning }
+  - caller: La primera.
+    reply: "{readback}?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "A las 8:00."
+    reply: "Listo, quedó reservada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  refusals: []
+  bookings_created: 1
+  sms_sent: 1

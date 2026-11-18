@@ -208,10 +208,11 @@ describe('the OpenAI webhook', () => {
     await new Promise((r) => setTimeout(r, 10));
     expect(sideband.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'session.commentary.append', delegation_id: null, content: expect.stringContaining('Greet the caller now.') }));
     expect(historyFor).toHaveBeenCalledWith(DEMO_CLINIC.id, '+13035550147', 'call_1');
-    // then the history arrives, and what caller ID would show goes to the voice as before
+    // then the history arrives, and what caller ID would show goes to the voice as context: a note that starts no reply
+    // and cuts nothing off (call quality Q11, 2026-11-18)
     finishHistory('Name on file for this number: Sam.\nCalls from this number in the last 30 days: 2.');
     await new Promise((r) => setTimeout(r, 10));
-    expect(sideband.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'session.instructions.append', content: expect.stringContaining('Am I speaking with Sam?') }));
+    expect(sideband.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'context.caller', content: expect.stringContaining('Am I speaking with Sam?') }));
     drop(1000);
     await app.close();
   });

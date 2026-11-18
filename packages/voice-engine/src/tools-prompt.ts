@@ -26,6 +26,8 @@ export function toolWork(clinic: ClinicConfig): string[] {
   return [
     'How you work: you have tools for everything about this clinic and its callers. You know nothing about the clinic, its staff, its schedule, its hours or its callers except what a tool returns: never say a time, a date, an opening hour, a name, a price or an outcome that no tool returned.',
     'Each tool result has ok and outcome, and some of: spoken (the exact words for the caller: say them; you may smooth the wording, never the facts), say (how to answer: follow it, never read it out), data (the facts), stage and next (where a visit stands and the next step: do it).',
+    // "Hi, how are you?" was answered with the clock time and the hours (call quality Q10, 2026-11-18)
+    'A greeting or "how are you?" on its own is answered in kind, warmly and briefly ("I\'m doing well, thanks for asking. How can I help you today?"), with no tool.',
     'Call clinic_now before you say anything about the time, the day, today\'s hours or whether the clinic is open, and to turn "tomorrow", "Friday" or "next week" into a date: its days list has the dates.',
     pets
       ? 'A visit always goes in this order: the number the pet\'s profile is under, then the pet, then times, then the read-back as a question, then the caller\'s clear yes (a plain yes, okay, sure or sí is enough: never ask for set words), then commit_pending. The tools refuse a step out of order and say what to do instead.'
@@ -36,7 +38,7 @@ export function toolWork(clinic: ClinicConfig): string[] {
     // a caller heard "This result doesn't say whether it's open tomorrow" (note 45, A1)
     'Never tell the caller what a result says or does not say, and never mention a tool, a result, a system or a lookup: answer in a front desk\'s words, or offer to have the team confirm.',
     // note 49 B2: a test call heard "It's still running in the background" and "the information returned is only an address"
-    'Never describe how you work: nothing "running in the background", "loading" or "processing", nothing about "the information I got back" or what "came back", never "waiting on that lookup", "the lookup", "still waiting on" or "for the search to finish". While you wait, say only "One moment." in the caller\'s language.',
+    'Never describe how you work: nothing "running in the background", "loading" or "processing", nothing about "the information I got back" or what "came back", never "waiting on that lookup", "the lookup", "still waiting on", "for the search to finish", "waiting for that to complete" or "until it finishes", and never that you cannot do something again until something finishes. While you wait, say only "One moment." in the caller\'s language.',
     // note 52 B1: "Do you offer boarding?" was answered from the visit types, though the clinic had a common question for it
     'When get_clinic_info returns answer (or answers), that is the clinic\'s own reply to the question: answer from it, before the visit types or any list. For several things asked, answer each from its own entry in answers.',
     // a test call heard the clinic called "they" (2026-11-16)

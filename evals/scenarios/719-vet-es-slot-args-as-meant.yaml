@@ -1,0 +1,26 @@
+id: vet-es-slot-args-as-meant
+title: "In Spanish: find_slots with 'none', no part of day and a time without its zero, as voice models write them, still finds times, never invalid_arguments (call quality Q8, 2026-11-18)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-quality, requests, es]
+turns:
+  - caller: Hola, soy Linh Nguyen. ¿Biscuit puede venir mañana por la mañana a una consulta por enfermedad?
+    reply: "{offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: none, from_date: "2026-09-29T00:00:00", part_of_day: null, from_time: "8:00", time_mode: none, provider_gender: any }
+  - caller: La primera.
+    reply: "{readback}?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "A las 8:00."
+    reply: "Listo, quedó reservada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  refusals: []
+  bookings_created: 1
+  sms_sent: 1

@@ -74,7 +74,7 @@ export interface PatientDirectory {
    * and the pet's name, by the keyed lookup of the last four digits (migration 0042). Found only when exactly one pet in
    * exactly one household matches; 'ambiguous' when more do, 'not_found' when none.
    */
-  findPetByLastFour?(clinicId: string, lastFour: string, petName: string, callId: string): Promise<PatientLookup>;
+  findPetByLastFour?(clinicId: string, lastFour: string, petName: string, callId: string, ownerName?: string | null): Promise<PatientLookup>;
   /** Records that they said yes to reminder texts on a call. */
   setTextConsent?(clinicId: string, patientId: string, callId: string): Promise<void>;
   /**
@@ -138,6 +138,12 @@ export interface TaskQueue {
     /** Where it came from, when not an ordinary request: an emergency nobody could be put through for (shown as Emergency). */
     origin?: 'emergency';
   }): Promise<{ id: string; /** The request's own number at the clinic, shown as R-1042. */ number: number; created: boolean }>;
+  /**
+   * The details of a request this call made, while it is still open: a follow-up on the call about the same request ("let
+   * me finish: it's his carprofen") changes it instead of making a second one (call quality Q7, 2026-11-18). False when
+   * the request is not this call's or is done.
+   */
+  updateDetails?(clinicId: string, taskId: string, callId: string, details: Record<string, string>): Promise<boolean>;
 }
 
 export interface AuditLog {

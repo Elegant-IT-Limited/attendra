@@ -48,7 +48,8 @@ export const VAPI_DEFAULTS = {
    * reading a phone number or a date in pieces is not cut off (path A's lesson: shorter waits cut callers reading numbers).
    */
   startSpeaking: {
-    waitSeconds: 0.3,
+    // 0.6 s, not 0.3 (call quality Q4, 2026-11-18: callers were answered before they had finished)
+    waitSeconds: 0.6,
     numberQuestion: '(number|phone|date of birth|birthday|digits|n[uú]mero|tel[eé]fono|fecha de nacimiento)[^.?!]*\\?\\s*$',
     numberQuestionSeconds: 1.5,
     /** The caller's words end in digits: they may be reading more. */
@@ -70,6 +71,11 @@ export const VAPI_DEFAULTS = {
   },
   /** Our engines play nothing under the voice; Vapi's phone default is an office murmur. */
   backgroundSound: 'off',
+  /**
+   * Voices in the room taken out before transcription and turn detection, as path A's near-field noise reduction does
+   * (call quality Q5, 2026-11-18: background words were acted on).
+   */
+  backgroundSpeechDenoisingPlan: { smartDenoisingPlan: { enabled: true } },
   /** A call ends after 20 minutes (Vapi's default, 10, can cut a long call mid-booking). */
   maxDurationSeconds: 1200,
   /** What Vapi posts besides tool calls: the conversation, the call's status (live calls, for concurrency) and its end. */
@@ -156,6 +162,7 @@ export function vapiAssistant(clinic: ClinicConfig, input: VapiAssistantInput) {
     },
     stopSpeakingPlan: { numWords: st.numWords, voiceSeconds: st.voiceSeconds, backoffSeconds: st.backoffSeconds, acknowledgementPhrases: [...st.acknowledgementPhrases], interruptionPhrases: [...st.interruptionPhrases] },
     backgroundSound: VAPI_DEFAULTS.backgroundSound,
+    backgroundSpeechDenoisingPlan: VAPI_DEFAULTS.backgroundSpeechDenoisingPlan,
     maxDurationSeconds: VAPI_DEFAULTS.maxDurationSeconds,
     // our transfers and hang-ups go through the call's control URL; nobody listens in
     monitorPlan: { controlEnabled: true, listenEnabled: false },

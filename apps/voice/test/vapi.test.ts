@@ -119,7 +119,7 @@ describe('Vapi calling our tools', () => {
     await post({ type: 'conversation-update', call, messages: [
       { role: 'system', message: 'prompt', secondsFromStart: 0 }, greeting, number,
       { role: 'tool_calls', secondsFromStart: 9.4 }, { role: 'tool_call_result', secondsFromStart: 9.8 },
-      { role: 'bot', message: "That's 720-555-0172?", secondsFromStart: 10.3, duration: 2560 },
+      { role: 'bot', message: "That's 7 2 0, 5 5 5, 0 1 7 2?", secondsFromStart: 10.3, duration: 2560 },
       { role: 'user', message: 'Yes. Hello?', secondsFromStart: 14.1, duration: 959.9990234375 },
     ] });
     const named = await post({ type: 'tool-calls', call, toolCallList: [{ id: 'tc_3', function: { name: 'verify_caller', arguments: { owner_name: null, pet_name: 'Biscuit', phone: '720 555 0172' } } }] });

@@ -59,6 +59,8 @@ export const Scenario = z.object({
     bookings_created: z.number().int().default(0),
     // requests for the team made on the call that are flagged urgent (one taken during an animal's emergency)
     urgent_requests: z.number().int().optional(),
+    // requests for the team made on the call, all kinds: a follow-up about the same request changes it, never adds one (Q7)
+    requests_created: z.number().int().optional(),
     sms_sent: z.number().int().default(0),
     sms_templates: z.array(z.string()).default([]), // the texts' templates, in order, when the scenario names them
     // what each text says, in order: every key and value given is in that text's details ({ pet: Biscuit, visit: dental check-up })

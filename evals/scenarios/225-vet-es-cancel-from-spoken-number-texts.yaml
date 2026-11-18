@@ -8,10 +8,10 @@ channel: web
 facts: "Es una llamada de prueba desde el navegador, sin identificador de llamadas. Eres Linh Nguyen y hablas español; el número de la ficha es 720 555 0172. Quieres cancelar la cita de Biscuit del jueves. Di sí a la confirmación."
 turns:
   - caller: Hola, soy Linh. Necesito cancelar la cita de Biscuit del jueves. Mi número es 720 555 0172.
-    reply: "¿Es el 720-555-0172?"
+    reply: "¿Es el 7 2 0, 5 5 5, 0 1 7 2?"
     delegate:
       - verify_caller: { owner_name: Linh, pet_name: Biscuit, phone: "720 555 0172" }
-  - assistant: "¿Es el 720-555-0172?"
+  - assistant: "¿Es el 7 2 0, 5 5 5, 0 1 7 2?"
   - caller: Sí, ese.
     reply: "Veo el chequeo de Biscuit el jueves. Entonces, quiere cancelar la cita del jueves. ¿Es correcto?"
     delegate:

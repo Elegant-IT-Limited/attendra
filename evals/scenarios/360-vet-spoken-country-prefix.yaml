@@ -8,10 +8,10 @@ tags: [no-demo, number-first, second-way]
 facts: "A browser test call. You are Carmen Ortiz; the number on file is 720 555 0174, and you say it with 52 in front, as 52 720 555 0174. Your dog is Luna. Say yes to the read-back. You only want to check Luna is on file: once she is found, say thanks, you will call back to book, goodbye."
 turns:
   - caller: It's for Luna. The number is 52 720 555 0174.
-    reply: "That's 720-555-0174?"
+    reply: "That's 7 2 0, 5 5 5, 0 1 7 4?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: Luna, phone: "52 720 555 0174" }
-  - assistant: "That's 720-555-0174?"
+  - assistant: "That's 7 2 0, 5 5 5, 0 1 7 4?"
   - caller: Yes, that's it.
     reply: "And the owner's name on that profile?"
     delegate:
@@ -25,5 +25,5 @@ expect:
   outcome: abandoned
   verified: true
   refusals: [confirm_number, owner_check]
-  returned: ["That's 720-555-0174?", "I found Luna, your dog."]
+  returned: ["That's 7 2 0, 5 5 5, 0 1 7 4?", "I found Luna, your dog."]
   never_returned: ["52-720", "527205550174"]

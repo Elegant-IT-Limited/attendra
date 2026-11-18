@@ -58,3 +58,10 @@ const WHAT_VISITS = new RegExp([
   String.raw`\bno se (?:que|cual) (?:tipo de )?(?:cita|visita|consulta)\b`,
 ].join('|'));
 export const asksWhatVisits = (text: string) => WHAT_VISITS.test(normalise(text));
+
+/** Whether a visit's name or description shares a word about the thing asked ("dental" for "dental cleaning"). */
+export function visitSharesTopic(v: VisitType, asked: string): boolean {
+  const own = new Set(nameWords([v.name, ...Object.values(v.names ?? {}), v.description ?? ''].join(' ')));
+  return askedTopicWords(asked).some((w) => own.has(w));
+}
+

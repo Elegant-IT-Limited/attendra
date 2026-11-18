@@ -1,0 +1,26 @@
+id: vet-es-refill-follow-up-updates
+title: "In Spanish: a caller who names the medicine after the refill request was taken changes that request, never makes a second; a new pet's check stays its own (call quality Q7, 2026-11-18)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550173"
+tags: [no-demo, call-quality, requests, es]
+turns:
+  - caller: Hola, soy Daniel Brooks. Mi coneja Pepper necesita una receta de esto.
+    reply: "He enviado la solicitud de la receta al equipo."
+    delegate:
+      - verify_caller: { owner_name: Daniel Brooks, pet_name: Pepper }
+      - create_refill_request: { medication: this, pharmacy: pick up at the clinic, callback_number: null, text_updates: false }
+  - caller: No, déjeme terminar. Quiero decir que necesita la receta de su meloxicam.
+    reply: "Gracias, ya actualicé la solicitud de la receta con eso."
+    delegate:
+      - create_refill_request: { medication: meloxicam, pharmacy: pick up at the clinic, callback_number: null, text_updates: false }
+  - caller: ¿Y alguien me puede llamar por mi cachorro nuevo también?
+    reply: "Listo, se lo paso al equipo."
+    delegate:
+      - create_callback: { reason: "Wants to talk about a new puppy", callback_number: null, topic: null }
+expect:
+  outcome: task_created
+  verified: true
+  requests_created: 2
+  language: es
+  returned: ["ya actualicé la solicitud de la receta"]

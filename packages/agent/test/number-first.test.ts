@@ -20,13 +20,13 @@ describe('a spoken number is read back before the search', () => {
     c.caller('It\'s seven two oh, five five five, oh one seven three.'); // the caller says the number first, as on a call (note 52 B5)
     const first = await c.delegate([verify('seven two oh, five five five, oh one seven three', 'Biscuit')]);
     expect(first.errors).toEqual(['confirm_number']);
-    expect(said(first)).toContain("That's 720-555-0173?");
-    c.assistant("That's 720-555-0173?");
+    expect(said(first)).toContain("That's 7 2 0, 5 5 5, 0 1 7 3?");
+    c.assistant("That's 7 2 0, 5 5 5, 0 1 7 3?");
     c.caller('No, it ends 0172.');
     const second = await c.delegate([verify('720 555 0172', 'Biscuit')]);
     expect(second.errors).toEqual(['confirm_number']);
-    expect(said(second)).toContain("That's 720-555-0172?");
-    c.assistant("That's 720-555-0172?");
+    expect(said(second)).toContain("That's 7 2 0, 5 5 5, 0 1 7 2?");
+    c.assistant("That's 7 2 0, 5 5 5, 0 1 7 2?");
     c.caller('Yes, that one.');
     // a number said is checked by the caller's name, asked once, before anything from its records is used
     const named = await c.delegate([verify('720 555 0172', 'Biscuit')]);
@@ -46,14 +46,14 @@ describe('a spoken number is read back before the search', () => {
     const c = await w.call(null, { clinic, channel: 'web' });
     c.caller('It\'s seven two oh, triple five, oh one seven two.'); // the caller says the number first, as on a call (note 52 B5)
     const out = await c.delegate([verify('seven two oh, triple five, oh one seven two', 'Biscuit')]);
-    expect(said(out)).toContain("That's 720-555-0172?");
+    expect(said(out)).toContain("That's 7 2 0, 5 5 5, 0 1 7 2?");
   });
 
   it('a no without a new number keeps asking, never searches', async () => {
     const c = await w.call(null, { clinic, channel: 'web' });
     c.caller('It\'s 720 555 0172.'); // the caller says the number first, as on a call (note 52 B5)
     await c.delegate([verify('720 555 0172', 'Biscuit')]);
-    c.assistant("That's 720-555-0172?");
+    c.assistant("That's 7 2 0, 5 5 5, 0 1 7 2?");
     c.caller('No.');
     const again = await c.delegate([verify('720 555 0172', 'Biscuit')]);
     expect(again.errors).toEqual(['confirm_number']);
@@ -104,7 +104,7 @@ describe('the number question with caller ID', () => {
   });
 });
 
-// note 52 B5: a caller said a garbled word where a number should be, and heard "That's 555-123-4567?", twice
+// note 52 B5: a caller said a garbled word where a number should be, and heard "That's 5 5 5, 1 2 3, 4 5 6 7?", twice
 describe('a number the caller never said is never read back', () => {
   it('asks for the number again instead, and a placeholder number is never one', async () => {
     const c = await w.call(null, { clinic, channel: 'web' });
@@ -117,6 +117,6 @@ describe('a number the caller never said is never read back', () => {
     c.caller('Oh, sorry: seven two oh, five five five, oh one seven two.');
     const real = await c.delegate([verify('720 555 0172', 'Biscuit')]);
     expect(real.errors).toEqual(['confirm_number']);
-    expect(said(real)).toContain("That's 720-555-0172?");
+    expect(said(real)).toContain("That's 7 2 0, 5 5 5, 0 1 7 2?");
   });
 });

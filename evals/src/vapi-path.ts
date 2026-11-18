@@ -40,6 +40,16 @@ export const VAPI_PATH_SCENARIOS = [
   'vapi-speech-times-and-title', 'vapi-es-speech-times-and-title',
   // the caller ID's last four are ours: given with an identity answer, and other digits said for it corrected (V2)
   'vapi-caller-id-digits', 'vapi-es-caller-id-digits',
+  // the call quality batch (2026-11-18): each test call's failure as a scripted call, on both paths
+  'vet-volunteered-last-four-one-step', 'vet-es-volunteered-last-four-one-step', 'vet-last-four-as-phone', 'vet-es-last-four-as-phone',
+  'vet-misheard-number-asked-again', 'vet-es-misheard-number-asked-again',
+  'vet-text-caller-asks-is-consent', 'vet-es-text-caller-asks-is-consent', 'vet-text-ya-is-yes', 'vet-es-text-ok-is-yes',
+  'vet-text-unclear-asked-once', 'vet-es-text-unclear-asked-once', 'vet-time-named-is-yes', 'vet-es-time-named-is-yes',
+  'vet-service-not-offered-no-weak-match', 'vet-es-service-not-offered-no-weak-match', 'vet-refill-follow-up-updates', 'vet-es-refill-follow-up-updates',
+  'vet-slot-args-as-meant', 'vet-es-slot-args-as-meant',
+  'vet-how-are-you-in-kind', 'vet-es-how-are-you-in-kind',
+  // the demo emergency that closes on a goodbye (Q9): played once the harness plays demo calls (V4's fix)
+  'demo-emergency-closes-on-goodbye', 'demo-emergency-closes-on-goodbye-es',
 ] as const;
 
 export interface VapiPathResult { id: string; passed: boolean; failures: string[]; outcome: string; ms: number }
@@ -171,6 +181,10 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
       check(verified === e.verified, `verified ${verified}, expected ${e.verified}`);
     }
     check(created.length === e.bookings_created, `${created.length} bookings created, expected ${e.bookings_created}`);
+    if (e.requests_created !== undefined) {
+      const made = (await withClinic(t.db, clinic.id, (tx) => tx.select().from(schema.tasks).where(eq(schema.tasks.callId, row.id)))).length;
+      check(made === e.requests_created, `${made} requests for the team, expected ${e.requests_created}`);
+    }
     check(sms.length === e.sms_sent, `${sms.length} texts sent, expected ${e.sms_sent}`);
     const transfer = controls.find((c) => c.type === 'transfer')?.body.destination as { type: string; number?: string; sipUri?: string } | undefined;
     const transferTo = transfer ? (transfer.type === 'number' ? `tel:${transfer.number}` : transfer.sipUri ?? null) : null;

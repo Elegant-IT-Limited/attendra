@@ -22,10 +22,10 @@ turns:
     delegate:
       - commit_pending: {}
   - caller: Yes, my neighbour's rabbit Pepper needs a check-up too. Her profile is under 720 555 0173, the owner is Daniel Brooks.
-    reply: "That's 720-555-0173?"
+    reply: "That's 7 2 0, 5 5 5, 0 1 7 3?"
     delegate:
       - verify_caller: { owner_name: Daniel Brooks, pet_name: Pepper, phone: "720 555 0173" }
-  - assistant: "That's 720-555-0173?"
+  - assistant: "That's 7 2 0, 5 5 5, 0 1 7 3?"
   - caller: Yes.
     reply: "I found Pepper. I can offer {offered.0}, or {offered.1}."
     delegate:

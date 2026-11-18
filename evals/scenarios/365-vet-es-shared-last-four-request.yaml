@@ -8,15 +8,15 @@ tags: [no-demo, number-first, second-way, last-four-twin, language, es]
 facts: "Una llamada de prueba desde el navegador. Eres Linh Nguyen; das 720 555 0182 y luego 720 555 0183 y dices que no a las dos confirmaciones. Cuando te pidan los últimos cuatro dígitos y el nombre de la mascota, di 0172 y Biscuit. Di que sí a una solicitud para el equipo, al 720 555 0172."
 turns:
   - caller: Necesito reservar a Biscuit. Mi número es 720 555 0182.
-    reply: "¿Es el 720-555-0182?"
+    reply: "¿Es el 7 2 0, 5 5 5, 0 1 8 2?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: Biscuit, phone: "720 555 0182" }
-  - assistant: "¿Es el 720-555-0182?"
+  - assistant: "¿Es el 7 2 0, 5 5 5, 0 1 8 2?"
   - caller: No, 720 555 0183.
-    reply: "¿Es el 720-555-0183?"
+    reply: "¿Es el 7 2 0, 5 5 5, 0 1 8 3?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: Biscuit, phone: "720 555 0183" }
-  - assistant: "¿Es el 720-555-0183?"
+  - assistant: "¿Es el 7 2 0, 5 5 5, 0 1 8 3?"
   - caller: No, mmm, ¿720 555 0184?
     reply: "Probemos de otra forma. ¿Cuáles son los últimos cuatro dígitos del número con el que está la ficha, y el nombre de su mascota?"
     delegate:

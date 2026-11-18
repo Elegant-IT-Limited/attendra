@@ -45,8 +45,8 @@ describe('a booking on the tools path', () => {
     c.caller('Biscuit, on 720 555 0172.');
     const asked = await tool('verify_caller', { owner_name: null, pet_name: 'Biscuit', phone: '720 555 0172' });
     expect(asked).toMatchObject({ ok: false, outcome: 'confirm_number', stage: 'number_asked' });
-    expect(asked.say).toContain("That's 720-555-0172?");
-    c.assistant("That's 720-555-0172?");
+    expect(asked.say).toContain("That's 7 2 0, 5 5 5, 0 1 7 2?");
+    c.assistant("That's 7 2 0, 5 5 5, 0 1 7 2?");
     // a yes, then "hello?": the yes counts on the tools path (V-6), and the read-back is not asked again
     c.caller('Yes.');
     c.state.addTranscript('caller', ' Hello, are you there?', 99_000, 99_500);
@@ -88,7 +88,7 @@ describe('a booking on the tools path', () => {
     c.state.answersAcrossPieces = true;
     c.caller('Biscuit, on 720 555 0172.');
     await c.agent.onToolCall('verify_caller', { owner_name: null, pet_name: 'Biscuit', phone: '720 555 0172' });
-    c.assistant("That's 720-555-0172?");
+    c.assistant("That's 7 2 0, 5 5 5, 0 1 7 2?");
     c.caller('Yes.');
     c.state.addTranscript('caller', ' Wait, no, that is my old number.', 99_000, 99_500);
     const again = await c.agent.onToolCall('verify_caller', { owner_name: null, pet_name: 'Biscuit', phone: '720 555 0172' });

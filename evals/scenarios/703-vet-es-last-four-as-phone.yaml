@@ -1,0 +1,18 @@
+id: vet-es-last-four-as-phone
+title: "In Spanish: only the last four digits passed as the phone are searched as the last four (call quality Q1, 2026-11-18)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550199"
+tags: [no-demo, call-quality, identity, es]
+turns:
+  - caller: Hola, soy Carmen Ortiz, llamo por Luna.
+    reply: "¿La ficha de Luna está con el número desde el que llama, que termina en 0199, o con otro número?"
+  - caller: Es otro número, no este. Termina en 0174.
+    reply: "Encontré a Luna, su perra."
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna, phone: "0174" }
+expect:
+  outcome: abandoned
+  verified: true
+  language: es
+  refusals: []

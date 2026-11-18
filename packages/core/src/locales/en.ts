@@ -169,6 +169,7 @@ export const en: LanguagePack = {
   notSeenPet: ({ pet }) => `I don't see ${pet} under that number.`,
   noPetsOnNumber: "I don't see a profile under that number.",
   numberNotOpened: "I can't open a profile with those details on this call. I can take a message so the team can call you back.",
+  numberAgain: ({ pet }) => `I couldn't open a profile with that. Could you give me the full phone number on ${pet ? `${pet}'s` : 'the'} profile once more, and the owner's name on it?`,
   lastFourQuestion: ({ after }) => (after === 'no_profile'
     ? "What are the last four digits of the number the profile might be under, and your pet's name? Or if your pet is new to us, I can add them."
     : "Let's try another way. What are the last four digits of the number the profile is under, and your pet's name?"),
@@ -220,6 +221,8 @@ export const en: LanguagePack = {
     goodbye: 'Take care, goodbye!',
     callbackTaken: ({ sameNumber }) => `Okay, I've passed that on to the team, and someone will call you back at ${sameNumber ? 'this number' : 'the number you gave me'}. Is there anything else I can help you with?`,
     refillTaken: 'I\'ve sent the refill request to the team; they\'ll review it and get back to you. Is there anything else I can help you with?',
+    smallTalk: 'I\'m doing well, thanks for asking. How can I help you today?',
+    refillUpdated: 'Thanks, I\'ve updated the refill request with that; the team will review it and get back to you. Is there anything else I can help you with?',
     urgentRequestTaken: 'I\'ve sent that to the team as urgent, and someone will call you back as soon as they can.',
     textSent: 'I\'m texting it to you now. Is there anything else I can help you with?',
     reminders: ({ agreed }) => `${agreed ? 'Great, you\'ll get a reminder text the day before the visit.' : 'No problem, no reminder texts.'} Is there anything else I can help you with?`,
@@ -277,8 +280,10 @@ export const en: LanguagePack = {
   notAnEmergency: /\b(not an? emergency|isn'?t an emergency|no emergency|not urgent|is (this|that|it) an emergency|counts? as an emergency|emergency (fees?|charges?|prices?|costs?|policy))\b/,
   asksEmergencyService: /\b(?:(?:do|does|can|will|would) (?:you|y'?all|you guys|your (?:clinic|team|vets?|doctors?|office)|the (?:clinic|vets?|doctors?|office)) (?:ever |also |even )?(?:handle|take|see|treat|accept|receive|get|do|deal with|cover|offer|have)|(?:are|is) (?:you|the clinic|your clinic) (?:open|available|set up) for|how do you (?:handle|deal with)|what (?:are|is) your)(?: any)?(?: an?)? emergenc(?:y|ies)\b/,
   reportsEmergency: /\b(?:(?:it'?s|it is|this is|that'?s|we have|i have|i'?ve got|there'?s) (?:a |an )?(?:real |medical |pet )?emergency|emergency(?: here)?!)/,
-  yes: /\b(yes|yeah|yep|yup|correct|that'?s (right|correct|fine|good|perfect)|sounds good|perfect|please do|go ahead|book it|do it|sure)\b/,
-  yesAlone: /^(ok|okay|confirm|confirmed)$/,
+  // "okay, 9:20 is fine", "that works" (call quality Q3, 2026-11-18): an answer that accepts in other words is a yes too
+  yes: /\b(yes|yeah|yep|yup|correct|that'?s (right|correct|fine|good|perfect)|(is|it'?s|sounds) (fine|good|great|perfect)|(that|it) works( for me)?|works for me|sounds good|perfect|please do|go ahead|book it|do it|sure)\b|^(ok|okay|alright|all right)\b/,
+  // "ya", "yah": how a transcriber writes a quick "yeah" (call quality Q2, 2026-11-18: "Ya" to a text offer was taken as a no)
+  yesAlone: /^(ok|okay|confirm|confirmed|ya|yah|yea|fine)$/,
   hedge: /\b(no|nope|not|don'?t|wait|actually|hold on|hmm|maybe|instead|rather|change|different|other|but|although|though)\b|\?/,
   markers: /\b(the|and|you|my|is|appointment|please|thank|what|when|book|need|want|have|can|this|that|to|for|with)\b/g,
   saysNew: /(?<!\bwhat)\b(is|are|am|'s|'re|'m) (brand |completely |totally )?new\b(?! (phone|number|cell|mobile|address|email))|\b((a |an )?new (patient|client|pet)|new (here|to (you|the clinic|your clinic|this clinic|the practice))|not (registered|on file|in (your|the) (system|records))|(never|not|hasn'?t|haven'?t|isn'?t|wasn'?t) (been )?(registered|been (there|here|in|to (you|the clinic|your clinic|this clinic)))|first (time|visit) (here|with you|at (the|your) clinic)|(his|her|their|its|a) first (check-?up|visit|exam)|just (adopted|got (a|him|her|them|my|our))|(want|like|need) to register|register (my|our|a|him|her|them))\b/,

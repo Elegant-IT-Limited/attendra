@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type Language, LANGUAGES, normalise, PACKS } from './locales';
+import { type Language, LANGUAGES, normalise, PACKS, SENTENCE_WORDS } from './locales';
+import { saysClockTime } from './readback';
 
 /**
  * Did the caller clearly agree? Used by the agent before any write, on the caller's
@@ -158,3 +159,70 @@ export function pointsAtPet(petName: string): boolean {
   const t = normalise(petName).trim();
   return LANGUAGES.some((l) => PACKS[l].pointsAtPet.test(t));
 }
+
+/**
+ * Whether the caller asks, in their own words, to be sent a text: "can you send me the text?", "you can send me text",
+ * "text me the details", "¿me lo puede mandar por mensaje?". Asking for it is their consent (call quality Q2,
+ * 2026-11-18: a caller asked three times and heard "I can't send it right now" each time). "Don't text me" and "I
+ * didn't get the text" are not asking.
+ */
+export function asksForText(callerText: string): boolean {
+  const t = normalise(callerText).replace(/\s+/g, ' ');
+  if (new RegExp(NO_TEXT.source).test(t)) return false;
+  return ASKS_TEXT.some((p) => p.test(t));
+}
+const ASKS_TEXT = [
+  /\btext (?:me|it|that|this|them|those)\b/,
+  /\bsend (?:me |it |that |this |them |those )?(?:to me )?(?:a |the |by |in a |over )?(?:text|message|sms)\b/,
+  /\b(?:send|text) (?:me |it |that )?(?:the )?(?:details|info|information|address|hours|directions)(?: by| in a| over)? (?:text|message|sms)\b/,
+  /\b(?:me )?(?:lo |la |los |las )?(?:puede|podria|pueden|podrian)? ?(?:mandar|enviar|mande|envie|mandame|enviame|mandeme|envieme|mandarme|enviarme)(?:lo|la|los|las)?\b[^.?!]{0,30}\b(?:mensaje|texto|sms)\b/,
+];
+
+/**
+ * isClearYes for a read-back with a time: an answer that names the time offered, with nothing that hedges it, is a yes
+ * too ("9:20", "yes, 9:20", "okay, 9:20 is fine"; call quality Q3, 2026-11-18). A question or "but" still is not.
+ */
+export function isClearYesTo(answer: string, languages: readonly Language[], when: { start: Date; timeZone: string } | null): boolean {
+  if (isClearYes(answer, languages)) return true;
+  if (!when) return false;
+  const t = withoutDoneCheck(normalise(answer)).trim();
+  if (!t || LANGUAGES.some((l) => PACKS[l].hedge.test(t))) return false;
+  return t.split(/\s+/).length <= 8 && saysClockTime(t, when.start, when.timeZone);
+}
+
+/** Short words heard in each language on their own, besides its sentence words: what a voice in the room says. */
+const FRAGMENT_WORDS: Record<Language, Set<string>> = {
+  en: new Set([...SENTENCE_WORDS.en, 'great', 'right', 'sorry', 'hey', 'wait', 'okay', 'ok', 'cool', 'nice', 'really', 'what', 'who', 'come', 'here', 'go', 'stop']),
+  es: new Set([...SENTENCE_WORDS.es, 'excelente', 'bueno', 'oye', 'mira', 'listo', 'perfecto', 'claro', 'vale', 'quien', 'momento', 'vamos', 'ven', 'dime', 'oiga', 'llamada', 'inmovil']),
+};
+
+/**
+ * A stray fragment, not the caller's turn (call quality Q5, 2026-11-18: "Excelente" and "Quiero" from the room were
+ * acted on during an English call): one or two words, all of them another language's and none the call's own, and not a
+ * yes, a no, a number or a request to end the call ("hang up" is always heard). The same fragment said again is the
+ * caller's (`before`: the last fragment set aside, normalised). Background voices on a phone call are this.
+ */
+export function strayFragment(turn: string, current: Language, before: string | null = null): boolean {
+  const text = normalise(turn).replace(/[.,!?¿¡]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const words = text.split(' ').filter(Boolean);
+  if (!words.length || words.length > 2 || /\d/.test(text)) return false;
+  if (before !== null && text === before) return false;
+  if (askedToHangUp(text) || saidGoodbye(text)) return false;
+  if (words.some((w) => FRAGMENT_WORDS[current].has(w))) return false;
+  const own = PACKS[current];
+  if (own.yes.test(text) || own.yesAlone.test(text) || own.hedge.test(text)) return false;
+  return LANGUAGES.some((code) => code !== current && words.every((w) => FRAGMENT_WORDS[code].has(w)));
+}
+/** A fragment as strayFragment compares it with the next one. */
+export const fragmentKey = (turn: string) => normalise(turn).replace(/[.,!?¿¡]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+/**
+ * Only a greeting or "how are you?", nothing asked yet: "Hi, how are you?", "hello, how's it going?", "hola, ¿cómo está?"
+ * (call quality Q10, 2026-11-18: it was answered with the clock time and the opening hours). Answered in kind.
+ */
+export function isSmallTalk(callerText: string): boolean {
+  const t = normalise(callerText).replace(/[¿?¡!.,;:]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return t !== '' && SMALL_TALK.test(t);
+}
+const SMALL_TALK = /^(?:(?:hi|hello|hey|hiya|good (?:morning|afternoon|evening)|hola|buenas|buenos dias|buenas tardes|buenas noches|alo|oiga)(?: there| ivy)? ?)*(?:how are you(?: doing)?(?: today)?|how'?s it going|how are things|how'?s your day|how do you do|you doing ok|como esta(?:s|n)?(?: usted)?|que tal|como le va|como va todo)? ?(?:today|hoy)?$/;
+

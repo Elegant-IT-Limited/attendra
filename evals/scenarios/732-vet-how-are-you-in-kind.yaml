@@ -1,0 +1,15 @@
+id: vet-how-are-you-in-kind
+title: "'Hi, how are you?' is answered in kind, never with the clock time and the opening hours (call quality Q10, 2026-11-18)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-quality, small-talk]
+turns:
+  - caller: Hi, how are you?
+    reply: "I'm doing well, thanks for asking. How can I help you today?"
+    delegate:
+      - get_clinic_info: { question: "Hi, how are you?" }
+expect:
+  outcome: abandoned
+  refusals: []
+  returned: ["I'm doing well, thanks for asking. How can I help you today?"]
+  never_returned: ["8:00", "open until", "today:"]
