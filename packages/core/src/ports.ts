@@ -138,6 +138,12 @@ export interface TaskQueue {
     /** Where it came from, when not an ordinary request: an emergency nobody could be put through for (shown as Emergency). */
     origin?: 'emergency';
   }): Promise<{ id: string; /** The request's own number at the clinic, shown as R-1042. */ number: number; created: boolean }>;
+  /**
+   * The details of a request this call made, while it is still open: a follow-up on the call about the same request ("let
+   * me finish: it's his carprofen") changes it instead of making a second one (call quality Q7, 2026-11-18). False when
+   * the request is not this call's or is done.
+   */
+  updateDetails?(clinicId: string, taskId: string, callId: string, details: Record<string, string>): Promise<boolean>;
 }
 
 export interface AuditLog {

@@ -540,6 +540,8 @@ export class CallRunner {
           this.timers.add(t);
         };
         later(o.afterMs);
+      } else if (o.type === 'instructions' && o.context) {
+        this.sideband.send({ type: 'context.caller', event_id: o.eventId ?? `evt_${randomUUID()}`, content: o.content });
       } else if (o.type === 'instructions') {
         this.sideband.send({ type: 'session.instructions.append', event_id: o.eventId ?? `evt_${randomUUID()}`, delegation_id: null, content: o.content });
       } else {

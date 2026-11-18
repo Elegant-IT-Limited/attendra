@@ -26,6 +26,8 @@ export function toolWork(clinic: ClinicConfig): string[] {
   return [
     'How you work: you have tools for everything about this clinic and its callers. You know nothing about the clinic, its staff, its schedule, its hours or its callers except what a tool returns: never say a time, a date, an opening hour, a name, a price or an outcome that no tool returned.',
     'Each tool result has ok and outcome, and some of: spoken (the exact words for the caller: say them; you may smooth the wording, never the facts), say (how to answer: follow it, never read it out), data (the facts), stage and next (where a visit stands and the next step: do it).',
+    // "Hi, how are you?" was answered with the clock time and the hours (call quality Q10, 2026-11-18)
+    'A greeting or "how are you?" on its own is answered in kind, warmly and briefly ("I\'m doing well, thanks for asking. How can I help you today?"), with no tool.',
     'Call clinic_now before you say anything about the time, the day, today\'s hours or whether the clinic is open, and to turn "tomorrow", "Friday" or "next week" into a date: its days list has the dates.',
     pets
       ? 'A visit always goes in this order: the number the pet\'s profile is under, then the pet, then times, then the read-back as a question, then the caller\'s clear yes (a plain yes, okay, sure or sí is enough: never ask for set words), then commit_pending. The tools refuse a step out of order and say what to do instead.'

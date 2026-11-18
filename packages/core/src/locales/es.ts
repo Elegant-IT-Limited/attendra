@@ -242,6 +242,8 @@ export const es: LanguagePack = {
     goodbye: 'Que le vaya bien. ¡Adiós!',
     callbackTaken: ({ sameNumber }) => `De acuerdo, se lo paso al equipo y alguien le llamará ${sameNumber ? 'a este número' : 'al número que me dio'}. ¿Hay algo más en lo que le pueda ayudar?`,
     refillTaken: 'He enviado la solicitud de la receta al equipo; la revisarán y se pondrán en contacto con usted. ¿Hay algo más en lo que le pueda ayudar?',
+    smallTalk: 'Muy bien, gracias por preguntar. ¿En qué le puedo ayudar?',
+    refillUpdated: 'Gracias, ya actualicé la solicitud de la receta con eso; el equipo la revisará y se pondrá en contacto con usted. ¿Hay algo más en lo que le pueda ayudar?',
     urgentRequestTaken: 'Le envié esto al equipo como urgente, y alguien le llamará lo antes posible.',
     textSent: 'Se lo envío ahora por mensaje. ¿Hay algo más en lo que le pueda ayudar?',
     reminders: ({ agreed }) => `${agreed ? 'Perfecto, recibirá un recordatorio por mensaje de texto el día antes de la cita.' : 'De acuerdo, sin recordatorios por mensaje de texto.'} ¿Hay algo más en lo que le pueda ayudar?`,

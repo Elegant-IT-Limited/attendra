@@ -426,6 +426,20 @@ describe('noise before the caller\'s first words (call bugs, 2026-11-17)', () =>
     vi.useRealTimers();
   });
 
+  it('takes caller ID\'s context as a note: no reply, nothing cut off, on either path (call quality Q11)', async () => {
+    for (const flow of ['tools', 'planner'] as const) {
+      const s = realtimeSocket();
+      const e = new RealtimeEngine({ realtime: { calls: { accept: vi.fn(async () => {}) } } } as never, 'gpt-realtime-2.1', () => s.ws);
+      await e.accept(`rtc_ctx_${flow}`, vet, NOW, undefined, { flow });
+      const sideband = e.attach(`rtc_ctx_${flow}`);
+      s.play({ type: 'response.created', event_id: 'rc' });
+      const start = s.sent.length;
+      sideband.send({ type: 'context.caller', event_id: 'cc', content: 'About the number calling: it called 9 times.' });
+      const after = s.sent.slice(start);
+      expect(after.map((x) => x.type)).toEqual(['conversation.item.create']);
+    }
+  });
+
   it('ends turns at low eagerness and takes the room\'s noise out first (call quality Q4, Q5)', async () => {
     const accept = vi.fn(async () => {});
     const e = new RealtimeEngine({ realtime: { calls: { accept } } } as never, 'gpt-realtime-2.1', () => realtimeSocket().ws);

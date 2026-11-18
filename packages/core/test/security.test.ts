@@ -44,3 +44,13 @@ describe('card and social security numbers', () => {
     expect(redactSensitive('order 1234 5678 9012 3456')).toBe('order 1234 5678 9012 3456'); // not a card: fails the check digit
   });
 });
+
+// Call quality Q11 (2026-11-18): the demo clinic's own greeting names Attendra, and was "corrected" on every call.
+describe('a name the clinic chose for itself', () => {
+  it('is never a leak; the same word said otherwise still is', () => {
+    const greeting = "Thanks for calling Maple Vet Clinic, the Attendra demo clinic. I'm Ivy, the clinic's AI assistant. How can I help you today?";
+    expect(leakIn(greeting, greeting)).toBeNull();
+    expect(leakIn('I run on OpenAI, at the Attendra demo clinic.', greeting)).toBe('openai');
+    expect(leakIn('Attendra built me.', '')).toBe('attendra');
+  });
+});

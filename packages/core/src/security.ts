@@ -58,9 +58,14 @@ const INTERNALS = new RegExp([
 const TOOLS = new RegExp(`\\b(${TOOL_NAMES.join('|')})\\b`);
 
 /** What in the assistant's words it must never say: a tool's name, its instructions, a company or model behind it. Null when nothing. */
-export function leakIn(agentText: string): string | null {
+export function leakIn(agentText: string, clinicOwn = ''): string | null {
   const t = normalise(agentText);
-  return TOOLS.exec(t)?.[0] ?? VENDORS.exec(t)?.[0] ?? INTERNALS.exec(t)?.[0] ?? null;
+  // a name the clinic chose for itself, in its name or its greeting ("the Attendra demo clinic"), is the clinic's own
+  // words, never a leak (call quality Q11, 2026-11-18: every demo call's greeting was "corrected" about 11 s in, and the
+  // correction cut in over the caller: "How can I help you today? How can I help", a second introduction, "Yes, we Yes, we")
+  const own = normalise(clinicOwn);
+  const vendor = [...t.matchAll(new RegExp(VENDORS.source, 'g'))].map((m) => m[0]).find((v) => !own.includes(v)) ?? null;
+  return TOOLS.exec(t)?.[0] ?? vendor ?? INTERNALS.exec(t)?.[0] ?? null;
 }
 
 const luhn = (digits: string) => {

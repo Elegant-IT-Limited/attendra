@@ -1,0 +1,15 @@
+id: vet-service-not-offered-no-weak-match
+title: "'Do you do laser therapy?' is never answered from another common question that only shares 'offer': the not-offered line and what the clinic books (call quality Q6, 2026-11-18)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-quality, common-questions, visit-types]
+turns:
+  - caller: Do you do laser therapy?
+    reply: "That isn't something we book here. I can book a wellness exam or a sick visit. Would you like one of those, or shall I take a request for the team?"
+    delegate:
+      - get_clinic_info: { question: Do you offer laser therapy? }
+expect:
+  outcome: info
+  refusals: []
+  returned: ["That isn't something we book here."]
+  never_returned: ["We do not offer boarding or grooming."]

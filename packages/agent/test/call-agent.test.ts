@@ -412,6 +412,16 @@ describe('safety', () => {
     expect(c.agent.onLeakCheck()).toEqual([]);
   });
 
+  it('never "corrects" the clinic\'s own greeting, and a correction is a note that starts no reply (call quality Q11)', async () => {
+    const greeting = "Thanks for calling Riverbend, the Attendra demo clinic. I'm Ivy, the clinic's AI assistant. How can I help you today?";
+    const c = await w.call(null, { clinic: { ...RIVERBEND_CLINIC, greeting } });
+    c.assistant(greeting);
+    expect(c.agent.onLeakCheck()).toEqual([]);
+    c.caller('What are you?');
+    c.assistant('I run on OpenAI.');
+    expect(c.agent.onLeakCheck()).toEqual([expect.objectContaining({ type: 'instructions', context: true })]);
+  });
+
   it('queues the on-call transfer for chest pain even when "this is an emergency" came first, and only once', async () => {
     const c = await w.call();
     const general = c.caller('this is an emergency');

@@ -459,6 +459,10 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     const urgent = (await withClinic(db, clinic.id, (tx) => tx.select().from(schema.tasks).where(eq(schema.tasks.callId, callId)))).filter((t) => t.urgent).length;
     check(urgent === e.urgent_requests, `${urgent} urgent requests for the team, expected ${e.urgent_requests}`);
   }
+  if (e.requests_created !== undefined) {
+    const made = (await withClinic(db, clinic.id, (tx) => tx.select().from(schema.tasks).where(eq(schema.tasks.callId, callId)))).length;
+    check(made === e.requests_created, `${made} requests for the team, expected ${e.requests_created}`);
+  }
   check(sms.length === e.sms_sent, `${sms.length} texts sent, expected ${e.sms_sent}`);
   if (e.sms_templates.length) check(JSON.stringify(sms) === JSON.stringify(e.sms_templates), `texts ${JSON.stringify(sms)}, expected ${JSON.stringify(e.sms_templates)}`);
   for (const [i, want] of e.sms_vars.entries()) {

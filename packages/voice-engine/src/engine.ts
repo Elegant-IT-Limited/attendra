@@ -68,7 +68,7 @@ export interface Sideband {
  * The three append commands the agent uses, typed by the SDK, and on the tools path a tool's result for the engine to
  * hand back to whichever model called it (a Realtime function call, a GPT-Live delegated Responses call).
  */
-export type SidebandCommand = ThinkingAppendEvent | CommentaryAppendEvent | InstructionsAppendEvent | ToolResultCommand | ManualTurnsCommand | ToolInjectCommand | ReplyCommand | ContextNoteCommand;
+export type SidebandCommand = ThinkingAppendEvent | CommentaryAppendEvent | InstructionsAppendEvent | ToolResultCommand | ManualTurnsCommand | ToolInjectCommand | ReplyCommand | ContextNoteCommand | CallerContextCommand;
 export interface ToolResultCommand { type: 'tool.result'; event_id: string; call_id: string; output: string }
 /**
  * The tools path, on an engine that can (gpt-realtime): whether the voice waits for our go before it replies to the
@@ -84,6 +84,13 @@ export interface ReplyCommand { type: 'reply.go'; event_id: string }
  * engines ignore it.
  */
 export interface ContextNoteCommand { type: 'context.note'; event_id: string; content: string }
+/**
+ * What caller ID would show a front desk (how often the number called, the name on file): context for the model, never
+ * something to say now. On gpt-realtime a note in the conversation, with no reply and nothing cut off (call quality Q11,
+ * 2026-11-18: it arrived about 11 s in, as new instructions, and a reply went out over the caller: "How can I help you
+ * today? How can I help", and a second introduction). GPT-Live takes it as instructions, as before.
+ */
+export interface CallerContextCommand { type: 'context.caller'; event_id: string; content: string }
 
 /** The subset of server events the call runner reads. Everything else is ignored. */
 export type SidebandEvent =

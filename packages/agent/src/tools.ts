@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
   bookableProviders, demoEmergency,
-  addDays, EMERGENCY_CHOICES, EMERGENCY_LINES, emergencyHandlingSummary, saysSlot, ageOn, asE164, digitByDigit, groupedNumber, heardNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isClearYesTo, asksForText, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  addDays, EMERGENCY_CHOICES, EMERGENCY_LINES, emergencyHandlingSummary, saysSlot, ageOn, asE164, digitByDigit, groupedNumber, heardNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isClearYesTo, asksForText, isSmallTalk, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, isPetEmergency, LANGUAGES, normalise, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, inProviderOrder, providerFacts, providerOrderAsked, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, BOOKING_LEAD_MINUTES, bookingPolicy, callFacts, earliestStart, lastBookableDate, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant, dayShift, offerTimesLine,
@@ -11,9 +11,10 @@ import type { Logger } from '@attendra/observability';
 import { createHash } from 'node:crypto';
 import { fillFromMemory } from './call-memory';
 import { dayReason, doesntDoType, frontDeskLine, nothingFound, vetHoursLine } from './slot-answer';
+import { doneAfterEmergency } from './flow/emergency';
 import type { CallState } from './call-state';
-import { answerForAsked, answersFromFaqs } from './knowledge';
-import { askedVisitWords, asksWhatVisits, bookableVisits, closestVisits, visitChoicesIn } from './visit-offer';
+import { answerForAsked, answersFromFaqs, asksIfOffered } from './knowledge';
+import { askedVisitWords, asksWhatVisits, bookableVisits, closestVisits, visitChoicesIn, visitSharesTopic } from './visit-offer';
 import { asksEmergencyHandling, asksWhichVet, saysTextsNotArriving, textsNotArrivingNote, withoutMeaningAsk } from './flow/guards';
 import { visitMeant, whichVisitLine } from './flow/visit-pick';
 import { outOfScopeLine } from '@attendra/knowledge/scope';
@@ -237,9 +238,46 @@ export function textOfferAfter(kind: 'directions' | 'hours', state: CallState, c
 /** Tool arguments with every empty or blank string as null. */
 const blanksAsNull = (args: unknown): unknown => (args && typeof args === 'object' && !Array.isArray(args)
   ? Object.fromEntries(Object.entries(args as Record<string, unknown>).map(([k, v]) => [k, typeof v === 'string' && !v.trim() ? null : v])) : args);
+/**
+ * find_slots' arguments as a voice model writes them when it means something the schema says another way (call quality
+ * Q8, 2026-11-18: invalid_arguments on both paths, CB10 not the whole story): "none"/"any" for a choice left open, a
+ * time as "9:00", "9" or "09:00:00", a date with a time after it, "evening", "true" as a string. Anything else is left as
+ * written, and still checked.
+ */
+export function slotArgsAsMeant(args: unknown): unknown {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return args;
+  const a: Record<string, unknown> = { ...(args as Record<string, unknown>) };
+  const open = (v: unknown) => typeof v === 'string' && /^(?:none|any|null|no|either|n\/a|unknown|no preference)$/i.test(v.trim());
+  for (const k of ['provider_gender', 'time_mode', 'specialty', 'provider_id', 'from_date', 'from_time']) if (open(a[k])) a[k] = null;
+  if (typeof a.provider_gender === 'string') { const g = a.provider_gender.trim().toLowerCase(); a.provider_gender = /^(?:female|woman|f)$/.test(g) ? 'female' : /^(?:male|man|m)$/.test(g) ? 'male' : a.provider_gender; }
+  if (a.part_of_day === null || a.part_of_day === undefined || open(a.part_of_day) || a.part_of_day === '') a.part_of_day = 'any';
+  if (typeof a.part_of_day === 'string') { const p = a.part_of_day.trim().toLowerCase(); a.part_of_day = /^(?:evening|night|late)$/.test(p) ? 'afternoon' : /^(?:early|am)$/.test(p) ? 'morning' : p; }
+  if (typeof a.from_time === 'string') {
+    const m = /^(\d{1,2})(?::(\d{2}))?(?::\d{2})?\s*(am|pm|a\.m\.|p\.m\.)?$/i.exec(a.from_time.trim());
+    if (m) { let h = Number(m[1]); const pm = /^p/i.test(m[3] ?? ''); if (pm && h < 12) h += 12; if (/^a/i.test(m[3] ?? '') && h === 12) h = 0; if (h < 24) a.from_time = `${String(h).padStart(2, '0')}:${m[2] ?? '00'}`; }
+  }
+  if (typeof a.from_date === 'string') { const d = /^(\d{4}-\d{2}-\d{2})[T ]/.exec(a.from_date.trim()); if (d) a.from_date = d[1]; }
+  if (typeof a.time_mode === 'string') { const t = a.time_mode.trim().toLowerCase(); a.time_mode = t === 'exact' || t === 'exactly' ? 'at' : t === 'first' || t === 'soonest' ? 'earliest' : t; }
+  if (typeof a.propose_if_exact === 'string') a.propose_if_exact = /^true$/i.test(a.propose_if_exact) ? true : /^false$/i.test(a.propose_if_exact) ? false : a.propose_if_exact;
+  return a;
+}
+
 /** Where a confirmation text will go, for the tool result: never "sent", since nobody on the call can see it arrive. */
 const textNote = (to: 'calling' | 'file' | null) => (to === 'calling' ? 'will go to the number calling' : to === 'file' ? 'will go to the number on file' : 'none');
 /** The read-back asked again after an answer that was not a yes: plainly, with no set words to repeat. */
+/**
+ * The medicine of one refill request after the caller said more about it: the new words when they name it more fully
+ * or the first were only "this" or "his medicine"; both when they are another medicine for the same pet.
+ */
+function sameRefill(before: string, now: string): string {
+  const b = normalise(before).trim();
+  const n = normalise(now).trim();
+  if (!b || VAGUE_MEDICINE.test(b) || n.includes(b)) return now;
+  if (!n || VAGUE_MEDICINE.test(n) || b.includes(n)) return before;
+  return `${before}; ${now}`;
+}
+const VAGUE_MEDICINE = /^(?:(?:this|that|it|the|his|her|their|my|its|su|sus|el|la|esta|este|ese|esa)\s*)*(?:one|medicine|medication|meds|pills?|tablets?|refill|prescription|unknown|not sure|medicina|medicamento|pastillas?|receta)?$/;
+
 /** The text offer asked once more after an answer that was neither yes nor no (call quality Q2, 2026-11-18). */
 const askTextAgain = (lang: CallState['language'], target: 'this' | 'file') => (lang === 'es'
   ? `Para estar segura: ¿se lo mando por mensaje ${target === 'file' ? 'al número de su ficha' : 'al número desde el que llama'}? Con un sí me basta.`
@@ -443,12 +481,26 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
   // an empty string for a detail the caller did not give is that detail left out: null, where the tool takes null
   // (a voice model sent "" for "none" and a move's slot search came back invalid_arguments, 2026-11-16)
   const first = schema.safeParse(rawArgs);
-  const parsed = first.success ? first : schema.safeParse(blanksAsNull(rawArgs));
+  const parsed = first.success ? first : schema.safeParse(name === 'find_slots' ? slotArgsAsMeant(blanksAsNull(rawArgs)) : blanksAsNull(rawArgs));
   // the arguments were the model's mistake, not the caller's: they are never asked to say it again for it
-  if (!parsed.success) return refuse('invalid_arguments', `These arguments do not fit the tool (${parsed.error.issues.map((i) => i.path.join('.')).filter(Boolean).join(', ') || 'their shape'}). Call it again with what the caller already said; ask the caller only for a detail they have not given yet.`);
+  if (!parsed.success) {
+    // which argument, and why, is recorded and logged (names, issue codes and the kind of value only, never the value):
+    // the call record showed only "invalid_arguments", so the cause could not be read from it (call quality Q8)
+    const raw = (rawArgs && typeof rawArgs === 'object' ? rawArgs : {}) as Record<string, unknown>;
+    const fields = parsed.error.issues.map((i) => { const k = String(i.path[0] ?? ''); const v = raw[k]; return `${i.path.join('.') || 'args'}:${i.code}:${v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v}`; });
+    ctx.log?.warn({ call_id: ctx.callId, tool: name, invalid_fields: fields }, 'tool arguments did not fit');
+    const r = refuse('invalid_arguments', `These arguments do not fit the tool (${parsed.error.issues.map((i) => i.path.join('.')).filter(Boolean).join(', ') || 'their shape'}). Call it again with what the caller already said; ask the caller only for a detail they have not given yet.`);
+    return { ...r, data: { ...r.data, invalid_fields: fields } };
+  }
   // an animal's red flag waits for the caller's answer to the one question: no times or booking for that pet until then
   const flagged = state.emergencyCase;
   // (a sign that may be mild, like limping, never holds a booking: a sick visit is often exactly what the caller wants)
+  // the clinic's facts hold the demo line and the emergency handling: read out before the caller answered, the call left
+  // the emergency (call quality Q9, 2026-11-18). The one question first
+  if (trade.identity === 'pet' && flagged && flagged.kind !== 'borderline' && (flagged.stage === 'flagged' || flagged.stage === 'asked') && name === 'get_clinic_info'
+    && !isMedicalQuestion(String((parsed.data as { question?: unknown }).question ?? '')) && !isMedicalQuestion(state.recentCallerText(), { quantities: false })) {
+    return refuse('emergency_question', `Not yet: the caller has not answered whether this is still an emergency. Ask it now, word for word, if it was not said: "${EMERGENCY_LINES.question(state.language)}" and wait for the answer. Say nothing about hours, the clinic or the emergency handling until then.`);
+  }
   if (trade.identity === 'pet' && flagged && flagged.kind !== 'borderline' && (flagged.stage === 'flagged' || flagged.stage === 'asked') && WAITS_FOR_ANSWER.has(name)
     && aboutPetInDanger(name, parsed.data as Record<string, unknown>, state, flagged.pet)) {
     return refuse('pet_flagged', `The caller has not yet answered whether this is still an emergency. Do not look for times or book for ${flagged.pet?.name ?? 'this pet'}. If the question has not been asked, ask it now, word for word: "${EMERGENCY_LINES.question(state.language)}" and wait for the answer.`);
@@ -689,6 +741,10 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
 
     case 'get_clinic_info': {
       const question = String(args.question);
+      // a greeting or "how are you?" alone: answered in kind, never with the hours (call quality Q10, 2026-11-18)
+      if (isSmallTalk(state.lastTurn('caller')) && (isSmallTalk(question) || /^(?:greeting|small talk|how are you)$/i.test(question.trim()))) {
+        return { ok: true, data: { spoken: pack.spoken.smallTalk, say: `They only greeted you or asked how you are. Say, in these words: "${pack.spoken.smallTalk}" Say nothing about the time, the hours or the clinic.` } };
+      }
       // texts that are not arriving are not a question about the clinic: where texts go, once a turn (2026-11-16: the
       // caller heard the address). Asked again in the same turn, it answers the rest of what they asked
       if ((saysTextsNotArriving(question) || saysTextsNotArriving(state.lastTurn('caller'))) && !state.guardsSaid.has(`no_texts_info:${state.turns.length}`)) {
@@ -728,6 +784,12 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const offer = asksWhere(asked) ? textOfferAfter('directions', state, clinic, ctx.callerNumber) : asksHours(asked) ? textOfferAfter('hours', state, clinic, ctx.callerNumber) : null;
       const visitsLine = !ownOffer && bookable.length && asksWhatVisits(`${question} ${state.lastTurn('caller')}`)
         ? PACKS[lang].spoken.visitsWeBook({ visits: bookable.slice(0, 6).map((v) => localName(v, lang)), more: bookable.length > 6 }) : null;
+      // "Do you do laser therapy?" with no answer of the clinic's own, no document and none of its visits about it: the
+      // not-offered line with what it does book (call quality Q6, 2026-11-18: a weak shared word picked the grooming answer)
+      const notOffered = !answer && !passages.length && !visitsLine && asksIfOffered(question)
+        && !closestVisits(clinic, question, state.verifiedPatient, 1).some((v) => visitSharesTopic(v, question))
+        ? visitNotOffered('not_offered', state, clinic, lang) : null;
+      if (notOffered) return { ok: true, data: { ...notOffered.data, error: undefined, today: hours } };
       return {
         ok: true,
         data: {
@@ -1286,11 +1348,24 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if (textingOf(clinic).enabled && textUpdates === null) {
         return refuse('ask_text_updates', `Ask once: "${pack.refillTextOffer}" Then call create_refill_request again with the same details and text_updates true or false.`);
       }
+      // one refill request per pet per call: the caller saying more about it ("let me finish: it's his carprofen") changes
+      // that request, never makes a second (call quality Q7, 2026-11-18: R-50 and R-51 for one refill)
+      const petId = state.verifiedPatient!.id;
+      const before = state.refillRequests.get(petId);
+      const medication = before ? sameRefill(before.details.medication ?? '', String(args.medication)) : String(args.medication);
+      const pharmacySaid = args.pharmacy == null ? '' : String(args.pharmacy).trim();
+      const pharmacy = pharmacySaid && !/^(?:null|none|unknown)$/i.test(pharmacySaid) ? pharmacySaid : before?.details.pharmacy ?? String(args.pharmacy);
+      const details: Record<string, string> = { ...(before?.details ?? {}), medication, pharmacy, callback_number: asGiven(clinic, callback), ...(textUpdates !== null ? { texts: textUpdates ? 'yes' : 'no' } : {}) };
+      if (before && backend.tasks.updateDetails && await backend.tasks.updateDetails(clinic.id, before.id, ctx.callId, details)) {
+        before.details = details;
+        return { ok: true, data: { task_id: before.id, updated: true, say: 'The refill request this call made now has what they just said. Tell them it is updated and with the team; never say a second request was made.', spoken: pack.spoken.refillUpdated } };
+      }
       const task = await backend.tasks.create(clinic.id, {
-        type: 'refill', callId: ctx.callId, patientId: state.verifiedPatient!.id,
-        idempotencyKey: key(ctx.callId, 'refill', String(args.medication).toLowerCase()),
-        details: { medication: String(args.medication), pharmacy: String(args.pharmacy), callback_number: asGiven(clinic, callback), ...(textUpdates !== null ? { texts: textUpdates ? 'yes' : 'no' } : {}) },
+        type: 'refill', callId: ctx.callId, patientId: petId,
+        idempotencyKey: key(ctx.callId, 'refill', petId),
+        details,
       });
+      state.refillRequests.set(petId, { id: task.id, details });
       state.outcome = 'task_created';
       if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, number: task.number, type: 'refill', patientId: state.verifiedPatient!.id, callId: ctx.callId } });
       return { ok: true, data: { task_id: task.id, say: `Tell them the request is with the ${trade.identity === 'pet' ? 'team' : 'care team'}, who will review it and get back to them. Say nothing about approval or how long it takes.`, spoken: pack.spoken.refillTaken } };
@@ -1457,8 +1532,9 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
     }
 
     case 'end_call':
-      // never hang up on a caller who has not finished: "I'm done" can end a phone number, not the call
-      if (!saidGoodbye(state.lastTurn('caller'), state.lastTurn('agent', 2))) {
+      // never hang up on a caller who has not finished: "I'm done" can end a phone number, not the call. After an
+      // emergency line, "ya está bien, gracias" or "hang up" is a caller who is done (call quality Q9)
+      if (!saidGoodbye(state.lastTurn('caller'), state.lastTurn('agent', 2)) && !(state.emergencyCase?.stage === 'escalated' && doneAfterEmergency(state.lastTurn('caller')))) {
         return refuse('caller_not_finished', 'Do not end the call yet. If their request is not finished, say what you can still do or offer a callback. Otherwise ask: "Is there anything else I can help you with?" End the call only after they say no or goodbye.');
       }
       return { ok: true, data: { ending: true, say: 'Say goodbye warmly.', spoken: pack.spoken.goodbye }, action: { type: 'hangup' } };
