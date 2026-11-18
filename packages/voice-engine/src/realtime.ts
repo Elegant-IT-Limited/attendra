@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { voiceToolDefinitions } from '@attendra/agent';
-import { callFacts, type CallEventInput, type ClinicConfig, DEFAULT_VOICE, industryPack, PACKS, providerEvent, REALTIME_VOICES, type VoiceFlow } from '@attendra/core';
+import { callFacts, type CallEventInput, type ClinicConfig, DEFAULT_VOICE, fragmentKey, industryPack, type Language, languageAfterTurn, PACKS, providerEvent, REALTIME_VOICES, strayFragment, type VoiceFlow } from '@attendra/core';
 
 /**
  * What a caller's line becomes when the transcriber wrote it in a script none of the clinic's languages is written in
@@ -57,7 +57,7 @@ const READS = new Set(['find_slots', 'get_clinic_info', 'search_knowledge', 'lis
  * rule is kept, only the wording is tighter. The planner path, which every clinic runs on, keeps the full wording.
  */
 export const VET_VOICE_DESCRIPTIONS: Record<string, string> = {
-  verify_caller: 'Find the pet before booking, changing or reading anything of theirs: the owner\'s first name (full if given), the pet\'s name, the phone number on file (null: the number they are calling from), and species if they said it ("my cat Mango"), else null. Call it again to switch pets. Owner known but not the pet: pet_name null (with caller ID it may return pets_on_number, the names to ask about). phone_last4: null, unless a tool asked for the last four digits on file; then those digits as said, with pet_name, and phone null.',
+  verify_caller: 'Find the pet before booking, changing or reading anything of theirs: the owner\'s first name (full if given), the pet\'s name, the phone number on file (null: the number they are calling from), and species if they said it ("my cat Mango"), else null. Call it again to switch pets. Owner known but not the pet: pet_name null (with caller ID it may return pets_on_number, the names to ask about). phone_last4: when the caller gives only the last four digits of the number on file ("it ends 0172"), or a tool asked for them: those digits as said, with pet_name, owner_name, and phone null; else null.',
   register_patient: 'Add a new pet, when the caller says it is new (no lookup first: this checks it is not on file) or verify_caller found nothing and they say it is new. pet_name; owner_name only as they said it, else null (a tool asks for a name only when the number has none); species (dog, cat, rabbit...); sex (female, male or unknown); birthday_or_age as the owner said it, never with a year they did not say (a day and month alone is not a birthday: ask the age); phone (null: the number they are calling from). The pet is then found and can book.',
   get_clinic_info: 'Hours today and for 7 days, the vets (animals and services they see, weekly hours, time off, new patients, details such as qualifications), visit types, emergency hospitals, how the clinic handles emergencies (plain words, for a caller who asks), the clinic FAQ, and document passages when the FAQ has no answer. No identity needed.',
   find_slots: 'Up to 3 open slots, optionally with one vet (provider_id) or the vets for a kind of animal or service from get_clinic_info (specialty). No identity needed ("who is free Monday" before asking who they are). from_date: the first day asked for ("next week" is the coming Monday); null is today. from_time: the time named ("after 3" is 15:00, "at 10:30" is 10:30), else null; time_mode as said: at ("is 4 free?"), around ("around 5"), before ("earlier than 6"), after ("after 3") or earliest; the answer leads with that exact time, then the nearest on that side. propose_if_exact: true only for one exact day and time ("Thursday at 2:30") for a new booking by a caller already found: if free it is staged and its read-back spoken, so no propose_booking; if not, the nearest times come back. Never for a move; null before the pet is found.',
@@ -127,6 +127,14 @@ export function transcriptionFor(clinic: Pick<ClinicConfig, 'languages'>): { mod
   return { model: TRANSCRIBE_MODEL, prompt: `A phone call to a clinic. The caller speaks ${langs.map((l) => PACKS[l].name).join(' or ')}, nothing else.` };
 }
 
+const LANG_NAME = '(?:english|spanish|ingl[eé]s|espa[nñ]ol)';
+const PROMPT_ECHOES = [
+  /\ba phone call to a clinic\.?/gi,
+  new RegExp(`\\bthe caller speaks ${LANG_NAME}(?:,? or ${LANG_NAME})*,? nothing else\\.?`, 'gi'),
+  new RegExp(`\\b(?:la persona que llama|el que llama|quien llama|el llamante) habla ${LANG_NAME}(?:,? (?:o|u) ${LANG_NAME})*,? nada m[aá]s\\.?`, 'gi'),
+  /\buna llamada(?: telef[oó]nica)? a una cl[ií]nica\.?/gi,
+];
+
 /**
  * A caller's line without what the transcriber echoed from its own prompt: on a quiet stretch it can write the prompt's
  * first words ("A phone call to a clinic."), or the same words in Spanish, as if the caller said them (two test
@@ -134,7 +142,9 @@ export function transcriptionFor(clinic: Pick<ClinicConfig, 'languages'>): { mod
  * around it stay.
  */
 export function withoutPromptEcho(transcript: string): string {
-  const rest = transcript.replace(/\ba phone call to a clinic\.?/gi, ' ').replace(/\s+/g, ' ').trim();
+  // any sentence of the prompt, in English or as the transcriber may put it in Spanish (call quality Q5, 2026-11-18: "The
+  // caller speaks English or Spanish, nothing else." was a caller turn)
+  const rest = PROMPT_ECHOES.reduce((t, p) => t.replace(p, ' '), transcript).replace(/\s+/g, ' ').trim();
   return /^(?:a phone call|(?:una )?llamada(?: (?:telefonica|telefónica))?(?: a una cl[ií]nica)?)[.!?]*$/i.test(rest) ? '' : rest;
 }
 
@@ -214,12 +224,21 @@ export const FIRST_WORDS_WAIT_MS = 2500;
 /**
  * Turn detection on the tools path: the turn ends once the caller has clearly finished, and the engine starts each reply
  * itself (at once, or after our go once replies are manual), so nothing about the session changes mid-call. The caller
- * talking over a reply still stops it.
+ * talking over a reply still stops it. Low eagerness (call quality Q4, 2026-11-18): at high, a caller pausing mid-sentence
+ * was answered ("No, but let me finish..."); low waits for a turn that sounds finished.
  */
-const TOOLS_TURNS = { type: 'semantic_vad' as const, eagerness: 'high' as const, create_response: false, interrupt_response: true };
+export const TOOLS_TURNS = { type: 'semantic_vad' as const, eagerness: 'low' as const, create_response: false, interrupt_response: true };
+/** Phone audio is a handset close to the mouth: near-field noise reduction takes out the room before turn detection (Q5). */
+export const NOISE_REDUCTION = { type: 'near_field' as const };
 
+/** A caller turn shorter than this is answered only once its words are in: it may be a voice in the room (Q5). */
+export const SHORT_TURN_MS = 2500;
+/** The longest such a turn waits for its words before it is answered anyway. */
+export const SHORT_TURN_WAIT_MS = 1500;
 /** The longest a reply waits for the caller's words before it, when transcription is slow. */
 export const TRANSCRIPT_WAIT_MS = 3000;
+/** The longest replies wait for the tools' results before they go anyway (a tool that never answers never holds the call). */
+export const TOOL_RESULT_WAIT_MS = 20_000;
 
 /**
  * What a reply request is, for the turn gate: the greeting (never merged), a reply that may call tools, a reply that
@@ -252,11 +271,18 @@ export class TurnGate {
   /** A response.created came since our request went out. */
   private created = false;
   readonly queue: { kind: ReplyKind; event: Record<string, unknown> }[] = [];
+  /**
+   * The model called tools whose results are not in yet. A reply asked for meanwhile (the caller said more) waits for
+   * them and goes once, with the results in the conversation (call quality Q3, 2026-11-18: a reply to "Excelente" went
+   * out 180 ms before commit_pending's result, and the model, seeing a call with no result, said "I'm still waiting for
+   * that to complete, and I can't cancel it again until it finishes"). A hold line may still go.
+   */
+  private toolsOut = false;
 
   constructor(private readonly sendRaw: (e: Record<string, unknown>) => void, private readonly trace: (e: CallEventInput) => void = () => {}) {}
 
   request(event: Record<string, unknown>, kind: ReplyKind) {
-    if (!this.active) return this.go({ kind, event });
+    if (!this.active && !this.queue.length && !(this.toolsOut && kind !== 'hold')) return this.go({ kind, event });
     if (kind === 'greeting') { this.queue.push({ kind, event }); this.trace({ type: 'gate.queued.greeting' }); return; }
     const i = this.queue.findIndex((w) => w.kind !== 'greeting');
     if (i < 0) { this.queue.push({ kind, event }); this.trace({ type: `gate.queued.${kind}` }); return; }
@@ -264,6 +290,16 @@ export class TurnGate {
     // the same reply asked for twice is one; one that may call tools takes the place of one that may not
     if (RANK[kind] > RANK[queued.kind as Exclude<ReplyKind, 'greeting'>]) this.queue[i] = { kind, event };
     this.trace({ type: `gate.merged.${kind}` });
+  }
+
+  /** Tools were called and their results are not in yet: replies wait (a hold line may go). */
+  waitForTools() { this.toolsOut = true; }
+
+  /** Every tool result is in: what waited goes, once. */
+  toolsDone() {
+    if (!this.toolsOut) return;
+    this.toolsOut = false;
+    if (!this.active) this.next();
   }
 
   /** A response started: ours, or one the server's turn detection started itself. */
@@ -296,7 +332,9 @@ export class TurnGate {
   }
 
   private next() {
-    const w = this.queue.shift();
+    const i = this.toolsOut ? this.queue.findIndex((q) => q.kind === 'hold') : 0;
+    if (i < 0 || !this.queue.length) { if (this.toolsOut && this.queue.length) this.trace({ type: 'gate.held_for_tools' }); return; }
+    const [w] = this.queue.splice(i, 1);
     if (w) this.go(w);
   }
 
@@ -349,6 +387,8 @@ export class RealtimeEngine implements VoiceEngine {
   private readonly facts = new Map<string, string>();
   /** Each call's clinic languages: a caller's line in another script is not passed on as words. */
   private readonly languages = new Map<string, readonly string[]>();
+  /** Each call's first language: the one the fragment filter starts from. */
+  private readonly primaries = new Map<string, string>();
 
   /**
    * The planner path: the conversation prompt and one tool, ask_backend. The tools path (batch 1a): the tools prompt
@@ -364,9 +404,9 @@ export class RealtimeEngine implements VoiceEngine {
       // conversation), so they stay in the prompt cache
       instructions: tools ? [toolsVoiceStaticPrompt(clinic), ...REALTIME_TOOLS_LINES].join('\n') : [conversationPrompt(clinic, now), ...REALTIME_LINES].join('\n'),
       audio: {
-        // on the tools path the reply is a tool call away, so the turn ends sooner: semantic_vad at high eagerness answers
-        // once the caller has clearly finished, instead of waiting out a longer pause (real-audio runs, batch 1a)
-        input: { transcription: transcriptionFor(clinic), turn_detection: tools ? TOOLS_TURNS : { type: 'semantic_vad' as const } },
+        // on the tools path the engine starts each reply once semantic_vad says the caller has finished (TOOLS_TURNS); the
+        // room's noise is taken out first, so background voices end and start fewer turns
+        input: { transcription: transcriptionFor(clinic), noise_reduction: NOISE_REDUCTION, turn_detection: tools ? TOOLS_TURNS : { type: 'semantic_vad' as const } },
         output: { voice: voiceFor(clinic.voice) },
       },
       tools: tools ? realtimeTools(clinic) : [ASK_BACKEND],
@@ -387,6 +427,7 @@ export class RealtimeEngine implements VoiceEngine {
     this.voices.set(callId, voiceFor(clinic.voice));
     this.flows.set(callId, opts.flow ?? 'planner');
     this.languages.set(callId, clinic.languages);
+    this.primaries.set(callId, clinic.primaryLanguage ?? clinic.languages[0] ?? 'en');
     if (opts.flow === 'tools') this.facts.set(callId, callFactsNote(clinic, callFacts(clinic, now, opts.callerNumber)));
   }
 
@@ -408,6 +449,7 @@ export class RealtimeEngine implements VoiceEngine {
     this.voices.set(callId, voiceFor(clinic.voice));
     this.flows.set(callId, opts.flow ?? 'planner');
     this.languages.set(callId, clinic.languages);
+    this.primaries.set(callId, clinic.primaryLanguage ?? clinic.languages[0] ?? 'en');
     if (opts.flow === 'tools') this.facts.set(callId, callFactsNote(clinic, callFacts(clinic, now, opts.callerNumber)));
     return { sessionId: callId, sdpAnswer: await res.text() };
   }
@@ -441,6 +483,7 @@ export class RealtimeEngine implements VoiceEngine {
     const toolsPath = this.flows.get(callId) === 'tools';
     // the tool calls of a response still waiting for their results: the model goes on once all of them are back
     const outstanding = new Set<string>();
+    let toolsTimer: NodeJS.Timeout | null = null;
     // the last tool question among the results of one response, said once all of them are back
     let question: string | null = null;
     // and the last refusal line among them (a question wins over it)
@@ -463,6 +506,13 @@ export class RealtimeEngine implements VoiceEngine {
       if (words) respond();
       else trace({ type: 'gate.no_words' });
     };
+    // A short turn waits for its transcript too (call quality Q5, 2026-11-18): one or two words from the room in another
+    // language ("Excelente", "Quiero" on an English call) were answered and acted on. Such a fragment is set aside: never
+    // answered, never passed on, and taken out of the conversation; said again, it is the caller's. Background voices on
+    // a phone line, filtered for every call (with the provider's noise reduction, see session()).
+    const offered = (this.languages.get(callId) ?? ['en']) as readonly Language[];
+    let callLanguage = (this.primaries.get(callId) ?? 'en') as Language;
+    let setAside: string | null = null;
     let goTimer: NodeJS.Timeout | null = null;
     const go = () => { if (goTimer) clearTimeout(goTimer); goTimer = null; if (!goDue) return; goDue = false; respond(); };
     const started = Date.now();
@@ -557,6 +607,8 @@ export class RealtimeEngine implements VoiceEngine {
     // arrived (often after the reply had started, which put the caller's words a turn late in the record and made the
     // wait for an answer look shorter than it was)
     const spokenAt = new Map<string, { start: number; end: number | null }>();
+    /** A turn short enough to be a stray fragment: its reply waits for its words. */
+    const shortTurn = (itemId: string) => { const at = spokenAt.get(itemId); return !!at && at.end !== null && at.end - at.start < SHORT_TURN_MS; };
     ws.on('event', (e) => {
       trace(providerEvent(e));
       switch (e.type) {
@@ -578,6 +630,9 @@ export class RealtimeEngine implements VoiceEngine {
           if (toolsPath && !manual && !callerHeard && typeof e.item_id === 'string') {
             const item = e.item_id;
             firstTurns.set(item, setTimeout(() => answerFirst(item, true), FIRST_WORDS_WAIT_MS));
+          } else if (toolsPath && !manual && typeof e.item_id === 'string' && shortTurn(e.item_id)) {
+            const item = e.item_id;
+            firstTurns.set(item, setTimeout(() => answerFirst(item, true), SHORT_TURN_WAIT_MS));
           } else if (toolsPath && !manual) respond();
           else if (manual) { goDue = true; if (goTimer) clearTimeout(goTimer); goTimer = setTimeout(go, GO_WAIT_MS); }
           return;
@@ -588,9 +643,17 @@ export class RealtimeEngine implements VoiceEngine {
             emit({ type: 'session.model_usage', event_id: `${id(e)}_usage`, model: TRANSCRIBE_MODEL, input: u.input_tokens ?? 0, cached: 0, output: u.output_tokens ?? 0 });
           }
           if (typeof e.item_id === 'string' && firstTurns.has(e.item_id)) {
-            const words = typeof e.transcript === 'string' && !!withoutPromptEcho(e.transcript);
-            if (words) callerHeard = true;
-            answerFirst(e.item_id, words);
+            const said = typeof e.transcript === 'string' ? withoutPromptEcho(e.transcript) : '';
+            if (said && strayFragment(said, callLanguage, setAside)) {
+              setAside = fragmentKey(said);
+              trace({ type: 'turn.stray_fragment' });
+              firstTurns.delete(e.item_id);
+              ws.send({ type: 'conversation.item.delete', item_id: e.item_id });
+              if (typeof e.item_id === 'string') spokenAt.delete(e.item_id);
+              return heard(e.item_id);
+            }
+            if (said) callerHeard = true;
+            answerFirst(e.item_id, !!said);
           }
           if (typeof e.transcript === 'string' && withoutPromptEcho(e.transcript)) {
             callerHeard = true;
@@ -600,6 +663,8 @@ export class RealtimeEngine implements VoiceEngine {
             // the clinic's languages are all written in Latin letters: a line in another script is the transcriber's, not
             // words the rules may read (the language lock asks for English; the transcriber can still write another script)
             const foreign = this.languages.has(callId) && inAnotherScript(said);
+            if (!foreign) callLanguage = languageAfterTurn(said, offered, callLanguage);
+            setAside = null;
             emit({ type: 'session.input_transcript.delta', event_id: id(e), delta: foreign ? NOT_UNDERSTOOD : said, start_ms: at?.start ?? ms(), end_ms: at?.end ?? ms() });
           }
           return heard(e.item_id);
@@ -634,6 +699,8 @@ export class RealtimeEngine implements VoiceEngine {
           // the tools path: one of our tools, answered by the tools API; held like a hand-off until the caller's words are in
           else if (toolsPath && typeof e.name === 'string') {
             outstanding.add(e.call_id);
+            gate.waitForTools();
+            toolsTimer ??= setTimeout(() => { toolsTimer = null; gate.toolsDone(); }, TOOL_RESULT_WAIT_MS);
             const call: SidebandEvent = { type: 'session.tool_call', event_id: id(e), call_id: e.call_id, name: e.name, arguments: typeof e.arguments === 'string' ? e.arguments : '{}' };
             // a lookup reads nothing the caller just said, so it runs at once; anything that may act on their words (a
             // yes to a read-back, a booking, a text, a transfer) waits for their words to be transcribed, as before
@@ -686,8 +753,11 @@ export class RealtimeEngine implements VoiceEngine {
           const instructions = toolReplyInstructions(question, refusal);
           question = null;
           refusal = null;
+          // asked while the gate still waits for the tools: it merges with a reply the caller's words asked for meanwhile
           if (instructions) sayNext(instructions);
           else respond();
+          if (toolsTimer) { clearTimeout(toolsTimer); toolsTimer = null; }
+          gate.toolsDone();
         }
         return;
       }
