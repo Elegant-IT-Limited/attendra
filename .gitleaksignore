@@ -1,2 +1,4 @@
 # docs/qa-export.md in 19f5041e: a documentation placeholder (atk_REPLACE_WITH_YOUR_KEY) in a curl example, not a key; the line now reads the key from an environment variable.
 19f5041ef1d93b68da6d8cb640326acc5e69d7a1:docs/qa-export.md:curl-auth-header:21
+# packages/core/src/vapi.ts in 17967fed: an ElevenLabs public voice id (the listed voice Chris, also on line 100 of VAPI_VOICES), not a key; the default now reads it from that list.
+17967fedd3a0de8db86dfa84e5bf4bbd91315b55:packages/core/src/vapi.ts:generic-api-key:109

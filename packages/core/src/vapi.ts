@@ -106,7 +106,7 @@ export type VapiVoice = (typeof VAPI_VOICES)[number];
  * V5). Before, it followed the kind of the clinic's own OpenAI voice (note 46, item 3), and since every clinic starts on
  * marin, every location heard Sarah. A location's own choice (Settings > Voice) still wins.
  */
-export const VAPI_DEFAULT_VOICE_ID = 'iP95p4xoKVk53GoZ742B';
+export const VAPI_DEFAULT_VOICE_ID: string = VAPI_VOICES.find((v) => v.name === 'Chris')!.voiceId;
 export const vapiDefaultVoice = (): VapiVoiceChoice => ({ provider: '11labs', voiceId: VAPI_DEFAULT_VOICE_ID, model: VAPI_VOICE_MODEL });
 
 /** The voice a location speaks with on Vapi: its own choice, else the default (the male voice). */
