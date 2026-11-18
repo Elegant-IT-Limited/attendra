@@ -30,7 +30,7 @@ turns:
 expect:
   outcome: emergency
   emergency_instruction: true
-  emergency_result: hospital_said
+  emergency_result: demo_line
   transfer_to: null
   sms_sent: 0
   language: es

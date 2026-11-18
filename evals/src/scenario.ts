@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 import { z } from 'zod';
-import { LANGUAGES } from '@attendra/core';
+import { EMERGENCY_RESULTS, LANGUAGES } from '@attendra/core';
 
 /**
  * One scenario is one phone call. Caller turns are always scripted. The backend's
@@ -66,7 +66,7 @@ export const Scenario = z.object({
     transfer_to: z.string().nullable().default(null),
     emergency_instruction: z.boolean().default(false),
     // how the call's emergency ended, as the Calls page shows it ('cleared' is "Emergency cleared"; note 49 B1)
-    emergency_result: z.enum(['transferred', 'hospital_said', 'hospital_texted', 'urgent_request', 'cleared']).optional(),
+    emergency_result: z.enum(EMERGENCY_RESULTS).optional(),
     language: z.enum(LANGUAGES).optional(), // the language the call ended in
     spoken_contains: z.array(z.string()).default([]), // phrases the backend must have given the voice model, like the 999 line
     // phrases the backend's tool results gave the planner (a vet's own field from get_clinic_info), and ones they never gave (a field kept for the team)

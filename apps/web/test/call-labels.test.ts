@@ -18,6 +18,11 @@ describe('the labels on Calls and the call page', () => {
     expect(Object.keys(EMERGENCY_RESULTS).sort()).toEqual([...RESULT_CODES].sort());
   });
 
+  it('a demo clinic\'s emergency says the demo line, never "sent to hospital" (V4, 2026-11-18)', () => {
+    expect(EMERGENCY_RESULTS.demo_line!.label).toBe('Emergency · demo line');
+    expect(EMERGENCY_RESULTS.demo_line!.text).not.toMatch(/sent to|take their pet/i);
+  });
+
   it('says how a call ended in plain words, the batch 1e silent start included, and never shows a raw code or a log note', () => {
     expect(closeReasonLabel('silent_start')).toBe('Assistant never spoke: passed on or ended');
     expect(closeReasonLabel('caller_hangup')).toBe('Caller hung up');

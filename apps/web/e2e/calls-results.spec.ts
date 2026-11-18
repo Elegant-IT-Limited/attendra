@@ -6,7 +6,7 @@ import { openAs } from './session';
 // callers only. The demo has no animal emergency with a result (those scenarios are kept out of the demo), so the row's
 // label is checked on a page whose first call the server's own answer is changed for.
 const LABELS: Record<string, string> = {
-  transferred: 'Emergency · put through', hospital_said: 'Emergency · sent to hospital', hospital_texted: 'Emergency · hospital texted',
+  transferred: 'Emergency · put through', hospital_said: 'Emergency · sent to hospital', hospital_texted: 'Emergency · hospital texted', demo_line: 'Emergency · demo line',
   urgent_request: 'Emergency · urgent request', cleared: 'Emergency cleared',
 };
 

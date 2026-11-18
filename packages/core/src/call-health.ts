@@ -29,9 +29,10 @@ export type CallOutcome = (typeof CALL_OUTCOMES)[number];
 /**
  * How an animal's emergency on a call ended (batch 1b, migration 0050), set by the emergency state machine
  * (packages/agent flow/emergency.ts): put through to the team, the hospital said (and texted), an urgent request when
- * nobody could be put through, or cleared by the caller.
+ * nobody could be put through, or cleared by the caller. On a demo clinic (core demo-clinic.ts) the caller only hears the
+ * demo line, which names no hospital and puts nobody through: `demo_line` (migration 0064), never "sent to hospital".
  */
-export const EMERGENCY_RESULTS = ['transferred', 'hospital_said', 'hospital_texted', 'urgent_request', 'cleared'] as const;
+export const EMERGENCY_RESULTS = ['transferred', 'hospital_said', 'hospital_texted', 'urgent_request', 'cleared', 'demo_line'] as const;
 export type EmergencyResult = (typeof EMERGENCY_RESULTS)[number];
 
 /**

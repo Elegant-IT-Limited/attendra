@@ -142,3 +142,32 @@ describe('after the pet script', () => {
     expect(desk.errors).toEqual([null]);
   });
 });
+
+describe('a demo clinic (V4, 2026-11-18)', () => {
+  // a demo call was recorded as "sent to hospital" though the caller only heard the demo line
+  const demo = { ...open, demoClinic: { enabled: true, baselineAt: null } };
+  it('records the demo line, never "sent to hospital", and names no hospital', async () => {
+    const c = await w.call('+17205550172', { clinic: demo });
+    c.caller("My dog Luna's throat is swelling!");
+    c.assistant(QUESTION);
+    const out = instructions(c.caller('Yes, please.'));
+    expect(out).toContain(EMERGENCY_LINES.demo('en'));
+    expect(out).not.toContain('Front Range Pet Emergency');
+    expect(c.state.emergencyResult).toBe('demo_line');
+  });
+
+  it('in Spanish too', async () => {
+    const c = await w.call('+17205550172', { clinic: { ...demo, languages: ['en', 'es'] } });
+    c.caller('A mi perra Luna se le está hinchando la garganta.');
+    c.assistant(EMERGENCY_LINES.question('es'));
+    const out = instructions(c.caller('Sí, por favor.'));
+    expect(out).toContain(EMERGENCY_LINES.demo('es'));
+    expect(c.state.emergencyResult).toBe('demo_line');
+  });
+
+  it('a clinic that is not a demo still records the hospital it named', async () => {
+    const c = await w.call('+17205550172', { clinic: open });
+    routed(c, "My dog Luna's throat is swelling!");
+    expect(c.state.emergencyResult).toBe('hospital_said');
+  });
+});

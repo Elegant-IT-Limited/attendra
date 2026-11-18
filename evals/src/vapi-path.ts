@@ -34,6 +34,8 @@ export const VAPI_PATH_SCENARIOS = [
   'not-an-emergency', 'es-booking', 'es-hedge', 'es-emergency', 'es-refill', 'es-wrong-dob',
   // a visit the clinic does not offer, and "what can I book?": the same answer as on the planner path (2026-11-16)
   'vet-visit-not-offered', 'vet-es-visit-not-offered', 'vet-what-visits', 'vet-es-what-visits', 'vet-not-offered-common-question-wins',
+  // a demo clinic's emergency: the demo line, recorded as demo_line, never "sent to hospital" (V4, 2026-11-18)
+  'demo-emergency-refer-setting', 'demo-emergency-refer-setting-es', 'demo-emergency-handle-open', 'demo-emergency-handle-open-es',
 ] as const;
 
 export interface VapiPathResult { id: string; passed: boolean; failures: string[]; outcome: string; ms: number }
@@ -79,7 +81,9 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
       secretMatches: async (id, presented) => id === clinic.id && presented === SECRET,
       maxConcurrency: 4,
       fetch: (async (_url: string, init: { body: string }) => { const body = JSON.parse(init.body) as Record<string, unknown>; controls.push({ type: String(body.type), body, onCallerWords }); return new Response('{"status":"ok"}'); }) as unknown as typeof fetch,
-      later: (_ms, fn) => fn(),
+      // a transfer or a hang-up after its line runs at once; a demo call's 14- and 15-minute limits never come in a
+      // scripted call (run at once, they ended every demo call before its first turn)
+      later: (ms, fn) => { if (ms < 60_000) fn(); },
       clinicById: async (id) => (id === clinic.id ? clinic : null),
       openCall: (clinicId, sessionId, from, channel, startedBy, last4, how) => calls.open(clinicId, sessionId, from, channel, startedBy, last4, how),
       recorderFor: (clinicId, callId) => ({ appendSegment: (s) => calls.appendSegment(clinicId, callId, s), close: (c) => calls.close(clinicId, callId, c) }),
@@ -171,6 +175,8 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
     const script = controls.some((c) => c.type === 'say' && c.onCallerWords) && row.emergencyFlag;
     check(script === e.emergency_instruction, `emergency script said ${script}, expected ${e.emergency_instruction}`);
     if (e.language) check(row.language === e.language, `answered in ${row.language}, expected ${e.language}`);
+    // how an animal's emergency ended, as the call page labels it ("Emergency · demo line" on a demo clinic)
+    if (e.emergency_result !== undefined) check(row.emergencyResult === e.emergency_result, `emergency result ${row.emergencyResult ?? 'none'}, expected ${e.emergency_result}`);
     // what the tools handed the voice, as on the planner path: the same facts and words
     const handed = JSON.stringify(outputs).toLowerCase();
     for (const phrase of e.returned) check(handed.includes(phrase.toLowerCase()), `no tool result gave "${phrase}"`);
