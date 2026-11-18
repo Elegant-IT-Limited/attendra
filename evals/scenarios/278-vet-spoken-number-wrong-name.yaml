@@ -21,6 +21,11 @@ turns:
     delegate:
       - verify_caller: { owner_name: null, pet_name: Biscuit, phone: "303 555 0142" }
   - caller: Alex.
+    reply: "I couldn't open a profile with that. Could you give me the full phone number on Biscuit's profile once more, and the owner's name on it?"
+    delegate:
+      - verify_caller: { owner_name: Alex, pet_name: Biscuit, phone: "303 555 0142" }
+  # one more try, the same answer whatever is on file (call quality Q1, 2026-11-18); then the one answer
+  - caller: It's 303 555 0142, and I'm Alex.
     reply: "I can't open a profile with those details on this call. I can take a message so the team can call you back."
     delegate:
       - verify_caller: { owner_name: Alex, pet_name: Biscuit, phone: "303 555 0142" }
@@ -31,7 +36,7 @@ turns:
 expect:
   outcome: task_created
   verified: false
-  refusals: [phone_required, confirm_number, owner_check, number_not_opened]
+  refusals: [phone_required, confirm_number, owner_check, number_again, number_not_opened]
   bookings_created: 0
   spoken_contains: ["And the owner's name on that profile?"]
   returned: ["I can't open a profile with those details on this call. I can take a message so the team can call you back."]

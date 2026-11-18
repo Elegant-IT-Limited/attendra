@@ -23,6 +23,10 @@ turns:
     delegate:
       - verify_caller: { owner_name: null, pet_name: Biscuit, phone: "303 555 0142" }
   - caller: Alex.
+    reply: "No pude abrir una ficha con eso. ¿Me puede dar otra vez el número de teléfono completo de la ficha de Biscuit, y el nombre del dueño?"
+    delegate:
+      - verify_caller: { owner_name: Alex, pet_name: Biscuit, phone: "303 555 0142" }
+  - caller: Es el 303 555 0142, y soy Alex.
     reply: "No puedo abrir una ficha con esos datos en esta llamada. Puedo dejarle un mensaje al equipo para que le devuelvan la llamada."
     delegate:
       - verify_caller: { owner_name: Alex, pet_name: Biscuit, phone: "303 555 0142" }
@@ -33,7 +37,7 @@ turns:
 expect:
   outcome: task_created
   verified: false
-  refusals: [phone_required, confirm_number, owner_check, number_not_opened]
+  refusals: [phone_required, confirm_number, owner_check, number_again, number_not_opened]
   bookings_created: 0
   returned: ["No puedo abrir una ficha con esos datos en esta llamada. Puedo dejarle un mensaje al equipo para que le devuelvan la llamada."]
   never_returned: ["Jordan", "Avery", "last_visit", "usual_vet", "next_visits", "Encontré a Biscuit", "pets_on_number"]
