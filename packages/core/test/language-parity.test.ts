@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  askedToHangUp, claimsAuthority, declinesText, detectEmergencies, industryPack, isAbusive, isClearYes, isInjectionAttempt, isMedicalQuestion, isReturningCall, leakIn,
+  askedToHangUp, asksForText, claimsAuthority, declinesText, detectEmergencies, industryPack, isAbusive, isClearYes, isInjectionAttempt, isMedicalQuestion, isReturningCall, leakIn,
   describesPet, newToClinic, parsePetBirth, pointsAtPet, saidGoodbye, withoutTextRefusal,
 } from '../src';
 
@@ -26,6 +26,10 @@ const birth = (s: string) => parsePetBirth(s, TODAY)?.dob ?? null;
 type Row = [behaviour: string, check: (text: string) => unknown, english: string, spanish: string, expected: unknown];
 
 const ROWS: Row[] = [
+  // call quality, 2026-11-18: the caller asking for the text is consent (Q2)
+  ['asksForText: asking for the text', asksForText, 'Can you send me the text?', '¿Me lo puede mandar por mensaje?', true],
+  ['asksForText: a missing text is not asking', asksForText, "I didn't get the text", 'No recibí el mensaje', false],
+  ['isClearYes: a quick yeah or ok (Q2)', yes, 'Ya', 'Ok', true],
   // returning a call the clinic never made (the number spoofed elsewhere)
   ['isReturningCall: a missed call', isReturningCall, 'I got a missed call from this number', 'Tengo una llamada perdida de este número', true],
   ['isReturningCall: someone called', isReturningCall, 'Someone called me from this number', 'Alguien me llamó de este número', true],
