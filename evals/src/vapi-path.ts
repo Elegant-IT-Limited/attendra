@@ -38,6 +38,8 @@ export const VAPI_PATH_SCENARIOS = [
   'demo-emergency-refer-setting', 'demo-emergency-refer-setting-es', 'demo-emergency-handle-open', 'demo-emergency-handle-open-es',
   // Vapi's voice: "Doctor Nkem Okafor" with no pause, and "8, 8:30 or 9 AM" (V3, 2026-11-18)
   'vapi-speech-times-and-title', 'vapi-es-speech-times-and-title',
+  // the caller ID's last four are ours: given with an identity answer, and other digits said for it corrected (V2)
+  'vapi-caller-id-digits', 'vapi-es-caller-id-digits',
 ] as const;
 
 export interface VapiPathResult { id: string; passed: boolean; failures: string[]; outcome: string; ms: number }
@@ -186,6 +188,8 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
     for (const phrase of e.never_returned) check(!handed.includes(forVapiVoice(phrase).toLowerCase()), `a tool result gave "${phrase}", which it must not`);
     for (const phrase of e.vapi_returned) check(handed.includes(phrase.toLowerCase()), `no tool result gave "${phrase}" on the Vapi path`);
     for (const phrase of e.vapi_never_returned) check(!handed.includes(phrase.toLowerCase()), `a tool result gave "${phrase}" on the Vapi path, which it must not`);
+    const said = controls.filter((c) => c.type === 'say').map((c) => String(c.body.content));
+    for (const line of e.vapi_said) check(said.includes(line), `the call never heard "${line}" on the Vapi path`);
     if (e.hung_up !== undefined) {
       const byRule = controls.some((c) => c.type === 'end-call' && c.onCallerWords);
       check(byRule === e.hung_up, `the assistant ${byRule ? 'ended the call itself' : 'did not end the call itself'}, expected ${e.hung_up ? 'it to' : 'not to'}`);

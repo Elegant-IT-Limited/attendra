@@ -75,6 +75,8 @@ export const Scenario = z.object({
     // the same, on the Vapi path only, as its voice gets them (core forVapiVoice: "Doctor Maya Chen", "8, 8:30 or 9 AM")
     vapi_returned: z.array(z.string()).default([]),
     vapi_never_returned: z.array(z.string()).default([]),
+    // lines said on the Vapi call through its control URL (a correction our rules decided), each exactly as said
+    vapi_said: z.array(z.string()).default([]),
     answered_from: z.string().optional(), // the FAQ entry a clinic question must be answered from
     cites: z.array(z.string()).optional(), // documents a knowledge answer must cite, the first as the best match; an empty list means none
     booked_with: z.string().optional(), // the provider every booking made on the call must be with
