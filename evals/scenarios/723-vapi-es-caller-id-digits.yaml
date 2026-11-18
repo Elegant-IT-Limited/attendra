@@ -2,7 +2,7 @@ id: vapi-es-caller-id-digits
 title: "In Spanish, the caller ID's last four are ours (V2): an identity answer gives them, and other digits said for them are corrected at once"
 clinic: riverbend
 caller_number: "+17205550172"
-tags: [vapi, identity, language, es]
+tags: [no-demo, vapi, identity, language, es]
 settings:
   languages: [en, es]
 facts: "You speak only Spanish. You want a checkup for your dog Biscuit. You are calling from the number on your file."

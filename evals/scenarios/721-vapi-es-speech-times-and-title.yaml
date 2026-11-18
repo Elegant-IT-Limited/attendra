@@ -1,6 +1,6 @@
 id: vapi-es-speech-times-and-title
 title: "In Spanish, Vapi's voice gets the title in full and a time on the hour as the hour alone (V3): \"Doctor Nkem Okafor\", \"a las 8, 8:30 o 9 de la mañana\""
-tags: [vapi, speech, language, es]
+tags: [no-demo, vapi, speech, language, es]
 facts: "You speak only Spanish. You are calling from the number on your file. Any time works, with any doctor. Say 'sí' to the first time offered and to the read-back."
 turns:
   - caller: Hola, buenas noches. Soy Maria Delgado, nací el 4 de marzo de 1985. Quiero una cita porque me duele la rodilla.

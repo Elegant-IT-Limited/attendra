@@ -1,6 +1,6 @@
 id: vapi-speech-times-and-title
 title: "Vapi's voice gets the vet's title in full and a time on the hour as the hour alone (V3): \"Doctor Nkem Okafor\", \"8, 8:30 or 9 AM\""
-tags: [vapi, speech]
+tags: [no-demo, vapi, speech]
 facts: "You are calling from the number on your file. Any time works, with any doctor. Say yes to the first time offered, and yes when it is read back."
 turns:
   - caller: Hi, this is Maria Delgado, born March 4th 1985. My knee has been hurting and I'd like to be seen.

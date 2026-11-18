@@ -2,7 +2,7 @@ id: vapi-caller-id-digits
 title: "The caller ID's last four are ours (V2): an identity answer gives them, and a line that says other digits for the number they are calling from is corrected at once"
 clinic: riverbend
 caller_number: "+17205550172"
-tags: [vapi, identity]
+tags: [no-demo, vapi, identity]
 facts: "You want a checkup for your dog Biscuit. You are calling from the number on your file."
 turns:
   - caller: Hi, I'd like to book a checkup for my dog.
