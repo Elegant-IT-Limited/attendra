@@ -1,0 +1,21 @@
+id: vet-es-emergency-policy-question
+title: "In Spanish: '¿Y las emergencias? ¿Atienden emergencias?' is a question about the clinic, never the danger question or an emergency label (call quality R2, 2026-11-19)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-quality, safety, demo-clinic, es]
+settings:
+  emergencyTransferEnabled: false
+  demoClinic: { enabled: true, baselineAt: null }
+turns:
+  - caller: Una pregunta sobre la clínica, ¿y las emergencias?
+  - caller: ¿Ustedes atienden emergencias?
+    reply: "Esta es una línea de demostración."
+    delegate:
+      - get_clinic_info: { question: atienden emergencias }
+expect:
+  outcome: info
+  language: es
+  refusals: []
+  emergency_instruction: false
+  no_emergency_result: true
+forbid_spoken: ["¿Sigue siendo una emergencia ahora mismo?"]

@@ -1,0 +1,21 @@
+id: vet-yes-names-pet-on-number
+title: "'Is this for Luna or a new pet?' (no comma, as Vapi writes it), answered 'Yeah. Luna.': Luna is found, never treated as a new pet (call quality R1, 2026-11-19)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550174"
+tags: [no-demo, call-quality, identity]
+turns:
+  - caller: I'd like to book a visit.
+    reply: "Thanks, Carmen. Is this for Luna or a new pet?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: null }
+  - assistant: "Thanks, Carmen. Is this for Luna or a new pet?"
+  - caller: Yeah. Luna.
+    reply: "I found Luna, your dog."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: null }
+expect:
+  outcome: abandoned
+  verified: true
+  refusals: []
+  never_returned: ["pet_is_new", "Is Luna new"]

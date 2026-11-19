@@ -1,0 +1,41 @@
+id: vet-es-pending-cancel-settled
+title: "In Spanish: a cancel read back, then a request for something the clinic doesn't book; '¿Y todavía quiere cancelar…?' is asked once and the yes cancels it (call quality R4, 2026-11-19)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550172"
+tags: [no-demo, call-quality, clear-yes, es]
+turns:
+  - caller: Hola, soy Linh Nguyen. ¿Biscuit puede venir mañana por la mañana a una consulta por enfermedad?
+    reply: "{offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: "2026-09-29", part_of_day: morning }
+  - caller: La primera.
+    reply: "¿{readback}?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, quedó reservada."
+    delegate:
+      - commit_pending: {}
+  - caller: En realidad, ¿la puede cancelar?
+    reply: "Entonces voy a {readback}. ¿Es correcto?"
+    delegate:
+      - list_appointments: {}
+      - propose_cancellation: { appointment_id: "$appointments[0]" }
+  - caller: Sí, pásela al especialista en terapia láser el lunes a las 8, por favor.
+    reply: "Eso no lo agendamos aquí. ¿Y todavía quiere cancelarla?"
+    delegate:
+      - find_slots: { visit_type_id: not_offered, provider_id: null, from_date: null, part_of_day: any }
+  - caller: Sí, cancélela.
+    reply: "Listo, la cita quedó cancelada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: cancelled
+  verified: true
+  language: es
+  refusals: [unknown_visit_type]
+  bookings_created: 1
+  sms_sent: 2
+  returned: ["¿Y todavía quiere cancelar la cita"]

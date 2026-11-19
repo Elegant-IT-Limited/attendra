@@ -474,6 +474,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const emergencyScript = outbound.some((o) => o.type === 'instructions' && state.emergency !== null);
   check(emergencyScript === e.emergency_instruction, `emergency instruction ${emergencyScript}, expected ${e.emergency_instruction}`);
   if (e.emergency_result !== undefined) check(state.emergencyResult === e.emergency_result, `emergency result ${state.emergencyResult ?? 'none'}, expected ${e.emergency_result}`);
+  if (e.no_emergency_result) check(!state.emergencyResult, `emergency result ${state.emergencyResult}, expected none`);
   if (e.cites) {
     const cited = [...new Set(observed.cited)];
     // live, the planner may answer from the clinic's own common questions, which come before any document

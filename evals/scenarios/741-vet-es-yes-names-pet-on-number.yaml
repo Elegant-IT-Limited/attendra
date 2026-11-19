@@ -1,0 +1,21 @@
+id: vet-es-yes-names-pet-on-number
+title: "In Spanish: '¿Es para Luna o para una mascota nueva?' (no comma), answered 'Sí. Luna.': Luna is found, never treated as new (call quality R1, 2026-11-19)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550174"
+tags: [no-demo, call-quality, identity, es]
+turns:
+  - caller: Hola, quiero reservar una cita para mi mascota.
+    reply: "Gracias, Carmen. ¿Es para Luna o para una mascota nueva?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: null }
+  - assistant: "Gracias, Carmen. ¿Es para Luna o para una mascota nueva?"
+  - caller: Sí. Luna.
+    reply: "Encontré a Luna, su perra."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: null }
+expect:
+  outcome: abandoned
+  verified: true
+  language: es
+  refusals: []

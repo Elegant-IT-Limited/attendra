@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
-  bookableProviders, demoEmergency,
+  bookableProviders, demoEmergency, detectEmergencies,
   addDays, EMERGENCY_CHOICES, EMERGENCY_LINES, emergencyHandlingSummary, saysSlot, ageOn, asE164, digitByDigit, groupedNumber, heardNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isClearYesTo, asksForText, isSmallTalk, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, isPetEmergency, LANGUAGES, normalise, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, inProviderOrder, providerFacts, providerOrderAsked, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
@@ -11,7 +11,7 @@ import type { Logger } from '@attendra/observability';
 import { createHash } from 'node:crypto';
 import { fillFromMemory } from './call-memory';
 import { dayReason, doesntDoType, frontDeskLine, nothingFound, vetHoursLine } from './slot-answer';
-import { doneAfterEmergency } from './flow/emergency';
+import { doneAfterEmergency, justAsking } from './flow/emergency';
 import type { CallState } from './call-state';
 import { answerForAsked, answersFromFaqs, asksIfOffered } from './knowledge';
 import { askedVisitWords, asksWhatVisits, bookableVisits, closestVisits, visitChoicesIn, visitSharesTopic } from './visit-offer';
@@ -278,12 +278,38 @@ function sameRefill(before: string, now: string): string {
 }
 const VAGUE_MEDICINE = /^(?:(?:this|that|it|the|his|her|their|my|its|su|sus|el|la|esta|este|ese|esa)\s*)*(?:one|medicine|medication|meds|pills?|tablets?|refill|prescription|unknown|not sure|medicina|medicamento|pastillas?|receta)?$/;
 
+/** The caller asks for another vet than the one offered: "any other doctor?", "someone else?", "¿otro veterinario?". */
+const OTHER_VET = /\b(?:(?:any|an|some|a different|another)(?:one)? (?:other )?(?:doctor|vet|veterinarian|dr)s?|other (?:doctor|vet|veterinarian|dr)s?|someone else|somebody else|anyone else|otr[oa] (?:doctor|doctora|veterinari[oa]|medic[oa])|alguien mas|algun otro|con otr[oa])\b/;
+export const asksOtherVet = (text: string) => OTHER_VET.test(normalise(text));
+
 /** The text offer asked once more after an answer that was neither yes nor no (call quality Q2, 2026-11-18). */
 const askTextAgain = (lang: CallState['language'], target: 'this' | 'file') => (lang === 'es'
   ? `Para estar segura: ¿se lo mando por mensaje ${target === 'file' ? 'al número de su ficha' : 'al número desde el que llama'}? Con un sí me basta.`
   : `Just to be sure: shall I text it to ${target === 'file' ? 'the number on your file' : "the number you're calling from"}? A simple yes is fine.`);
 /** An answer to an offer that turns it down or puts it off: a no, "maybe later", "I'll remember it", any hedge. */
 const declinedOffer = (answer: string) => { const t = normalise(answer).trim(); return /^(?:no|nope|nah)\b|\blater\b|remember it|luego|despues/.test(t) || LANGUAGES.some((l) => PACKS[l].hedge.test(t)); };
+
+/**
+ * A change read back and still waiting for the caller's yes when the call moves on to something else: the answer
+ * carries one plain question to settle it, once (call quality R4, 2026-11-19: "cancel 9:20?" was answered "Yeah, move it to
+ * the laser therapy specialist, Monday at 8"; the not-offered line followed, the cancel was never settled, and the visit
+ * stayed booked while the caller thought it was gone).
+ */
+const SETTLES = new Set<ToolName>(['commit_pending', 'propose_booking', 'propose_cancellation', 'list_appointments', 'verify_caller', 'register_patient', 'end_call', 'transfer_call']);
+function settlePending(name: ToolName, result: ToolResult, state: CallState): ToolResult {
+  const p = state.pending;
+  if (!p || p.readbackAtMs === null || p.stillAsked || SETTLES.has(name) || state.emergencyLocked) return result;
+  p.stillAsked = true;
+  const lang = state.language;
+  const r = p.readback;
+  const ask = lang === 'es'
+    ? `¿Y todavía quiere ${/^(cambiar|cancelar) /.test(r) ? r : `que le reserve ${r}`}?`
+    : `And do you still want me to ${/^(move|cancel) /.test(r) ? r : `book ${r}`}?`;
+  // the question goes after the answer's own words, so the voice says both (find_slots words its answer as say_as)
+  const key = typeof result.data.spoken === 'string' ? 'spoken' : typeof result.data.say_as === 'string' ? 'say_as' : null;
+  const words = key ? { [key]: `${String(result.data[key])} ${ask}` } : {};
+  return { ...result, data: { ...result.data, ...words, pending_change: `Still waiting for their yes: ${r}. After answering this, ask once, in these words: "${ask}" On a yes, call commit_pending; on a no, it is dropped.` } };
+}
 
 const askYesAgain = (lang: CallState['language'], readback: string) => (lang === 'es'
   ? `Solo para confirmar: ${/^(cambiar|cancelar) /.test(readback) ? `¿quiere ${readback}` : `¿le reservo ${readback}`}? Con un sí me basta.`
@@ -465,7 +491,8 @@ export async function runTool(
   const { args, filled } = fillFromMemory(name, rawArgs, state.memory, { industry: ctx.clinic.industry, verifiedPatient: !!state.verifiedPatient, callerNumber: ctx.callerNumber, ownerOnFile: state.memory.verified ? state.memory.owner : null, timeZone: ctx.clinic.timezone });
   if (filled.length) ctx.log?.info({ call_id: ctx.callId, tool: name, filled_from_memory: filled }, 'arguments filled from the call memory');
   if (args && typeof args === 'object') state.memory.fromToolArgs(name, args as Record<string, unknown>, ctx.clinic, ctx.callerNumber, state.turns.length);
-  const done = await toolCall(name, args, state, ctx, backend, revision);
+  const done0 = await toolCall(name, args, state, ctx, backend, revision);
+  const done = settlePending(name, done0, state);
   // what the tools said, for "why?" and for the claim guard (flow/guards.ts)
   const error = done.ok ? null : String((done.data as { error?: unknown }).error ?? 'refused');
   state.toolLog.push({ name, ok: done.ok, error });
@@ -499,7 +526,13 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
   // the emergency (call quality Q9, 2026-11-18). The one question first
   if (trade.identity === 'pet' && flagged && flagged.kind !== 'borderline' && (flagged.stage === 'flagged' || flagged.stage === 'asked') && name === 'get_clinic_info'
     && !isMedicalQuestion(String((parsed.data as { question?: unknown }).question ?? '')) && !isMedicalQuestion(state.recentCallerText(), { quantities: false })) {
-    return refuse('emergency_question', `Not yet: the caller has not answered whether this is still an emergency. Ask it now, word for word, if it was not said: "${EMERGENCY_LINES.question(state.language)}" and wait for the answer. Say nothing about hours, the clinic or the emergency handling until then.`);
+    const asked = String((parsed.data as { question?: unknown }).question ?? '');
+    // a question about how emergencies are handled is answered, and was never an emergency (call quality R2, 2026-11-19)
+    const sign = detectEmergencies(state.lastTurn('caller'), trade.emergency?.phrases).some((m) => m.kind !== 'general');
+    if (!sign && (asksEmergencyHandling(asked) || asksEmergencyHandling(state.lastTurn('caller')) || justAsking(state.lastTurn('caller')))) state.emergencyCase = null;
+    // the question already said is never said again: it was doubled in one turn (R2)
+    else if (flagged.saidAtMs !== null) return refuse('emergency_question', 'The caller has not answered whether this is still an emergency yet: wait for their answer. Do not ask it again, and say nothing about hours, the clinic or the emergency handling until they answer.');
+    else return refuse('emergency_question', `Not yet: the caller has not answered whether this is still an emergency. Ask it now, word for word: "${EMERGENCY_LINES.question(state.language)}" and wait for the answer. Say nothing about hours, the clinic or the emergency handling until then.`);
   }
   if (trade.identity === 'pet' && flagged && flagged.kind !== 'borderline' && (flagged.stage === 'flagged' || flagged.stage === 'asked') && WAITS_FOR_ANSWER.has(name)
     && aboutPetInDanger(name, parsed.data as Record<string, unknown>, state, flagged.pet)) {
@@ -984,6 +1017,13 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       let days = args.from_date ? 60 : 14;
       while (lastDay && days > 1 && addDays(from, days - 1) > lastDay) days--;
       // busy time must cover the whole search window, however far out it starts
+      // "any other doctor?" after times with one vet: the other vets' times, not the same vet's again (call quality R5,
+      // 2026-11-19: "Only Maya Chen is available? Can you offer any other doctor?" heard Dr. Chen's three times again)
+      if (!named && asksOtherVet(state.lastTurn('caller'))) {
+        const before = new Set([...state.offered.values()].map((s) => s.providerId));
+        const others = providers.filter((p) => !before.has(p.id));
+        if (others.length && before.size) providers = others;
+      }
       const busy = await backend.scheduler.busy(clinic.id, providers.map((p) => p.id), now, zonedInstant(addDays(from, days + 1), '00:00', clinic.timezone));
       // and the patient's own visits: a time that overlaps one would only be refused as patient_busy after their yes
       // the visit being moved or changed is not in the way of itself: "make it a sick visit" keeps its 5:00 (a live

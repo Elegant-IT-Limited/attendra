@@ -426,6 +426,37 @@ describe('noise before the caller\'s first words (call bugs, 2026-11-17)', () =>
     vi.useRealTimers();
   });
 
+  it('sends no reply, and never a lookup\'s line, while the caller is still talking; their turn\'s end answers it (call quality R3)', async () => {
+    const s = realtimeSocket();
+    const e = new RealtimeEngine({ realtime: { calls: { accept: vi.fn(async () => {}) } } } as never, 'gpt-realtime-2.1', () => s.ws);
+    await e.accept('rtc_r3', vet, NOW, undefined, { flow: 'tools' });
+    const sideband = e.attach('rtc_r3');
+    s.play({ type: 'response.done', event_id: 'r0' }); // the greeting is over
+    const start = s.sent.length;
+    const creates = () => s.sent.slice(start).filter((x) => x.type === 'response.create').length;
+    // "Hi, this is Emily Carter. My pet is Bella." ends, and the caller goes on 0.3 s later, before its words are in
+    s.play({ type: 'input_audio_buffer.speech_started', event_id: 'a1', item_id: 'i1' });
+    s.play({ type: 'input_audio_buffer.speech_stopped', event_id: 'a2', item_id: 'i1' });
+    s.play({ type: 'input_audio_buffer.committed', event_id: 'a3', item_id: 'i1' });
+    s.play({ type: 'input_audio_buffer.speech_started', event_id: 'b1', item_id: 'i2' });
+    s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 'a4', item_id: 'i1', transcript: 'Hi, this is Emily Carter. My pet is Bella.' });
+    expect(creates()).toBe(0);
+    // a tool result that comes while they still talk is kept, but its line is not said
+    s.play({ type: 'response.created', event_id: 'rc' });
+    s.play({ type: 'response.function_call_arguments.done', event_id: 'f1', call_id: 'call_1', name: 'verify_caller', arguments: '{}' });
+    s.play({ type: 'response.done', event_id: 'rd' });
+    sideband.send({ type: 'tool.result', event_id: 't1', call_id: 'call_1', output: JSON.stringify({ ok: false, outcome: 'not_verified', spoken: "I don't see Bella under that number. Is Bella new to the clinic?" }) });
+    const notes = s.sent.slice(start).filter((x) => x.type === 'conversation.item.create' && (x.item as { type?: string }).type === 'message').map((x) => JSON.stringify(x));
+    expect(notes.some((n) => n.includes('went on talking'))).toBe(true);
+    expect(notes.some((n) => n.includes("I don't see Bella"))).toBe(false);
+    expect(creates()).toBe(0);
+    // "And my number ends with 0101." ends: one reply
+    s.play({ type: 'input_audio_buffer.speech_stopped', event_id: 'b2', item_id: 'i2' });
+    s.play({ type: 'input_audio_buffer.committed', event_id: 'b3', item_id: 'i2' });
+    s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 'b4', item_id: 'i2', transcript: 'And my number ends with 0101.' });
+    expect(creates()).toBe(1);
+  });
+
   it('takes caller ID\'s context as a note: no reply, nothing cut off, on either path (call quality Q11)', async () => {
     for (const flow of ['tools', 'planner'] as const) {
       const s = realtimeSocket();

@@ -235,6 +235,10 @@ export const NOISE_REDUCTION = { type: 'near_field' as const };
 export const SHORT_TURN_MS = 2500;
 /** The longest such a turn waits for its words before it is answered anyway. */
 export const SHORT_TURN_WAIT_MS = 1500;
+/** The longest a caller's speech, started and not stopped, holds replies back: past it, a lost stop event holds nothing. */
+export const CALLER_TALKING_MAX_MS = 15_000;
+/** The note for tool results that came while the caller was still talking (R3). */
+export const CALLER_WENT_ON_NOTE = 'The caller went on talking before these results could be said. When they finish, answer what they said, using these results only if they still fit: call the tool again with any detail they just added (a number, the last four digits, a name). Never say a lookup failed if they have since given more.';
 /** The longest a reply waits for the caller's words before it, when transcription is slow. */
 export const TRANSCRIPT_WAIT_MS = 3000;
 /** The longest replies wait for the tools' results before they go anyway (a tool that never answers never holds the call). */
@@ -538,8 +542,15 @@ export class RealtimeEngine implements VoiceEngine {
     // one response at a time: a new one waits for the one in progress to finish (or be cancelled), see TurnGate
     const gate = new TurnGate((e) => ws.send(e), trace);
     const raw = (e: Record<string, unknown>) => (open ? ws.send(e) : queue.push(e));
+    // The caller is speaking (speech started, not stopped yet): no reply goes out over them. Their turn's end answers
+    // everything at once (call quality R3, 2026-11-19: "Emily Carter, my pet is Bella", a pause, then "and my number ends
+    // 0101"; a reply went out 0.35 s into the second part, and its failed lookup was said over the caller). A start with
+    // no stop for 15 s no longer holds anything back.
+    let callerTalkingSince: number | null = null;
+    const callerTalking = () => callerTalkingSince !== null && Date.now() - callerTalkingSince < CALLER_TALKING_MAX_MS;
     const respond = (e: Record<string, unknown> = { type: 'response.create' }, kind: ReplyKind = 'reply') => {
       if (!open) return; // the greeting on open answers for it
+      if (toolsPath && kind !== 'greeting' && kind !== 'hold' && callerTalking()) { trace({ type: 'gate.held_caller_talking' }); return; }
       gate.request(e, kind);
     };
     const interrupt = () => { if (open && gate.active) ws.send({ type: 'response.cancel' }); };
@@ -614,8 +625,10 @@ export class RealtimeEngine implements VoiceEngine {
       switch (e.type) {
         case 'input_audio_buffer.speech_started':
           if (typeof e.item_id === 'string') spokenAt.set(e.item_id, { start: ms(), end: null });
+          callerTalkingSince = Date.now();
           return;
         case 'input_audio_buffer.speech_stopped':
+          callerTalkingSince = null;
           if (typeof e.item_id === 'string') { const at = spokenAt.get(e.item_id); spokenAt.set(e.item_id, { start: at?.start ?? ms(), end: ms() }); }
           // the runner times a wait for an answer from here (2026-11-11: timed from the transcript, which can come after
           // the answer, the nudge talked over a reply already given)
@@ -756,9 +769,12 @@ export class RealtimeEngine implements VoiceEngine {
         if (!outstanding.size) {
           if (stateNote) { note(stateNote); stateNote = null; }
           // the tool's own question, or its refusal line, said as written (no tools in that reply: it waits for the caller)
-          const instructions = toolReplyInstructions(question, refusal);
+          let instructions = toolReplyInstructions(question, refusal);
           question = null;
           refusal = null;
+          // the caller went on talking while the tools ran: what they say now may change the answer ("and my number ends
+          // 0101"), so the line is not said; their turn's reply answers with everything (R3)
+          if (callerTalking()) { note(CALLER_WENT_ON_NOTE); instructions = null; }
           // asked while the gate still waits for the tools: it merges with a reply the caller's words asked for meanwhile
           if (instructions) sayNext(instructions);
           else respond();

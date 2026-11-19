@@ -34,7 +34,11 @@ export function toolWork(clinic: ClinicConfig): string[] {
       : 'A visit always goes in this order: who the patient is, then times, then the read-back as a question, then the caller\'s clear yes (a plain yes, okay, sure or sí is enough: never ask for set words), then commit_pending. The tools refuse a step out of order and say what to do instead.',
     'Call a tool without saying anything first: results come back in well under a second, and a lookup the caller asked for is often already in the conversation as a result. Never say that you are checking, looking, matching or pulling something up, and never what you are about to do. Only when you must call a second tool before you can answer may you say one short phrase first ("One moment."), once in that turn.',
     'When a find_slots result is already in the conversation right after the caller\'s words, it is the answer to them: say it, without calling find_slots again.',
+    // "Only Maya Chen is available?" was answered "the openings are with Dr. Maya Chen only" (call quality R5, 2026-11-19)
+    'The times find_slots gives are the first ones, not all: never say a vet is the only one available. When the caller asks for another vet, call find_slots again with provider_id null: it offers the other vets.',
     'A refusal (ok false) comes with its reason: say it kindly, in a few words, then what you can do instead, as the result says. If the caller asks why, give the reason from the result.',
+    // a Vapi call said "I do see Rocky listed under your number, but I can't access Rocky's full profile" (call quality R1, 2026-11-19)
+    'Never say you can see a pet, a profile or a record but cannot open it: a pet is found only when a tool says so. Otherwise say plainly that you could not find it and what you can do next.',
     // a caller heard "This result doesn't say whether it's open tomorrow" (note 45, A1)
     'Never tell the caller what a result says or does not say, and never mention a tool, a result, a system or a lookup: answer in a front desk\'s words, or offer to have the team confirm.',
     // note 49 B2: a test call heard "It's still running in the background" and "the information returned is only an address"

@@ -1,0 +1,18 @@
+id: vet-es-new-puppy-registered
+title: "In Spanish: 'quiero una cita para un cachorro nuevo, se llama Rocky' is a new pet: never looked up, registered directly (call quality R6, 2026-11-19)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550199"
+tags: [no-demo, call-quality, identity, es]
+turns:
+  - caller: Quiero una cita para un cachorro nuevo, se llama Rocky. Es macho, tiene tres meses. Soy Johnny.
+    reply: "Rocky quedó registrado."
+    delegate:
+      - verify_caller: { owner_name: Johnny, pet_name: Rocky, phone: null }
+      - register_patient: { pet_name: Rocky, owner_name: Johnny, species: perro, sex: male, birthday_or_age: 3 meses, phone: null }
+expect:
+  outcome: abandoned
+  verified: true
+  language: es
+  refusals: [pet_is_new]
+  never_returned: ["No veo a Rocky"]

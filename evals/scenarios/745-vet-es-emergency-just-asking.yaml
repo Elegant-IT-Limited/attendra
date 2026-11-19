@@ -1,0 +1,21 @@
+id: vet-es-emergency-just-asking
+title: "In Spanish: asked the danger question, 'No, solo quiero la información' hears the clinic's handling once, never asked again, no emergency label (call quality R2, 2026-11-19)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-quality, safety, demo-clinic, es]
+settings:
+  emergencyTransferEnabled: false
+  demoClinic: { enabled: true, baselineAt: null }
+turns:
+  - caller: ¿Y si mi perro tiene una emergencia?
+  - assistant: Lo siento mucho. ¿Sigue siendo una emergencia ahora mismo? ¿Necesita ayuda para recibir atención de emergencia?
+  - caller: No, solo quiero la información, por favor.
+    reply: "Esta es una línea de demostración."
+    delegate:
+      - get_clinic_info: { question: como manejan las emergencias }
+expect:
+  outcome: info
+  language: es
+  refusals: []
+  no_emergency_result: true
+  spoken_contains: ["Esta es una línea de demostración"]
