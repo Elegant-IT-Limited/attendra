@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { voiceToolDefinitions } from '@attendra/agent';
-import { type ClinicConfig, forVapiVoice, VAPI_DEFAULT_VOICE_ID, VAPI_VOICE_MODEL, type VapiVoiceChoice, vapiDefaultVoice, vapiVoiceOf } from '@attendra/core';
+import { type ClinicConfig, forVapiVoice, type Language, VAPI_DEFAULT_VOICE_ID, VAPI_VOICE_MODEL, type VapiVoiceChoice, vapiDefaultVoice, vapiVoiceOf } from '@attendra/core';
 import { createHash } from 'node:crypto';
 import { toolsVapiPrompt } from './tools-prompt';
 
@@ -78,9 +78,27 @@ export const VAPI_DEFAULTS = {
   backgroundSpeechDenoisingPlan: { smartDenoisingPlan: { enabled: true } },
   /** A call ends after 20 minutes (Vapi's default, 10, can cut a long call mid-booking). */
   maxDurationSeconds: 1200,
-  /** What Vapi posts besides tool calls: the conversation, the call's status (live calls, for concurrency) and its end. */
-  serverMessages: ['conversation-update', 'end-of-call-report', 'status-update'],
+  /**
+   * What Vapi posts besides tool calls: the conversation, the call's status (live calls, for concurrency), its end, and
+   * each final transcript of the caller's words, so the lookup they ask for runs before Vapi's model does (lookup-ahead,
+   * call speed 2026-11-19).
+   */
+  serverMessages: ['conversation-update', 'end-of-call-report', 'status-update', 'transcript[transcriptType="final"]'],
 } as const;
+
+/** The tools that look something up: while one runs, Vapi's voice says a short line (TOOL_ACKS) instead of silence. */
+export const VAPI_ACK_TOOLS: ReadonlySet<string> = new Set(['verify_caller', 'find_slots', 'list_appointments', 'get_clinic_info', 'search_knowledge', 'visit_summary', 'clinic_now']);
+/** The short lines, by language: two variants Vapi picks from each time (call speed, 2026-11-19; its own default lines are longer). */
+export const TOOL_ACKS: Record<Language, readonly string[]> = { en: ['One moment.', 'Just a moment.'], es: ['Un momento.', 'Un momentito.'] };
+
+/**
+ * A lookup's spoken line while it runs, in each of the clinic's languages (Vapi says the one for the call's language):
+ * none for a clinic that turned acknowledgements off, and none for a tool that is not a lookup.
+ */
+export function vapiToolMessages(clinic: Pick<ClinicConfig, 'languages' | 'talk'>, tool: string): { type: 'request-start'; blocking: false; contents: { type: 'text'; text: string; language: Language }[] }[] | undefined {
+  if (!(clinic.talk?.acknowledgements ?? true) || !VAPI_ACK_TOOLS.has(tool)) return undefined;
+  return [0, 1].map((i) => ({ type: 'request-start' as const, blocking: false as const, contents: clinic.languages.map((l) => ({ type: 'text' as const, text: (TOOL_ACKS[l] ?? TOOL_ACKS.en)[i]!, language: l })) }));
+}
 
 /** Vapi's form of a tool's JSON schema (its validator answers 400 otherwise): no "$schema", and every property with a "type". */
 type Schema = { [k: string]: unknown };
@@ -148,7 +166,7 @@ export function vapiAssistant(clinic: ClinicConfig, input: VapiAssistantInput) {
       ...VAPI_DEFAULTS.model,
       // the same on every call of the location: each call's own facts are sent as it opens (apps/voice vapi.ts)
       messages: [{ role: 'system', content: forVapiVoice(toolsVapiPrompt(clinic)) }],
-      tools: voiceToolDefinitions(clinic).map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: forVapi(t.parameters) }, server })),
+      tools: voiceToolDefinitions(clinic).map((t) => { const messages = vapiToolMessages(clinic, t.name); return { type: 'function', function: { name: t.name, description: t.description, parameters: forVapi(t.parameters) }, server, ...(messages ? { messages } : {}) }; }),
     },
     // its own Vapi voice, else one of the kind the clinic picked for itself, else the default (core vapiVoiceOf)
     voice: vapiVoice(vapiVoiceOf(clinic)),
