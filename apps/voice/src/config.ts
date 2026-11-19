@@ -46,6 +46,8 @@ const Env = z.object({
   VAPI_SERVER_SECRET: optional(z.string().min(32, 'VAPI_SERVER_SECRET must be at least 32 characters')),
   // calls Vapi takes at the same moment on this subscription (free 4, Core 10, +1 per line bought): the alert is at 70%
   VAPI_MAX_CONCURRENCY: z.preprocess(blank, z.coerce.number().int().min(1).max(1000).default(VAPI_FREE_CONCURRENCY)),
+  // gpt-realtime on the tools path: a likely lookup runs before the reply (call speed, 2026-11-19). On unless 'off'
+  ATTENDRA_LOOKUP_AHEAD: z.preprocess(blank, z.enum(['on', 'off']).default('on')),
   LOG_LEVEL: z.preprocess(blank, z.string().default('info')),
 });
 export type Env = z.infer<typeof Env>;

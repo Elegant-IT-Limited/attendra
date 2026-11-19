@@ -55,7 +55,7 @@ export interface VoiceRuntime {
   vapiSecret?: string;
   /** VAPI_MAX_CONCURRENCY: Vapi calls this subscription takes at once (the free tier's 4 by default), for the 70% alert. */
   vapiMaxConcurrency?: number;
-  /** gpt-realtime on the tools path: run a likely lookup before the reply. Defaults to off. */
+  /** gpt-realtime on the tools path: run a likely lookup before the reply. On by default (ATTENDRA_LOOKUP_AHEAD=off turns it off). */
   lookupAhead?: boolean;
 }
 

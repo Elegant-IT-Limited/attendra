@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { afterTool, type CallState, callStateNote, type FlowMemory, flowStage, nextStep, type Planner, type PlannerInput, type PlannerOutput, type PlannerTiming, shapeForVoice, speculativeLookup, type ToolResult, voiceToolDefinitions } from '@attendra/agent';
 import { addDays, clinicNow, clinicNowLine, type ClinicConfig, localDateOf, type ToolName, weekdayOf } from '@attendra/core';
-import { callFactsNote, realtimeTools, toolQuestion, toolRefusalLine, toolReplyInstructions, toolsBackendInstructions, toolsVoiceStaticPrompt, TOOLS_TRUNCATION, TURN_NOTE } from '@attendra/voice-engine';
+import { callFactsNote, realtimeTools, toolQuestion, toolRefusalLine, toolReplyInstructions, toolsBackendInstructions, toolsVoiceStaticPrompt, TOOLS_TRUNCATION, TURN_NOTE, LOOKUPS_AHEAD_MAX } from '@attendra/voice-engine';
 import type OpenAI from 'openai';
 import { OpenAIRealtimeWS } from 'openai/realtime/ws';
 
@@ -123,15 +123,19 @@ export class ToolsPathPlanner implements Planner {
     // the per-turn note a call gets after each caller turn on path A (the same each turn, never removed: batch 1d)
     const note = (text: string) => ws.send({ type: 'conversation.item.create', item: { type: 'message', role: 'system', content: [{ type: 'input_text', text }] } } as never);
     note(TURN_NOTE);
-    // round 2: the lookup the caller's words ask for, run before the reply and handed to it, as the voice service does
-    // off by default, as on calls; ATTENDRA_LOOKUP_AHEAD=on to compare
-    const spec = process.env.ATTENDRA_LOOKUP_AHEAD === 'on' ? speculativeLookup(input.state, input.clinic) : null;
-    if (spec) {
-      const callId = `spec_${s.sent}`;
+    // lookup-ahead: the lookups the caller's words ask for (at most two: the pet found, then its times), run before the
+    // reply and handed to it, as the voice service does. On, as on calls; ATTENDRA_LOOKUP_AHEAD=off to compare
+    const ran = new Set<string>();
+    for (let i = 0; process.env.ATTENDRA_LOOKUP_AHEAD !== 'off' && i < LOOKUPS_AHEAD_MAX; i++) {
+      const spec = speculativeLookup(input.state, input.clinic, { callerNumber: input.facts.caller?.number ?? null, petsOnCallerId: null });
+      if (!spec || ran.has(spec.name)) break;
+      ran.add(spec.name);
+      const callId = `spec_${s.sent}_${i}`;
       const args = JSON.stringify(spec.args);
       const output = await run(spec.name, args);
       ws.send({ type: 'conversation.item.create', item: { type: 'function_call', call_id: callId, name: spec.name, arguments: args } } as never);
       ws.send({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: callId, output } } as never);
+      if (!(JSON.parse(output) as { ok?: boolean }).ok) break;
     }
     // a tool's own question, or its refusal line, is the next reply, as written, as on a call
     let question: string | null = null;

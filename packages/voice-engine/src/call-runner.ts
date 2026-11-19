@@ -43,6 +43,8 @@ const SPEECH_WAIT_MS = { hangup: 4000, transfer: HANGUP_MAX_WAIT_MS } as const;
 export const SILENCE_NUDGE_MS = [STALL_MS, 12_000] as const;
 /** How often the runner checks the line: often enough that a nudge comes within half a second of its time. */
 const CHECK_MS = 500;
+/** Lookups run ahead of one reply, at most: the pet found, then the times the same words ask for. */
+export const LOOKUPS_AHEAD_MAX = 2;
 /**
  * The call is up and the assistant has said nothing, nor has the caller: after this long it
  * is told once more to greet now. The opening itself goes out the moment the session starts
@@ -165,6 +167,8 @@ export class CallRunner {
     this.callerEnding = true;
   }
   private manual = false;
+  /** A lookup is being run ahead of the reply (replyAfterWords): the turn waits for our go until it is handed over. */
+  private lookingAhead = false;
   /**
    * Where a call whose assistant never spoke goes at SILENT_START_DEADLINE_MS: the clinic's front desk, or null to end it
    * (no front desk, a browser test call). Set by the voice service; undefined leaves the call as it is.
@@ -207,6 +211,8 @@ export class CallRunner {
     this.timers.add(deadline);
     return new Promise((resolve) => {
       this.sideband.onEvent((event) => { void this.handle(event).catch((err) => this.log.error({ session_id: this.sessionId, err }, 'event handling failed')); });
+      // the caller's first turn waits for their words anyway: with lookup-ahead on, what it asks for is looked up first
+      this.syncManual();
       this.sideband.onError((err) => this.log.warn({ session_id: this.sessionId, err }, 'sideband error'));
       this.sideband.onConnection?.((c) => this.connection(c));
       this.sideband.onClose((code) => {
@@ -291,6 +297,8 @@ export class CallRunner {
         // replies are ours to start: the lookup their words ask for first, then the go. An instruction from the words
         // themselves (an emergency script, an abuse warning) starts its own reply
         if (this.manual && !heard.some((o) => o.type === 'instructions')) await this.replyAfterWords();
+        // whether the next turn waits for the caller's words, from where the call is now
+        this.syncManual();
         return this.flushFinishedTurns();
       }
       case 'session.output_transcript.delta': {
@@ -323,6 +331,9 @@ export class CallRunner {
         }
         this.agentSpokeAt = now;
         this.speakingUntil = Math.max(this.speakingUntil, this.agentSpokeAt) + e.delta.length * SPOKEN_MS_PER_CHAR;
+        // a question whose answer can be looked up ahead ("…the number you're calling from, ending 0101?"): the caller's
+        // next turn waits for their words (lookup-ahead)
+        this.syncManual();
         return this.flushFinishedTurns();
       }
       case 'session.delegation.created': {
@@ -471,9 +482,11 @@ export class CallRunner {
     }
   }
 
-  /** Manual replies on, once a pet or patient is found (and off again if the call is ending). */
+  /** Manual replies on while a lookup can run ahead of the next reply (CallAgent.repliesAfterWords), off otherwise. */
   private syncManual() {
-    if (!this.manualTurns || this.closed) return;
+    // during a lookup run ahead, the turn still waits for our go: turning replies back to the engine now would let it
+    // reply before the result is handed over (the sync comes after the go)
+    if (!this.manualTurns || this.closed || this.lookingAhead) return;
     const want = this.agent.repliesAfterWords();
     if (want === this.manual) return;
     this.manual = want;
@@ -482,19 +495,27 @@ export class CallRunner {
 
   /** After the caller's words, with replies ours to start: the lookup they ask for, handed to the voice, then the go. */
   private async replyAfterWords() {
+    this.lookingAhead = true;
     try {
-      const spec = this.agent.speculate();
-      if (spec) {
+      // at most two: the pet found, then the times their words ask for ("Yes, for Rocky, is Friday free?")
+      const ran = new Set<string>();
+      for (let i = 0; i < LOOKUPS_AHEAD_MAX && !this.closed; i++) {
+        const spec = this.agent.speculate();
+        if (!spec || ran.has(spec.name)) break;
+        ran.add(spec.name);
         const callId = `spec_${randomUUID()}`;
         const args = JSON.stringify(spec.args);
         const output = await this.callTool(callId, spec.name, args);
-        if (output !== null && !this.closed) {
-          this.log.info({ session_id: this.sessionId, tool: spec.name }, 'lookup run ahead of the reply');
-          this.sideband.send({ type: 'tool.inject', event_id: `inject_${callId}`, call_id: callId, name: spec.name, arguments: args, output });
-        }
+        if (output === null || this.closed) break;
+        this.log.info({ session_id: this.sessionId, tool: spec.name }, 'lookup run ahead of the reply');
+        this.traced(`lookahead.${spec.name}`);
+        this.sideband.send({ type: 'tool.inject', event_id: `inject_${callId}`, call_id: callId, name: spec.name, arguments: args, output });
+        // a refusal or a question (a read-back, "is it new?") is the answer: nothing more is looked up
+        if (!(JSON.parse(output) as { ok?: boolean }).ok) break;
       }
     } finally {
       // whatever happened to the lookup, the voice replies now
+      this.lookingAhead = false;
       if (!this.closed) this.sideband.send({ type: 'reply.go', event_id: `go_${randomUUID()}` });
     }
   }

@@ -5,7 +5,7 @@ import type { CallState } from './call-state';
 import { coachingInstruction, DOING, type LiveEvent, shortName } from './live';
 import type { Planner, PlannerTiming } from './planner';
 import { afterTool, type FlowMemory, flowStage, nextStep } from './flow/booking';
-import { speculativeLookup } from './flow/speculate';
+import { lookupLikelyNext, speculativeLookup, type Speculation } from './flow/speculate';
 import { excerptFor, handoffFor, type HandoffEvent, lastSteps, noteNames, reasonFromSteps, seenNames, stepResult } from './handoff';
 import { answerTo, BORDERLINE, confirmsCleared, doneAfterEmergency, justAsking, type EmergencyCase, lastQuestionIsOurs, MILD, pastAndFineNow, SEVERE, saysSevere, staffNote } from './flow/emergency';
 import { asksEmergencyHandling, askedAboutRecording, askedIfHuman, askedWhy, claimsIn, DISPUTE_NOTE, disputes, humanLine, notInTheClinicsLanguages, recordingLine, saysTextsNotArriving, sideTalkLine, textsNotArrivingNote, WHY } from './flow/guards';
@@ -1172,25 +1172,43 @@ export class CallAgent {
   }
 
   /**
+   * The pets on the caller ID's number, read as the call starts (the preload, call speed 2026-11-19): only for the
+   * lookup-ahead to know a pet the caller names is on the number. Never said and never given to the voice: a pet's name
+   * reaches the caller only from a tool's result, as before. Null until read, and without caller ID.
+   */
+  private petsOnCallerId: readonly string[] | null = null;
+
+  /**
+   * At the start of a call on the tools path: the household on the caller ID read now, while the greeting plays, so the
+   * first identity lookup answers from memory and the lookup-ahead knows the pets' names. Never fails the call.
+   */
+  preloadHousehold(): Promise<void> {
+    const phone = this.ctx.callerNumber;
+    const p = this.backend.patients;
+    if (!phone || !p.petsOnNumber || industryPack(this.ctx.clinic.industry).identity !== 'pet') return Promise.resolve();
+    void p.householdOnNumber?.(this.ctx.clinic.id, phone, this.ctx.callId).catch(() => undefined);
+    return p.petsOnNumber(this.ctx.clinic.id, phone, this.ctx.callId)
+      .then((pets) => { this.petsOnCallerId = pets.names; })
+      .catch((err: unknown) => { this.log.warn({ call_id: this.ctx.callId, err: { message: (err as Error).message } }, 'could not read the household ahead; it is read when asked'); });
+  }
+
+  /**
    * The tools path, after the caller's turn and before the voice replies: the lookup their words ask for, when the call
    * makes it plain (flow/speculate.ts), run now so the voice can answer in one reply. Null when nothing is plain.
    */
-  speculate(): { name: string; args: Record<string, unknown> } | null {
-    return speculativeLookup(this.state, this.ctx.clinic);
+  speculate(): Speculation | null {
+    return speculativeLookup(this.state, this.ctx.clinic, { callerNumber: this.ctx.callerNumber, petsOnCallerId: this.petsOnCallerId });
   }
 
   /**
    * Whether the voice should wait for the caller's words before it replies (the tools path): only when a lookup is a
-   * likely next turn and can be run ahead ("what about Thursday?"): the pet or patient is found, a visit is already
-   * known from a lookup on this call, and no read-back waits for a yes. Waiting costs about a second on every turn it
-   * is on (the transcript comes after the turn ends), so it is on only where it can save a model round (real-audio
-   * runs, round 2: on from the pet found, it slowed every reply and ran no lookup ahead).
+   * likely next turn and can be run ahead (flow/speculate.ts lookupLikelyNext): the caller-ID question, a number's
+   * read-back or the pick question waits for its answer, or times are on the table and the visit is known. Waiting costs
+   * the transcript's time on every turn it is on, so it is on only where it can save a model round (real-audio runs,
+   * round 2: on from the pet found, it slowed every reply and ran no lookup ahead).
    */
   repliesAfterWords(): boolean {
-    const s = this.state;
-    const visit = s.memory.get('visitType');
-    // times are on the table: the next turn is often "what about Thursday?" (never after a booking, never at a read-back)
-    return flowStage(s, this.flow) === 'times_offered' && !s.ending && !!visit && this.ctx.clinic.visitTypes.some((v) => v.id === visit);
+    return lookupLikelyNext(this.state, this.ctx.clinic, { callerNumber: this.ctx.callerNumber, petsOnCallerId: this.petsOnCallerId }, flowStage(this.state, this.flow));
   }
 
   /** The clinic as it is now (a vet added in the dashboard counts), read at most every CLINIC_FRESH_MS on the tools path. */

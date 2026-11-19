@@ -24,6 +24,7 @@
     "call-timeline": "tsx scripts/call-timeline.ts",
     "call-stats": "tsx scripts/call-stats.ts",
     "call-events": "tsx scripts/call-events.ts",
+    "call-speed": "tsx scripts/call-speed.ts",
     "call-numbers": "tsx scripts/call-numbers.ts",
     "seed-bakeoff": "tsx scripts/seed-bakeoff.ts",
     "emergency-settings": "tsx scripts/emergency-settings.ts"

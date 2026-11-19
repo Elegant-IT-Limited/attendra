@@ -181,7 +181,18 @@ export const HOLD_LINE = 'Say only "One moment." in the caller\'s language, and 
 export const HOLD_AGAIN_LINE = 'Say only "Thanks for waiting." in the caller\'s language, and nothing about what is happening or why. Do not answer the question yet.';
 // call quality R7 (2026-11-19): most replies still opened with a preamble ("Let me check which vets are available and then
 // we can go from there", "Okay, sounds good, let me set that up and confirm the details for you"), and calls ran long
-export const TURN_NOTE = 'Reply now. A tool you need is called first, with no words before it. Never open with a preamble: not "Let me…", "Okay, let me…", "Sure, I can help with that", "Let me think this through", "I\'ll set that up and confirm". At most a 2 to 4 word acknowledgement ("Sure.", "Got it.") when you must, none when you have the answer. Then say what the tool gives you, in the caller\'s language. Ask only what a tool result asks for, or a detail a tool needs.';
+// call speed (2026-11-19): with no words before a tool call, a turn that needed a lookup was silent for two model rounds
+// (path A p90 2.6-3.0 s before the first word): a 1 to 3 word acknowledgement may now go first, in the same reply
+export const TURN_NOTE = 'Reply now. When you need a tool, you may first say one acknowledgement of one to three words ("Sure.", "Okay.", "One moment."), then call the tool in the same reply. Never a longer preamble: not "Let me…", "Okay, let me…", "Sure, I can help with that", "Let me think this through", "I\'ll set that up and confirm". No acknowledgement when you already have the answer, or when a result for the caller\'s words is already in the conversation: answer from it. Then say what the tool gives you, in the caller\'s language. Ask only what a tool result asks for, or a detail a tool needs.';
+/** The same note for a clinic that turned acknowledgements off (talk.acknowledgements false): a tool is called first, with no words before it. */
+export const TURN_NOTE_NO_ACK = 'Reply now. A tool you need is called first, with no words before it. Never open with a preamble: not "Let me…", "Okay, let me…", "Sure, I can help with that", "Let me think this through", "I\'ll set that up and confirm". Then say what the tool gives you, in the caller\'s language. Ask only what a tool result asks for, or a detail a tool needs.';
+/**
+ * While a lookup run ahead of the reply has not answered yet (the turn waits for the caller's words, then the lookup):
+ * a short acknowledgement, so the caller hears something within about a second. Never what is happening, never the answer.
+ */
+export const ACK_LINE = 'Say only a short acknowledgement of one to three words in the caller\'s language, such as "Sure.", "Okay." or "Got it.", and nothing else: nothing about what is happening, and not the answer yet.';
+/** How long after a waiting turn ended the acknowledgement goes, if the reply has not started by then. */
+export const ACK_AFTER_MS = 600;
 /**
  * A tool's own words that end in a question ("Dr. Rahman and Dr. Khan do dental care. Shall I look with them?", a
  * read-back's "Shall I book it?"): the next reply says them as written, and nothing else, then waits for the caller.
@@ -395,6 +406,8 @@ export class RealtimeEngine implements VoiceEngine {
   private readonly languages = new Map<string, readonly string[]>();
   /** Each call's first language: the one the fragment filter starts from. */
   private readonly primaries = new Map<string, string>();
+  /** Whether each call's clinic wants short acknowledgements (talk.acknowledgements, on unless turned off). */
+  private readonly acks = new Map<string, boolean>();
 
   /**
    * The planner path: the conversation prompt and one tool, ask_backend. The tools path (batch 1a): the tools prompt
@@ -434,6 +447,7 @@ export class RealtimeEngine implements VoiceEngine {
     this.flows.set(callId, opts.flow ?? 'planner');
     this.languages.set(callId, clinic.languages);
     this.primaries.set(callId, clinic.primaryLanguage ?? clinic.languages[0] ?? 'en');
+    this.acks.set(callId, clinic.talk?.acknowledgements ?? true);
     if (opts.flow === 'tools') this.facts.set(callId, callFactsNote(clinic, callFacts(clinic, now, opts.callerNumber)));
   }
 
@@ -456,6 +470,7 @@ export class RealtimeEngine implements VoiceEngine {
     this.flows.set(callId, opts.flow ?? 'planner');
     this.languages.set(callId, clinic.languages);
     this.primaries.set(callId, clinic.primaryLanguage ?? clinic.languages[0] ?? 'en');
+    this.acks.set(callId, clinic.talk?.acknowledgements ?? true);
     if (opts.flow === 'tools') this.facts.set(callId, callFactsNote(clinic, callFacts(clinic, now, opts.callerNumber)));
     return { sessionId: callId, sdpAnswer: await res.text() };
   }
@@ -478,6 +493,7 @@ export class RealtimeEngine implements VoiceEngine {
     this.voices.delete(callId);
     this.flows.delete(callId);
     this.languages.delete(callId);
+    this.acks.delete(callId);
     this.facts.delete(callId);
     this.models.delete(callId);
     this.openings.delete(callId);
@@ -522,7 +538,15 @@ export class RealtimeEngine implements VoiceEngine {
     let callLanguage = (this.primaries.get(callId) ?? 'en') as Language;
     let setAside: string | null = null;
     let goTimer: NodeJS.Timeout | null = null;
-    const go = () => { if (goTimer) clearTimeout(goTimer); goTimer = null; if (!goDue) return; goDue = false; respond(); };
+    // manual replies (lookup-ahead): a turn that must have words before it is answered (the first, or a short one), and
+    // the acknowledgement while its lookup runs
+    let wordsFor: string | null = null;
+    let ackTimer: NodeJS.Timeout | null = null;
+    const acks = this.acks.get(callId) ?? true;
+    const clearTurnTimers = () => { if (goTimer) clearTimeout(goTimer); goTimer = null; if (ackTimer) clearTimeout(ackTimer); ackTimer = null; wordsFor = null; };
+    const go = () => { clearTurnTimers(); if (!goDue) return; goDue = false; respond(); };
+    // the turn's own reply was started another way (an emergency script, a staff note): no go after it, never two replies
+    const noGo = () => { if (!goDue) return; goDue = false; clearTurnTimers(); trace({ type: 'gate.go_dropped' }); };
     const started = Date.now();
     const ms = () => Date.now() - started;
     let n = 0;
@@ -565,7 +589,7 @@ export class RealtimeEngine implements VoiceEngine {
     // a note for the model at the end of the conversation (never removed: removing one moves everything after it, and
     // the prompt cache misses from there)
     const note = (text: string) => ws.send({ type: 'conversation.item.create', item: { type: 'message', role: 'system', content: [{ type: 'input_text', text }] } });
-    const turnNote = () => { if (open) note(TURN_NOTE); };
+    const turnNote = () => { if (open) note(acks ? TURN_NOTE : TURN_NOTE_NO_ACK); };
     // the tools path: the call's own facts, once, before anything else in the conversation
     const facts = this.facts.get(callId);
     // words a tool gave that the next reply says as written: a note, then a reply with no tools. Not the reply's own
@@ -655,13 +679,47 @@ export class RealtimeEngine implements VoiceEngine {
             const item = e.item_id;
             firstTurns.set(item, setTimeout(() => answerFirst(item, true), SHORT_TURN_WAIT_MS));
           } else if (toolsPath && !manual) respond();
-          else if (manual) { goDue = true; if (goTimer) clearTimeout(goTimer); goTimer = setTimeout(go, GO_WAIT_MS); }
+          else if (manual && typeof e.item_id === 'string') {
+            // the reply waits for our go: the caller's words, then the lookup they ask for (lookup-ahead). A turn that
+            // must have words first (the first one, or a short one) is answered only once they are in, as above
+            clearTurnTimers();
+            goDue = true;
+            const needsWords = !callerHeard || shortTurn(e.item_id);
+            if (needsWords) wordsFor = e.item_id;
+            goTimer = setTimeout(go, needsWords ? (callerHeard ? SHORT_TURN_WAIT_MS : FIRST_WORDS_WAIT_MS) : GO_WAIT_MS);
+            // a turn that is surely words: if the reply has not started in a moment, a short acknowledgement first
+            if (!needsWords && acks) {
+              ackTimer = setTimeout(() => {
+                ackTimer = null;
+                if (!goDue || callerTalking() || gate.active) return;
+                trace({ type: 'turn.ack' });
+                respond({ type: 'response.create', response: { instructions: ACK_LINE, tool_choice: 'none' } }, 'hold');
+              }, ACK_AFTER_MS);
+            }
+          }
           return;
         // the caller's turn, whole, once it is transcribed
         case 'conversation.item.input_audio_transcription.completed':
           if ((e.usage as { type?: string } | undefined)?.type === 'tokens') {
             const u = e.usage as { input_tokens?: number; output_tokens?: number };
             emit({ type: 'session.model_usage', event_id: `${id(e)}_usage`, model: TRANSCRIBE_MODEL, input: u.input_tokens ?? 0, cached: 0, output: u.output_tokens ?? 0 });
+          }
+          if (typeof e.item_id === 'string' && wordsFor === e.item_id) {
+            // a waiting turn (manual replies): no words, or a stray fragment, is never answered; words wait for our go
+            const said = typeof e.transcript === 'string' ? withoutPromptEcho(e.transcript) : '';
+            wordsFor = null;
+            if (!said || strayFragment(said, callLanguage, setAside)) {
+              goDue = false;
+              clearTurnTimers();
+              if (said) {
+                setAside = fragmentKey(said);
+                trace({ type: 'turn.stray_fragment' });
+                ws.send({ type: 'conversation.item.delete', item_id: e.item_id });
+                spokenAt.delete(e.item_id);
+                return heard(e.item_id);
+              }
+              trace({ type: 'gate.no_words' });
+            } else callerHeard = true;
           }
           if (typeof e.item_id === 'string' && firstTurns.has(e.item_id)) {
             const said = typeof e.transcript === 'string' ? withoutPromptEcho(e.transcript) : '';
@@ -692,6 +750,7 @@ export class RealtimeEngine implements VoiceEngine {
         case 'conversation.item.input_audio_transcription.failed':
           // words that could not be written down are still words: answered, as before
           if (typeof e.item_id === 'string') answerFirst(e.item_id, true);
+          if (typeof e.item_id === 'string' && wordsFor === e.item_id) go();
           return heard(e.item_id);
         case 'response.output_audio_transcript.delta':
           if (typeof e.delta === 'string' && e.delta) { words += e.delta; spoken(e); }
@@ -810,6 +869,7 @@ export class RealtimeEngine implements VoiceEngine {
         // now, cutting off whatever the assistant was saying
         raw({ type: 'conversation.item.create', item: { type: 'message', role: 'system', content: [{ type: 'input_text', text: c.content }] } });
         interrupt();
+        noGo();
         respond();
       }
     };
@@ -827,7 +887,7 @@ export class RealtimeEngine implements VoiceEngine {
       // of the call; any other close is a dropped connection, and the runner records it so
       onClose: (handler) => {
         ws.socket.on('close', (code: number) => {
-          if (goTimer) clearTimeout(goTimer);
+          clearTurnTimers();
           for (const t of firstTurns.values()) clearTimeout(t);
           firstTurns.clear();
           release();

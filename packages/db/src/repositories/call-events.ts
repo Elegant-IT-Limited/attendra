@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
-  addDays, type CallEvent, type CallEventInput, type CallEventSink, callPath, cleanEvent, dailyNumbers, folds, localDateOf, type NumbersCall, type PathNumbers, zonedInstant,
+  addDays, type CallEvent, type CallEventInput, type CallEventSink, callPath, cleanEvent, dailyNumbers, folds, localDateOf, type NumbersCall, type PathNumbers, type SpeedCall, zonedInstant,
 } from '@attendra/core';
 import { and, asc, eq, gte, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 import { type Database, setClinicScope, type Tx, withClinic } from '../client';
@@ -207,4 +207,17 @@ export async function callNumbers(db: Database, cipher: PhiCipher, clinicId: str
   if (!d) return null;
   const read = await withClinic(db, clinicId, (tx) => dayCallsIn(tx, cipher, clinicId, d.from, d.to));
   return { day: d.day, timezone: d.timezone, calls: read.calls.length, truncated: read.truncated, paths: dailyNumbers(numbersCallsOf(read.calls)) };
+}
+
+/**
+ * Call speed (2026-11-19) for a clinic's calls that started in [from, to): each call's path and event log, nothing else
+ * (no words are read). One transaction in the clinic's scope; at most DAY_CALLS_MAX calls.
+ */
+export async function speedCallsIn(db: Database, clinicId: string, from: Date, to: Date): Promise<SpeedCall[]> {
+  return withClinic(db, clinicId, async (tx) => {
+    const list = await tx.select({ id: calls.id, engine: calls.engine, voiceFlow: calls.voiceFlow }).from(calls)
+      .where(and(eq(calls.clinicId, clinicId), gte(calls.startedAt, from), lt(calls.startedAt, to))).orderBy(asc(calls.startedAt), asc(calls.id)).limit(DAY_CALLS_MAX);
+    const events = await callEventsIn(tx, clinicId, list.map((c) => c.id));
+    return list.map((c) => ({ path: callPath(c.engine, c.voiceFlow), events: events.get(c.id) ?? [] })).filter((c) => c.events.length);
+  });
 }

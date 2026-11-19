@@ -66,6 +66,14 @@ function numberLine(clinic: ClinicConfig, caller: CallFacts['caller']): string {
   return `${last4 ? `Caller ID shows the number they are calling from, ending ${last4}.` : 'There is no caller ID on this call.'} When the caller wants to book, move or cancel a visit, the first question is the number, in the caller's language: ${asks} A question about the clinic needs no number.`;
 }
 
+/** The start of toolWork's line on words before a tool call: none, on GPT-Live and Vapi (Vapi's voice says its own short line). */
+const NO_WORDS_BEFORE_TOOLS = 'Call a tool without saying anything first';
+/**
+ * The same line on path A for a clinic with acknowledgements on (call speed, 2026-11-19): a turn that needs a tool waits
+ * for two model rounds before anything is said, so one to three words may go first, in the same reply as the tool call.
+ */
+export const ACK_BEFORE_TOOLS = 'When you need a tool, you may first say one short acknowledgement of one to three words ("Sure.", "Okay.", "One moment."), then call the tool in the same reply: never more, never what you are about to do, and never that you are checking, looking, matching or pulling something up. When a result for the caller\'s words is already in the conversation (a lookup run ahead of your reply), answer from it straight away, with no acknowledgement.';
+
 /** The voice's prompt on the tools path when the voice itself calls the tools (gpt-realtime, GPT-Live's voice). */
 export function toolsVoicePrompt(clinic: ClinicConfig, opts: { callerNumber?: string | null } = {}): string {
   return [...voiceLines(clinic), numberLine(clinic, callerIdOf(opts.callerNumber))].filter(Boolean).join('\n');
@@ -78,8 +86,9 @@ export function toolsVoicePrompt(clinic: ClinicConfig, opts: { callerNumber?: st
  * conversation once, at the start (callFactsNote).
  */
 export function toolsVoiceStaticPrompt(clinic: ClinicConfig): string {
+  const acks = clinic.talk?.acknowledgements ?? true;
   return [
-    ...trimForPathA(voiceLines(clinic)),
+    ...trimForPathA(voiceLines(clinic)).map((l) => (acks && l.startsWith(NO_WORDS_BEFORE_TOOLS) ? ACK_BEFORE_TOOLS : l)),
     industryPack(clinic.industry).identity === 'pet' ? 'When the caller wants to book, move or cancel a visit, the first question is the number the pet\'s profile is under, in the words the call facts give. A question about the clinic needs no number.' : '',
   ].filter(Boolean).join('\n');
 }

@@ -74,6 +74,7 @@ export interface VoiceDeps {
    * gpt-realtime on the tools path: run a likely lookup before the reply (round 2). Defaults to off: on real audio it
    * saved no time (the wait for the caller's words costs about what it saves), so it stays behind this switch.
    */
+  /** gpt-realtime on the tools path: run a likely lookup before the reply. On unless set false. */
   lookupAhead?: boolean;
   /** Browser test calls one clinic may have open at once. Defaults to 2. */
   browserCallsPerClinic?: number;
@@ -580,6 +581,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         // a yes is read across the caller's pieces ("Yes." "Hello, are you there?"), and the pet's visits are read ahead
         agent.state.answersAcrossPieces = true;
         agent.onPatientFound = (patientId) => warmPatient(backend, clinic.id, patientId, now());
+        // the household on the caller ID, read while the greeting plays: the first identity lookup answers from memory
+        void agent.preloadHousehold();
       }
       // the call's event log, from before the sideband attaches, so the greeting's request is in it
       events = deps.callEventsFor?.(clinic.id, callId, callPath(engine.sessionInfo?.(sessionId)?.engine ?? engineName(engine) ?? engine.name, flowOf(clinic))) ?? null;
@@ -591,8 +594,9 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       const runner = new CallRunner(sessionId, engine, sideband, agent, deps.recorderFor(clinic.id, callId), deps.log, marks,
         deps.alerts ? { alert: (kind, text) => deps.alerts!.alert(kind, text, where), where } : undefined);
       if (log) runner.trace = (e) => log.add(e);
-      // gpt-realtime on the tools path waits for our go once a pet is found, so a lookup runs before its reply (round 2)
-      runner.manualTurns = tools && (deps.lookupAhead ?? false) && engine.sessionInfo?.(sessionId)?.engine === 'gpt-realtime';
+      // gpt-realtime on the tools path waits for our go where a lookup can run before its reply (lookup-ahead; on unless
+      // ATTENDRA_LOOKUP_AHEAD=off)
+      runner.manualTurns = tools && (deps.lookupAhead ?? true) && engine.sessionInfo?.(sessionId)?.engine === 'gpt-realtime';
       // a phone call whose line closes with no end known: the phone side says whether it was hung up (note 48)
       if (!web && deps.phoneLine && opts.phone) { const line = deps.phoneLine; const ref = opts.phone; runner.phoneLineEnded = () => line.ended(ref); }
       if (web) {
