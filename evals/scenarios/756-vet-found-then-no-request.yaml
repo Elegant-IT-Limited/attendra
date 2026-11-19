@@ -1,0 +1,16 @@
+id: vet-found-then-no-request
+title: "After the pet is found, an answer that asks for nothing ('Yeah.') gets the choices once, never the same question three times (call quality R8, 2026-11-19)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550199"
+tags: [no-demo, call-quality, identity]
+turns:
+  - caller: Hi, this is Carmen Ortiz. My pet is Luna, and my number ends with 0174.
+    reply: "I found Luna, your dog. What do you need for Luna today?"
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna, phone: null, phone_last4: "0174" }
+expect:
+  outcome: abandoned
+  verified: true
+  refusals: []
+  returned: ["give the choices once", "Never ask the same question a third time"]

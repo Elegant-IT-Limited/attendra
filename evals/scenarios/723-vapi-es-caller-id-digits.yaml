@@ -17,5 +17,5 @@ expect:
   outcome: abandoned
   verified: false
   language: es
-  vapi_returned: ['"caller_id_last4":"0172"', "ends in 0 1 7 2"]
-  vapi_said: ["Perdón, me equivoqué: el número desde el que llama termina en 0 1 7 2."]
+  vapi_returned: ['"caller_id_last4":"0172"', "ends in cero uno siete dos"]
+  vapi_said: ["Perdón, me equivoqué: el número desde el que llama termina en cero uno siete dos."]

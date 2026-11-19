@@ -169,3 +169,16 @@ export function forVapiVoice(text: string): string {
 export function fromVapiVoice(text: string): string {
   return text.replace(SPACED_TIME, '$1:$2');
 }
+
+const DIGIT_WORDS = {
+  en: ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'],
+  es: ['cero', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve'],
+} as const;
+/**
+ * Digits as words, one by one, for Vapi's voice (call quality R11, 2026-11-19: "0 0 9 0" came out as "visual 0 9 0"):
+ * "zero zero nine zero", "cero cero nueve cero".
+ */
+export function digitsAsWords(digits: string, lang: 'en' | 'es'): string {
+  return digits.replace(/\D/g, '').split('').map((d) => DIGIT_WORDS[lang][Number(d)]).join(' ');
+}
+

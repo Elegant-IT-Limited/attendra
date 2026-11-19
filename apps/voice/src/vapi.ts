@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, type Backend, CallAgent, CallCache, cachedBackend, CallState, type Outbound, type Planner } from '@attendra/agent';
-import { callFacts, type CallEventSink, ClinicConfig, DEMO_BUSY_LINE, DEMO_GOODBYE_LINE, DEMO_LIMITS, DEMO_WRAP_UP_LINE, type DemoLimitCode, forVapiVoice, fromVapiVoice, isDemoClinic, type Language, lastFour, spokenDigits, isVapiTestClinic, maxGapMs, repeatedQuestions, vapiAlertAt } from '@attendra/core';
+import { digitsAsWords, callFacts, type CallEventSink, ClinicConfig, DEMO_BUSY_LINE, DEMO_GOODBYE_LINE, DEMO_LIMITS, DEMO_WRAP_UP_LINE, type DemoLimitCode, forVapiVoice, fromVapiVoice, isDemoClinic, type Language, lastFour, spokenDigits, isVapiTestClinic, maxGapMs, repeatedQuestions, vapiAlertAt } from '@attendra/core';
 import { type Alerter, isVapiCreditEnd, isVapiOpenAiQuotaEnd, type Logger } from '@attendra/observability';
 import { type CallRecorder, callFactsNote, VAPI_EVENTS_PATH, VAPI_SECRET_HEADER } from '@attendra/voice-engine';
 import type { FastifyInstance } from 'fastify';
@@ -192,7 +192,8 @@ export function wrongCallerIdDigits(line: string, last4: string | null): string 
 
 /** The assistant's correction of the caller ID's digits: ours, one by one. */
 export const callerIdCorrection = (lang: Language, last4: string) => {
-  const digits = last4.split('').join(' ');
+  // as words, one by one: Vapi's voice read "0 0 9 0" as "visual 0 9 0" (R11)
+  const digits = digitsAsWords(last4, lang === 'es' ? 'es' : 'en');
   return lang === 'es' ? `Perdón, me equivoqué: el número desde el que llama termina en ${digits}.` : `Sorry, I misspoke: the number you're calling from ends in ${digits}.`;
 };
 
@@ -434,7 +435,8 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
     if (!s.callerLast4 || (tool !== 'verify_caller' && tool !== 'register_patient')) return;
     if (output.data.verified === true || output.data.registered === true) return;
     output.data.caller_id_last4 = s.callerLast4;
-    const note = `The number they are calling from (caller ID) ends in ${s.callerLast4.split('').join(' ')}: if you mention it, say exactly these four digits, never others.`;
+    const words = digitsAsWords(s.callerLast4, s.agent.state.language === 'es' ? 'es' : 'en');
+    const note = `The number they are calling from (caller ID) ends in ${words}: if you mention it, say exactly these four digits, as these words, never others.`;
     output.say = [output.say, note].filter(Boolean).join(' ');
   }
 

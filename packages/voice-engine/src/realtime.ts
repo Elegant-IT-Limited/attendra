@@ -179,7 +179,9 @@ export const HOLD_LINE = 'Say only "One moment." in the caller\'s language, and 
  * twice, a test call's voice varied it into "I'm still waiting on that lookup to finish" (note 52 B4).
  */
 export const HOLD_AGAIN_LINE = 'Say only "Thanks for waiting." in the caller\'s language, and nothing about what is happening or why. Do not answer the question yet.';
-export const TURN_NOTE = 'Reply now. A tool you need is called first, with no words before it (never "let me...", "one moment"). Then say what it gives you, in the caller\'s language. Ask only what a tool result asks for, or a detail a tool needs.';
+// call quality R7 (2026-11-19): most replies still opened with a preamble ("Let me check which vets are available and then
+// we can go from there", "Okay, sounds good, let me set that up and confirm the details for you"), and calls ran long
+export const TURN_NOTE = 'Reply now. A tool you need is called first, with no words before it. Never open with a preamble: not "Let me…", "Okay, let me…", "Sure, I can help with that", "Let me think this through", "I\'ll set that up and confirm". At most a 2 to 4 word acknowledgement ("Sure.", "Got it.") when you must, none when you have the answer. Then say what the tool gives you, in the caller\'s language. Ask only what a tool result asks for, or a detail a tool needs.';
 /**
  * A tool's own words that end in a question ("Dr. Rahman and Dr. Khan do dental care. Shall I look with them?", a
  * read-back's "Shall I book it?"): the next reply says them as written, and nothing else, then waits for the caller.
@@ -488,6 +490,8 @@ export class RealtimeEngine implements VoiceEngine {
     // the tool calls of a response still waiting for their results: the model goes on once all of them are back
     const outstanding = new Set<string>();
     let toolsTimer: NodeJS.Timeout | null = null;
+    // each outstanding tool call's name, by its call id
+    const toolNames = new Map<string, string>();
     // the last tool question among the results of one response, said once all of them are back
     let question: string | null = null;
     // and the last refusal line among them (a question wins over it)
@@ -548,8 +552,12 @@ export class RealtimeEngine implements VoiceEngine {
     // no stop for 15 s no longer holds anything back.
     let callerTalkingSince: number | null = null;
     const callerTalking = () => callerTalkingSince !== null && Date.now() - callerTalkingSince < CALLER_TALKING_MAX_MS;
+    // end_call went through: its goodbye is said once, and a caller's "bye" or "muy bien" after it is not answered again
+    // (call quality R10, 2026-11-19: "Take care, goodbye!" then "Goodbye, take care.")
+    let ending = false;
     const respond = (e: Record<string, unknown> = { type: 'response.create' }, kind: ReplyKind = 'reply') => {
       if (!open) return; // the greeting on open answers for it
+      if (ending) { trace({ type: 'gate.call_ending' }); return; }
       if (toolsPath && kind !== 'greeting' && kind !== 'hold' && callerTalking()) { trace({ type: 'gate.held_caller_talking' }); return; }
       gate.request(e, kind);
     };
@@ -712,6 +720,7 @@ export class RealtimeEngine implements VoiceEngine {
           // the tools path: one of our tools, answered by the tools API; held like a hand-off until the caller's words are in
           else if (toolsPath && typeof e.name === 'string') {
             outstanding.add(e.call_id);
+            toolNames.set(e.call_id, e.name);
             gate.waitForTools();
             toolsTimer ??= setTimeout(() => { toolsTimer = null; gate.toolsDone(); }, TOOL_RESULT_WAIT_MS);
             const call: SidebandEvent = { type: 'session.tool_call', event_id: id(e), call_id: e.call_id, name: e.name, arguments: typeof e.arguments === 'string' ? e.arguments : '{}' };
@@ -764,6 +773,8 @@ export class RealtimeEngine implements VoiceEngine {
         // a tool's result: the function call's output, and once every call of the response has its result, the model goes on
         raw({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: event.call_id, output: event.output } });
         outstanding.delete(event.call_id);
+        const endsCall = toolNames.get(event.call_id) === 'end_call' && /"ok":\s*true/.test(event.output);
+        toolNames.delete(event.call_id);
         question = toolQuestion(event.output) ?? question;
         refusal = toolRefusalLine(event.output) ?? refusal;
         if (!outstanding.size) {
@@ -778,6 +789,7 @@ export class RealtimeEngine implements VoiceEngine {
           // asked while the gate still waits for the tools: it merges with a reply the caller's words asked for meanwhile
           if (instructions) sayNext(instructions);
           else respond();
+          if (endsCall) ending = true;
           if (toolsTimer) { clearTimeout(toolsTimer); toolsTimer = null; }
           gate.toolsDone();
         }

@@ -1,0 +1,18 @@
+id: vet-es-ya-esta-bien-goodbye
+title: "In Spanish: 'Ya está bien, gracias.' mid-call closes it: end_call goes through (call quality R9, 2026-11-19)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-quality, goodbye, es]
+turns:
+  - caller: Hola, ¿ustedes ofrecen hospedaje para perros?
+    reply: "No ofrecemos hospedaje ni peluquería."
+    delegate:
+      - get_clinic_info: { question: ofrecen hospedaje }
+  - caller: Ya está bien, gracias.
+    reply: "Que le vaya bien. ¡Adiós!"
+    delegate:
+      - end_call: { reason: el cliente terminó }
+expect:
+  outcome: info
+  language: es
+  refusals: []

@@ -1,0 +1,17 @@
+id: vet-ya-esta-bien-goodbye
+title: "'That's all, thanks.' mid-call closes it: end_call goes through, never 'anything else? If not, I can say goodbye' (call quality R9, 2026-11-19)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-quality, goodbye]
+turns:
+  - caller: Do you offer boarding?
+    reply: "We do not offer boarding or grooming."
+    delegate:
+      - get_clinic_info: { question: do you offer boarding }
+  - caller: That's all, thanks.
+    reply: "Take care, goodbye!"
+    delegate:
+      - end_call: { reason: caller is done }
+expect:
+  outcome: info
+  refusals: []

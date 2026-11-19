@@ -457,6 +457,31 @@ describe('noise before the caller\'s first words (call bugs, 2026-11-17)', () =>
     expect(creates()).toBe(1);
   });
 
+  it('says one goodbye: after end_call, a caller\'s last words get no new reply (call quality R10)', async () => {
+    const s = realtimeSocket();
+    const e = new RealtimeEngine({ realtime: { calls: { accept: vi.fn(async () => {}) } } } as never, 'gpt-realtime-2.1', () => s.ws);
+    await e.accept('rtc_r10', vet, NOW, undefined, { flow: 'tools' });
+    const sideband = e.attach('rtc_r10');
+    s.play({ type: 'response.done', event_id: 'r0' });
+    s.play({ type: 'input_audio_buffer.committed', event_id: 'c0', item_id: 'i0' });
+    s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 't0', item_id: 'i0', transcript: "No, it's fine." });
+    s.play({ type: 'response.created', event_id: 'rc' });
+    s.play({ type: 'response.function_call_arguments.done', event_id: 'f1', call_id: 'call_end', name: 'end_call', arguments: '{}' });
+    s.play({ type: 'response.done', event_id: 'rd' });
+    const start = s.sent.length;
+    sideband.send({ type: 'tool.result', event_id: 't1', call_id: 'call_end', output: JSON.stringify({ ok: true, outcome: 'ending', spoken: 'Take care, goodbye!' }) });
+    const creates = () => s.sent.slice(start).filter((x) => x.type === 'response.create').length;
+    expect(creates()).toBe(1);
+    s.play({ type: 'response.created', event_id: 'rc2' });
+    s.play({ type: 'response.done', event_id: 'rd2' });
+    // "Muy bien." after the goodbye: nothing more is said
+    s.play({ type: 'input_audio_buffer.speech_started', event_id: 's1', item_id: 'i1' });
+    s.play({ type: 'input_audio_buffer.speech_stopped', event_id: 's2', item_id: 'i1' });
+    s.play({ type: 'input_audio_buffer.committed', event_id: 's3', item_id: 'i1' });
+    s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 's4', item_id: 'i1', transcript: 'Muy bien.' });
+    expect(creates()).toBe(1);
+  });
+
   it('takes caller ID\'s context as a note: no reply, nothing cut off, on either path (call quality Q11)', async () => {
     for (const flow of ['tools', 'planner'] as const) {
       const s = realtimeSocket();

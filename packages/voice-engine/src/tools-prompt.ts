@@ -51,6 +51,8 @@ export function toolWork(clinic: ClinicConfig): string[] {
     'Ask the caller only what a tool result tells you to ask (its next step), or a detail a tool needs that they have not given. Never a question of your own: not whether a pet is new, not whether they are a client, not what is wrong.',
     'Speech that is not said to you (someone in the room) or in a language you do not speak here is never translated, repeated or answered: say once that you can help in the clinic\'s languages, then wait.',
         'Call one tool at a time and wait for its result, unless the second does not depend on the first.',
+    // "What would you like to do for Bella today?" was asked three times (call quality R8, 2026-11-19)
+    'Never ask the same question three times. After an answer that asks for nothing ("yeah", "hello?"), give the choices once in a few words, then wait.',
     'When the caller is done (they said no to "anything else?" or goodbye), say a short goodbye and call end_call.',
     VISIT_TYPES_RULE,
   ];

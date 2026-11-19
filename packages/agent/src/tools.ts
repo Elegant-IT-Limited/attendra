@@ -278,6 +278,13 @@ function sameRefill(before: string, now: string): string {
 }
 const VAGUE_MEDICINE = /^(?:(?:this|that|it|the|his|her|their|my|its|su|sus|el|la|esta|este|ese|esa)\s*)*(?:one|medicine|medication|meds|pills?|tablets?|refill|prescription|unknown|not sure|medicina|medicamento|pastillas?|receta)?$/;
 
+/**
+ * After a pet is found: what the caller wants is asked once; an answer that asks for nothing ("Yeah", "so you finally found
+ * her?") gets the choices once, then the voice waits (call quality R8, 2026-11-19: "What would you like to do for Bella
+ * today?" three times).
+ */
+const afterFound = (pet: string) => `If they have not said what they need, ask once what they need for ${pet}. If the answer asks for nothing (a yes, "have you found her?"), say you found ${pet} and give the choices once (a visit, moving or cancelling one, a refill), then wait for them. Never ask the same question a third time.`;
+
 /** The caller asks for another vet than the one offered: "any other doctor?", "someone else?", "¿otro veterinario?". */
 const OTHER_VET = /\b(?:(?:any|an|some|a different|another)(?:one)? (?:other )?(?:doctor|vet|veterinarian|dr)s?|other (?:doctor|vet|veterinarian|dr)s?|someone else|somebody else|anyone else|otr[oa] (?:doctor|doctora|veterinari[oa]|medic[oa])|alguien mas|algun otro|con otr[oa])\b/;
 export const asksOtherVet = (text: string) => OTHER_VET.test(normalise(text));
@@ -1675,7 +1682,7 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
     if (thanks) state.memory.greeted = true;
     const first = thanks + PACKS[lang].foundPet({ pet: found.patient.firstName, species: found.patient.species ?? null });
     const chosen = chosenNote(state, clinic, lang, ctx.now()).say ?? '';
-    return { ok: true, data: { verified: true, pet_name: found.patient.firstName, species: found.patient.species ?? null, say: `Say first, in these words: "${first}" Then go on with what they want.${chosen}` } };
+    return { ok: true, data: { verified: true, pet_name: found.patient.firstName, species: found.patient.species ?? null, say: `Say first, in these words: "${first}" Then go on with what they want. ${afterFound(found.patient.firstName)}${chosen}` } };
   }
   if (found.status === 'ambiguous') return refuse('needs_staff', 'Say you need a colleague to confirm the pet\'s record, and offer a callback.');
   // the same answer whichever detail was wrong: never confirm what is on the number
@@ -1728,7 +1735,7 @@ async function byLastFour(said: string, args: Record<string, unknown>, state: Ca
   rememberPet(state, found.patient);
   const first = PACKS[lang].foundPet({ pet: found.patient.firstName, species: found.patient.species ?? null });
   const chosen = chosenNote(state, ctx.clinic, lang, ctx.now()).say ?? '';
-  return { ok: true, data: { verified: true, pet_name: found.patient.firstName, species: found.patient.species ?? null, say: `Say first, in these words: "${first}" Then go on with what they want. Never say the number on file or the owner's name.${chosen}` } };
+  return { ok: true, data: { verified: true, pet_name: found.patient.firstName, species: found.patient.species ?? null, say: `Say first, in these words: "${first}" Then go on with what they want. ${afterFound(found.patient.firstName)} Never say the number on file or the owner's name.${chosen}` } };
 }
 
 /**
