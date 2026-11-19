@@ -1,0 +1,21 @@
+id: vet-es-text-ok-is-yes
+title: "In Spanish: 'Ok' to the text offer is a yes (call quality Q2, 2026-11-18)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-quality, texts, clear-yes, es]
+turns:
+  - caller: ¿Dónde están? ¿Cuál es la dirección?
+    reply: "Estamos en 88 Riverbend Road, en Denver. ¿Quiere que se lo mande por mensaje al número desde el que llama?"
+    delegate:
+      - get_clinic_info: { question: donde esta la clinica direccion }
+      - send_text: { kind: directions, ref: null, to: null }
+  - assistant: "Estamos en 88 Riverbend Road, en Denver. ¿Quiere que se lo mande por mensaje al número desde el que llama?"
+  - caller: Ok.
+    reply: "Se lo envío por mensaje ahora."
+    delegate:
+      - send_text: { kind: directions, ref: null, to: null }
+expect:
+  outcome: info
+  language: es
+  refusals: [consent_required]
+  sms_sent: 1

@@ -74,7 +74,7 @@ export interface PatientDirectory {
    * and the pet's name, by the keyed lookup of the last four digits (migration 0042). Found only when exactly one pet in
    * exactly one household matches; 'ambiguous' when more do, 'not_found' when none.
    */
-  findPetByLastFour?(clinicId: string, lastFour: string, petName: string, callId: string): Promise<PatientLookup>;
+  findPetByLastFour?(clinicId: string, lastFour: string, petName: string, callId: string, ownerName?: string | null): Promise<PatientLookup>;
   /** Records that they said yes to reminder texts on a call. */
   setTextConsent?(clinicId: string, patientId: string, callId: string): Promise<void>;
   /**

@@ -12,10 +12,10 @@ turns:
     delegate:
       - verify_caller: { owner_name: Jordan, pet_name: Pepper, phone: null }
   - caller: El 303 555 0142.
-    reply: "¿Es el 303-555-0142?"
+    reply: "¿Es el 3 0 3, 5 5 5, 0 1 4 2?"
     delegate:
       - verify_caller: { owner_name: Jordan, pet_name: Pepper, phone: "303 555 0142" }
-  - assistant: "¿Es el 303-555-0142?"
+  - assistant: "¿Es el 3 0 3, 5 5 5, 0 1 4 2?"
   - caller: Sí.
     reply: "Encontré a Pepper. Tengo {offered.0}."
     delegate:

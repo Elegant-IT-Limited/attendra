@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
   bookableProviders, demoEmergency,
-  addDays, EMERGENCY_CHOICES, EMERGENCY_LINES, emergencyHandlingSummary, saysSlot, ageOn, asE164, groupedNumber, heardNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  addDays, EMERGENCY_CHOICES, EMERGENCY_LINES, emergencyHandlingSummary, saysSlot, ageOn, asE164, digitByDigit, groupedNumber, heardNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isClearYesTo, asksForText, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, isPetEmergency, LANGUAGES, normalise, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, inProviderOrder, providerFacts, providerOrderAsked, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, BOOKING_LEAD_MINUTES, bookingPolicy, callFacts, earliestStart, lastBookableDate, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant, dayShift, offerTimesLine,
@@ -169,7 +169,7 @@ function readBackFirst(said: unknown, phone: string, state: CallState, ctx: Call
   if (state.readbacksWrong >= WRONG_READBACKS && !state.lastFourAsked && industryPack(ctx.clinic.industry).identity === 'pet') return askLastFour(state, lang, 'wrong_readbacks');
   const asked = state.phoneReadback?.digits === digits && state.phoneReadback.askedAtMs !== null;
   if (!asked) state.phoneReadback = { digits, atMs: state.lastMs(), askedAtMs: null };
-  return refuse('confirm_number', `Before searching, read the number back once, in these words: "${PACKS[lang].phoneReadback({ grouped: groupedNumber(ctx.clinic, phone) })}" On a yes, call this again with the same number. On a no, ask for the number again and call this with the new one.${asked ? ' They have not said yes to it yet.' : ''}`);
+  return refuse('confirm_number', `Before searching, read the number back once, in these words: "${PACKS[lang].phoneReadback({ grouped: digitByDigit(groupedNumber(ctx.clinic, phone)) })}" On a yes, call this again with the same number. On a no, ask for the number again and call this with the new one.${asked ? ' They have not said yes to it yet.' : ''}`);
 }
 /** Numbers a model writes when it has none: never a caller's. */
 // built from pieces, so the privacy check never reads them as phone numbers
@@ -240,6 +240,13 @@ const blanksAsNull = (args: unknown): unknown => (args && typeof args === 'objec
 /** Where a confirmation text will go, for the tool result: never "sent", since nobody on the call can see it arrive. */
 const textNote = (to: 'calling' | 'file' | null) => (to === 'calling' ? 'will go to the number calling' : to === 'file' ? 'will go to the number on file' : 'none');
 /** The read-back asked again after an answer that was not a yes: plainly, with no set words to repeat. */
+/** The text offer asked once more after an answer that was neither yes nor no (call quality Q2, 2026-11-18). */
+const askTextAgain = (lang: CallState['language'], target: 'this' | 'file') => (lang === 'es'
+  ? `Para estar segura: ¿se lo mando por mensaje ${target === 'file' ? 'al número de su ficha' : 'al número desde el que llama'}? Con un sí me basta.`
+  : `Just to be sure: shall I text it to ${target === 'file' ? 'the number on your file' : "the number you're calling from"}? A simple yes is fine.`);
+/** An answer to an offer that turns it down or puts it off: a no, "maybe later", "I'll remember it", any hedge. */
+const declinedOffer = (answer: string) => { const t = normalise(answer).trim(); return /^(?:no|nope|nah)\b|\blater\b|remember it|luego|despues/.test(t) || LANGUAGES.some((l) => PACKS[l].hedge.test(t)); };
+
 const askYesAgain = (lang: CallState['language'], readback: string) => (lang === 'es'
   ? `Solo para confirmar: ${/^(cambiar|cancelar) /.test(readback) ? `¿quiere ${readback}` : `¿le reservo ${readback}`}? Con un sí me basta.`
   : `Just to confirm: ${/^(move|cancel) /.test(readback) ? `shall I ${readback}` : `shall I book ${readback}`}? A simple yes is fine.`);
@@ -1182,7 +1189,9 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       // "yes, but no text": a yes to the change, and no confirmation text
       const answer = state.answerToReadback();
       const noText = declinesText(answer);
-      if (!isClearYes(noText ? withoutTextRefusal(answer) : answer, clinic.languages)) {
+      // an answer naming the time offered is a yes too ("okay, 9:20 is fine"; call quality Q3)
+      const at = pending.kind === 'cancel' ? pending.start : pending.slot.start;
+      if (!isClearYesTo(noText ? withoutTextRefusal(answer) : answer, clinic.languages, { start: at, timeZone: clinic.timezone })) {
         // never a set phrase to repeat: a test call asked four times for "yes, move it" (2026-11-16). A plain yes,
         // okay or sí is enough; a question is answered first
         const ask = askYesAgain(lang, pending.readback);
@@ -1381,8 +1390,21 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const offer = state.textOffer;
       const same = !!offer && offer.kind === kind && offer.ref === ref && offer.to === target;
       let consentAtMs: number;
-      if (same && offer.askedAtMs !== null) {
-        if (!isClearYes(state.answerToTextOffer(), clinic.languages)) return refuse('no_clear_yes', 'Do not send it. Carry on with the call.');
+      // the caller asking for the text, to the phone they are calling from, is their consent: "can you send me the
+      // text?" (call quality Q2, 2026-11-18: asked three times, refused three times as "no clear yes"). Once per turn.
+      const lastCaller = state.turns.findLast((t) => t.speaker === 'caller');
+      if (target === 'this' && lastCaller && lastCaller.startMs > state.lastTextConsentMs && asksForText(lastCaller.text)) {
+        consentAtMs = lastCaller.startMs;
+      } else if (same && offer.askedAtMs !== null) {
+        const answer = state.answerToTextOffer();
+        if (!isClearYes(answer, clinic.languages)) {
+          // a plain no is a no; anything else unclear is asked about once more, plainly, never taken as a no
+          if (!answer.trim() || declinedOffer(answer) || offer.reasked) return refuse('no_clear_yes', 'Do not send it. Carry on with the call.');
+          offer.reasked = true;
+          offer.offeredAtMs = state.lastMs();
+          offer.askedAtMs = null;
+          return refuse('text_yes_again', `Do not send it yet, and do not tell them it will not be sent. Ask once, in these words: "${askTextAgain(lang, target)}" On a yes, call send_text again with the same details.`);
+        }
         consentAtMs = offer.askedAtMs;
       } else {
         // the assistant may have offered on its own (the emergency script ends with an offer): the yes after that counts
@@ -1493,6 +1515,9 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   if (state.saidNew() === 'new') return refuse('pet_is_new', 'The caller said the pet is new to the clinic: do not look it up. Add it with register_patient, asking only for what it still needs that the caller has not said yet (the kind of animal, its sex, its age or birthday, the owner\'s first name).');
   // the second way to find the profile, once the backend asked for it: the last four digits and the pet's name
   if (typeof args.phone_last4 === 'string' && args.phone_last4.trim()) return byLastFour(args.phone_last4, args, state, ctx, backend, lang);
+  // "the number ends 0101" passed as the phone: four digits are never a whole number, they are the last four (2026-11-18:
+  // a test call's "it's a different number" with 0101 as the phone was refused as an unopened number)
+  if (typeof args.phone === 'string' && spokenDigits(args.phone).replace(/\D/g, '').length === 4) return byLastFour(args.phone, args, state, ctx, backend, lang);
   const phone = heardPhone(clinic, args.phone) ?? ctx.callerNumber;
   if (!phone) return refuse('phone_required', askPhone(lang));
   // no pet named yet: the number's pets, to pick from
@@ -1521,7 +1546,7 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   const check = await checkOwner(phone, args.phone, state, ctx, backend, lang, args.pet_name);
   if (check) return check;
   // a spoken number the owner's name has not confirmed: no lookup, so "found", "not found" and "no profile" never differ
-  if (unconfirmedSpokenNumber(phone, args.phone, state, ctx)) return numberNotOpened(lang);
+  if (unconfirmedSpokenNumber(phone, args.phone, state, ctx)) return askNumberAgain(state, lang, pet) ?? numberNotOpened(lang);
   const found = await findPetOnce(pet, phone, tried, state, ctx, backend);
   if (found.status === 'found') {
     // the result first, in one short sentence, before any times: a caller had to ask "have you found her?" (a test call).
@@ -1555,17 +1580,28 @@ async function byLastFour(said: string, args: Record<string, unknown>, state: Ca
   // no counts too (a live eval, 2026-11-15)
   countWrongReadback(state, null);
   if (!state.lastFourAsked && state.readbacksWrong >= WRONG_READBACKS) state.lastFourAsked = 'wrong_readbacks';
-  if (!state.lastFourAsked || !backend.patients.findPetByLastFour) return refuse('last_four_not_asked', 'Find the pet by the phone number its profile is under, with phone and phone_last4 null: the last four digits are only for when the backend asks for them.');
+  if (!backend.patients.findPetByLastFour) return refuse('last_four_not_asked', 'Find the pet by the phone number its profile is under, with phone and phone_last4 null: the last four digits are only for when the backend asks for them.');
   if (lastFour.length !== 4) return refuse('last_four_digits', `Ask again for just the last four digits, in these words: "${ask}" Keep the pet's name if they gave it.`);
   const pet = String(args.pet_name ?? '').trim();
   if (!pet) return refuse('pet_name', 'Ask the pet\'s name. Keep the four digits they gave; do not ask for them again.');
+  // Four digits the caller gave before anyone asked ("Emily Carter, Bella, the number ends 0101"; CB11 and 2026-11-18,
+  // refused on both paths as not asked): searched with the owner's name too, so four digits and a pet's name alone never
+  // open a profile. No owner's name yet: it is asked, once, and the digits and the pet are kept.
+  const volunteered = !state.lastFourAsked;
+  const ownerSaid = String(args.owner_name ?? '').trim();
+  const owner = volunteered && ownerSaid && firstWordOf(ownerSaid) !== firstWordOf(pet) ? ownerSaid : null;
+  if (volunteered && !owner) {
+    return refuse('owner_for_last_four', `Ask, in these words: "${PACKS[lang].ownerNameQuestion}" Then call verify_caller again with owner_name as they say it, phone_last4 ${lastFour}, pet_name ${pet} and phone null. Keep everything else they gave; do not ask for it again.`);
+  }
   if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
   const tried = identityKey('last four', pet, lastFour);
   if (state.identitiesTried.has(tried)) return triedAgain(state, 'the pet');
-  const found = await backend.patients.findPetByLastFour(ctx.clinic.id, lastFour, pet, ctx.callId);
+  const found = await backend.patients.findPetByLastFour(ctx.clinic.id, lastFour, pet, ctx.callId, owner);
   if (found.status !== 'found') {
     state.verifyAttempts++;
     state.identitiesTried.add(tried);
+    // the caller offered the digits themselves: the whole number is still a way that can work, asked once (2026-11-18)
+    if (volunteered && state.verifyAttempts < MAX_VERIFY_ATTEMPTS) { const again = askNumberAgain(state, lang, pet); if (again) return again; }
     return refuse('last_four_no_match', `Say first, in these words: "${PACKS[lang].lastFourNoMatch}" Then offer to take a request for the team to find the profile and call them back, with create_callback (what they want, and the best number). Do not search again, and never say a number or a name from the records.`);
   }
   if (state.verifiedPatient?.id !== found.patient.id) { state.pending = null; state.offered.clear(); }
@@ -1598,7 +1634,7 @@ async function whichPet(phone: string, state: CallState, ctx: CallContext, backe
   // said, not even its pets' names (the FINAL rule: nothing from a record before the caller is verified). The caller
   // is asked the pet's name instead. Caller ID, or a name that matches the owner on file, keeps the pick question;
   // a number with no owner on file has no pets to give away.
-  if (unconfirmedSpokenNumber(phone, said, state, ctx)) return numberNotOpened(lang);
+  if (unconfirmedSpokenNumber(phone, said, state, ctx)) return askNumberAgain(state, lang, null) ?? numberNotOpened(lang);
   const known = await knownHousehold(phone, state, ctx, backend);
   const pets = known ?? await backend.patients.petsOnNumber(ctx.clinic.id, phone, ctx.callId);
   // an unknown number: a new owner and a new pet, the usual way
@@ -1636,6 +1672,21 @@ function unconfirmedSpokenNumber(phone: string, said: unknown, state: CallState,
 }
 
 /** The one answer for an unconfirmed spoken number, whatever is or isn't on file, and the one next step: a request. */
+/**
+ * After a lookup that found nothing, the whole number (read back digit by digit before it is searched) and the owner's
+ * name are asked once more, before the request for the team (2026-11-18: a test call heard 506 for 516 and was told
+ * "I can't open a profile" while a way that would work was left). Null once asked: the next miss goes to the team. The
+ * same words whatever was or wasn't on file, so a number's owner is never given away; the owner is checked again.
+ */
+function askNumberAgain(state: CallState, lang: CallState['language'], pet: string | null): ToolResult | null {
+  if (state.numberAskedAgain) return null;
+  state.numberAskedAgain = true;
+  const m = state.memory;
+  if (m.nameCheck?.name) m.namesChecked.push({ digits: m.nameCheck.digits, name: m.nameCheck.name });
+  m.nameCheck = null; m.nameAskedFor = null; m.verified = m.verified === 'caller_id' ? m.verified : null;
+  return refuse('number_again', `Say, in these words: "${PACKS[lang].numberAgain({ pet: pet?.trim() || null })}" Then call verify_caller with the whole number as they say it now (phone, digits and words as said: the backend reads it back first), the owner's name as they say it now, and the pet's name. This is not the last try: never tell them the profile can't be opened now, and never say a name or a number from the records.`);
+}
+
 const numberNotOpened = (lang: CallState['language']) => refuse('number_not_opened', `Say first, in these words: "${PACKS[lang].numberNotOpened}" Then, if they want, take a request for the team to call them back with create_callback (what they want, and the best number to call). Do not look anything up again on this number, and never say a name, a pet or anything else from the records. A new pet is still added with register_patient if the caller says it is new.`);
 
 /**

@@ -160,3 +160,44 @@ describe('the event log on a Realtime call', () => {
     expect(JSON.stringify(log)).not.toMatch(/Maria|0147/);
   });
 });
+
+// Call quality Q3 (2026-11-18): a reply the caller's words asked for went out while the model's tool call had no result
+// yet, and the model said "I'm still waiting for that to complete, and I can't cancel it again until it finishes".
+describe('replies wait for the tools\' results', () => {
+  it('holds a reply asked for while tools are out, and sends one reply once every result is in', () => {
+    const sent: Record<string, unknown>[] = [];
+    const gate = new TurnGate((e) => sent.push(e));
+    gate.request(REPLY, 'reply');
+    gate.started();
+    gate.waitForTools();
+    // the caller says more before the response ends: queued
+    gate.request(REPLY, 'reply');
+    gate.done();
+    // the response ended with its tool call: nothing goes until the result is in
+    expect(sent).toHaveLength(1);
+    // the result's line to say merges with the waiting reply: one reply, the one that may call tools
+    gate.request(SAY, 'say');
+    expect(sent).toHaveLength(1);
+    gate.toolsDone();
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toBe(REPLY);
+  });
+
+  it('with nothing waiting, the result\'s own line goes as soon as the results are in', () => {
+    const sent: Record<string, unknown>[] = [];
+    const gate = new TurnGate((e) => sent.push(e));
+    gate.waitForTools();
+    gate.request(SAY, 'say');
+    expect(sent).toHaveLength(0);
+    gate.toolsDone();
+    expect(sent).toEqual([SAY]);
+  });
+
+  it('still lets a hold line go while the tools are out', () => {
+    const sent: Record<string, unknown>[] = [];
+    const gate = new TurnGate((e) => sent.push(e));
+    gate.waitForTools();
+    gate.request(HOLD, 'hold');
+    expect(sent).toEqual([HOLD]);
+  });
+});

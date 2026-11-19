@@ -190,6 +190,7 @@ export const es: LanguagePack = {
   notSeenPet: ({ pet }) => `No veo a ${pet} con ese número.`,
   noPetsOnNumber: 'No veo ninguna ficha con ese número.',
   numberNotOpened: 'No puedo abrir una ficha con esos datos en esta llamada. Puedo dejarle un mensaje al equipo para que le devuelvan la llamada.',
+  numberAgain: ({ pet }) => `No pude abrir una ficha con eso. ¿Me puede dar otra vez el número de teléfono completo de la ficha${pet ? ` de ${pet}` : ''}, y el nombre del dueño?`,
   lastFourQuestion: ({ after }) => (after === 'no_profile'
     ? '¿Cuáles son los últimos cuatro dígitos del número con el que podría estar la ficha, y el nombre de su mascota? Si es nueva para nosotros, la puedo registrar.'
     : 'Probemos de otra forma. ¿Cuáles son los últimos cuatro dígitos del número con el que está la ficha, y el nombre de su mascota?'),
@@ -301,7 +302,7 @@ export const es: LanguagePack = {
   reportsEmergency: words('(es|tengo|tenemos|hay) (una )?(emergencia|urgencia)'),
   // "si" is also "if" ("si puede el martes"), so it counts only as its own word at the start, before a pause or the end
   yes: new RegExp(`^si(?=\\s*[,.!]|$)|${words('claro|correcto|esta bien|de acuerdo|perfecto|exacto|adelante|confirmo|reservela|hagalo|asi es|me parece bien|suena bien|me sirve').source}`, 'u'),
-  yesAlone: /^(vale|por favor|si por favor)$/,
+  yesAlone: /^(vale|por favor|si por favor|ok|okey|okay|dale|claro que si)$/,
   hedge: new RegExp(`${words('no|espere|espera|mejor|tal vez|quizas?|a lo mejor|en realidad|otro|otra|cambiar|momento|pensandolo|pero|prefiero|aunque|repita').source}|[?¿]`, 'u'),
   markers: /\b(el|la|los|las|de|que|por|para|con|una?|quiero|necesito|cita|gracias|hola|senor|senora|manana|hoy|si|esta|usted|puedo)\b/g,
   saysNew: words('(?:es|son|soy|somos) (?:completamente )?nuev[oa]s?|(?:paciente|cliente|mascota)s? nuev[oa]s?|nuev[oa]s? (?:paciente|cliente|mascota|aqui|en (?:la|su) clinica)|no (?:esta|estan|estoy) (?:registrad[oa]s?|en (?:su|el) sistema)|nunca (?:ha|han|he) (?:venido|ido|estado)|primera (?:vez|visita|consulta) (?:aqui|con ustedes|en (?:la|su) clinica)|(?:su|una) primera (?:consulta|visita|revision)|(?:acabo|acabamos) de (?:adoptar|tener)|(?:quiero|quisiera|necesito) registrar|registrar a (?:mi|mis|nuestr[oa]s?)'),

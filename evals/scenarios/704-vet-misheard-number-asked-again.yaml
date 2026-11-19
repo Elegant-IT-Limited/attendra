@@ -1,0 +1,32 @@
+id: vet-misheard-number-asked-again
+title: "A spoken number heard one digit wrong gets one more try: the whole number is asked again and read back digit by digit, and the right one opens the profile (call quality Q1, 2026-11-18)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550199"
+tags: [no-demo, call-quality, identity]
+turns:
+  - caller: Hi, this is Carmen, about Luna. My number is 720 555 0164.
+    reply: "That's 7 2 0, 5 5 5, 0 1 6 4?"
+    delegate:
+      - verify_caller: { owner_name: Carmen, pet_name: Luna, phone: "720 555 0164" }
+  - assistant: "That's 7 2 0, 5 5 5, 0 1 6 4?"
+  - caller: Yes.
+    reply: "I couldn't open a profile with that. Could you give me the full phone number on Luna's profile once more, and the owner's name on it?"
+    delegate:
+      - verify_caller: { owner_name: Carmen, pet_name: Luna, phone: "720 555 0164" }
+  - assistant: "I couldn't open a profile with that. Could you give me the full phone number on Luna's profile once more, and the owner's name on it?"
+  - caller: Sorry, it's 720 555 0174, and it's Carmen Ortiz.
+    reply: "That's 7 2 0, 5 5 5, 0 1 7 4?"
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna, phone: "720 555 0174" }
+  - assistant: "That's 7 2 0, 5 5 5, 0 1 7 4?"
+  - caller: Yes, that's it.
+    reply: "I found Luna, your dog."
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna, phone: "720 555 0174" }
+expect:
+  outcome: abandoned
+  verified: true
+  refusals: [confirm_number, number_again, confirm_number]
+  returned: ["7 2 0, 5 5 5, 0 1 7 4"]
+  never_returned: ["I can't open a profile"]

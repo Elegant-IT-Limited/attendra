@@ -389,6 +389,50 @@ describe('noise before the caller\'s first words (call bugs, 2026-11-17)', () =>
     expect(withoutPromptEcho('A phone call to a clinic. ¿Precios?')).toBe('¿Precios?');
     expect(withoutPromptEcho('Una llamada telefónica.')).toBe('');
     expect(withoutPromptEcho('Tengo una llamada perdida de este número.')).toBe('Tengo una llamada perdida de este número.');
+    // any sentence of the prompt (call quality Q5, 2026-11-18), in English or Spanish
+    expect(withoutPromptEcho('The caller speaks English or Spanish, nothing else.')).toBe('');
+    expect(withoutPromptEcho('La persona que llama habla inglés o español, nada más.')).toBe('');
+    expect(withoutPromptEcho('The caller speaks English or Spanish, nothing else. I need a refill.')).toBe('I need a refill.');
+    expect(withoutPromptEcho('My dog speaks English, I swear.')).toBe('My dog speaks English, I swear.');
+  });
+
+  it('sets aside a stray fragment from the room: no reply, not passed on, taken out of the conversation; a short answer is still answered (call quality Q5)', async () => {
+    vi.useFakeTimers();
+    const s = realtimeSocket();
+    const e = new RealtimeEngine({ realtime: { calls: { accept: vi.fn(async () => {}) } } } as never, 'gpt-realtime-2.1', () => s.ws);
+    await e.accept('rtc_frag', { ...vet, languages: ['en', 'es'], primaryLanguage: 'en' }, NOW, undefined, { flow: 'tools' });
+    const sideband = e.attach('rtc_frag');
+    const seen: SidebandEvent[] = [];
+    sideband.onEvent((ev) => seen.push(ev));
+    s.play({ type: 'response.done', event_id: 'r0' });
+    // the caller's first words: answered
+    s.play({ type: 'input_audio_buffer.committed', event_id: 'c0', item_id: 'item_0' });
+    s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 't0', item_id: 'item_0', transcript: 'I need a refill for my dog.' });
+    s.play({ type: 'response.created', event_id: 'rc0' });
+    s.play({ type: 'response.done', event_id: 'r1' });
+    const start = s.sent.length;
+    const turn = (i: number, words: string) => {
+      s.play({ type: 'input_audio_buffer.speech_started', event_id: `ss${i}`, item_id: `item_${i}` });
+      s.play({ type: 'input_audio_buffer.speech_stopped', event_id: `st${i}`, item_id: `item_${i}` });
+      s.play({ type: 'input_audio_buffer.committed', event_id: `c${i}`, item_id: `item_${i}` });
+      s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: `t${i}`, item_id: `item_${i}`, transcript: words });
+    };
+    turn(1, 'Excelente.');
+    expect(s.sent.slice(start).filter(notNote)).toEqual([{ type: 'conversation.item.delete', item_id: 'item_1' }]);
+    expect(seen.some((x) => x.type === 'session.input_transcript.delta' && (x as { delta: string }).delta === 'Excelente.')).toBe(false);
+    // a short answer in the call's language is answered as soon as its words are in
+    turn(2, 'Yes.');
+    expect(s.sent.slice(start).filter(notNote).map((x) => x.type)).toEqual(['conversation.item.delete', 'response.create']);
+    vi.useRealTimers();
+  });
+
+  it('ends turns at low eagerness and takes the room\'s noise out first (call quality Q4, Q5)', async () => {
+    const accept = vi.fn(async () => {});
+    const e = new RealtimeEngine({ realtime: { calls: { accept } } } as never, 'gpt-realtime-2.1', () => realtimeSocket().ws);
+    await e.accept('rtc_cfg', vet, NOW, undefined, { flow: 'tools' });
+    const session = (accept.mock.calls[0] as unknown[])[1] as { audio: { input: { turn_detection: { eagerness: string }; noise_reduction: { type: string } } } };
+    expect(session.audio.input.turn_detection.eagerness).toBe('low');
+    expect(session.audio.input.noise_reduction).toEqual({ type: 'near_field' });
   });
 });
 

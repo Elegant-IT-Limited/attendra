@@ -34,6 +34,11 @@ export const VAPI_PATH_SCENARIOS = [
   'not-an-emergency', 'es-booking', 'es-hedge', 'es-emergency', 'es-refill', 'es-wrong-dob',
   // a visit the clinic does not offer, and "what can I book?": the same answer as on the planner path (2026-11-16)
   'vet-visit-not-offered', 'vet-es-visit-not-offered', 'vet-what-visits', 'vet-es-what-visits', 'vet-not-offered-common-question-wins',
+  // the call quality batch (2026-11-18): each test call's failure as a scripted call, on both paths
+  'vet-volunteered-last-four-one-step', 'vet-es-volunteered-last-four-one-step', 'vet-last-four-as-phone', 'vet-es-last-four-as-phone',
+  'vet-misheard-number-asked-again', 'vet-es-misheard-number-asked-again',
+  'vet-text-caller-asks-is-consent', 'vet-es-text-caller-asks-is-consent', 'vet-text-ya-is-yes', 'vet-es-text-ok-is-yes',
+  'vet-text-unclear-asked-once', 'vet-es-text-unclear-asked-once', 'vet-time-named-is-yes', 'vet-es-time-named-is-yes',
 ] as const;
 
 export interface VapiPathResult { id: string; passed: boolean; failures: string[]; outcome: string; ms: number }

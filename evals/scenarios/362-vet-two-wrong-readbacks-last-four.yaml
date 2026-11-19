@@ -8,15 +8,15 @@ tags: [no-demo, number-first, second-way]
 facts: "A browser test call. You are Carmen Ortiz. You don't remember the number the profile is under: you say 720 555 0177, then 720 555 0178, and say no to both read-backs. Asked for the last four digits and the pet's name, say 0174 and Luna. Any time works; say yes to the first time and to the read-back."
 turns:
   - caller: I'd like to book a check-up for Luna. The number is 720 555 0177.
-    reply: "That's 720-555-0177?"
+    reply: "That's 7 2 0, 5 5 5, 0 1 7 7?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: Luna, phone: "720 555 0177" }
-  - assistant: "That's 720-555-0177?"
+  - assistant: "That's 7 2 0, 5 5 5, 0 1 7 7?"
   - caller: No, sorry, it's 720 555 0178.
-    reply: "That's 720-555-0178?"
+    reply: "That's 7 2 0, 5 5 5, 0 1 7 8?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: Luna, phone: "720 555 0178" }
-  - assistant: "That's 720-555-0178?"
+  - assistant: "That's 7 2 0, 5 5 5, 0 1 7 8?"
   - caller: No, that's not right either, maybe 720 555 0179.
     reply: "Let's try another way. What are the last four digits of the number the profile is under, and your pet's name?"
     delegate:

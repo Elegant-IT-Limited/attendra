@@ -196,6 +196,14 @@ export function withoutSpokenPrefix(clinic: PhoneCountry, said: string): string 
 export const heardNumber = (clinic: PhoneCountry, said: string) => asE164(clinic, withoutSpokenPrefix(clinic, spokenDigits(said)));
 
 /** A number read back in groups, as people say it: 303-555-0130 in North America, the national digits in threes and the rest elsewhere. */
+/**
+ * A grouped number read back digit by digit, the groups apart: "516-555-0101" is "5 1 6, 5 5 5, 0 1 0 1" (2026-11-18: a
+ * number heard as 506 instead of 516 was searched without anyone noticing; one digit at a time the caller hears it).
+ */
+export function digitByDigit(grouped: string): string {
+  return grouped.split(/[-\s]+/).filter(Boolean).map((g) => g.replace(/\D/g, '').split('').join(' ')).filter(Boolean).join(', ');
+}
+
 export function groupedNumber(clinic: PhoneCountry, number: string): string {
   const e164 = asE164(clinic, number);
   const code = callingCode(e164);
