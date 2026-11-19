@@ -43,11 +43,15 @@ const weight = (w: string) => (GENERIC.has(w) ? 0.25 : 1);
  */
 export function answersFromFaqs<T extends { id: string; question: string; answer: string }>(faqs: T[], question: string): T[] {
   const asked = new Set(words(question));
+  // a question about a thing ("laser therapy") is answered only by a common question about that thing: one sharing only
+  // "offer" or "services" with it is not an answer (call quality Q6, 2026-11-18: "Do you do laser therapy?" got the
+  // grooming answer). A question with nothing but those words ("what services do you offer?") still gets the broad one
+  const aboutAThing = [...asked].some((w) => !GENERIC.has(w));
   const scored = faqs.filter((f) => !isNonAnswer(f.answer)).map((faq, order) => {
     const own = [...new Set(words(faq.question))];
     const shared = own.filter((w) => asked.has(w));
     return { faq, order, shared, score: shared.reduce((t, w) => t + weight(w), 0), extra: own.length - shared.length };
-  }).filter((x) => x.shared.length > 0);
+  }).filter((x) => x.shared.length > 0 && (!aboutAThing || x.shared.some((w) => !GENERIC.has(w))));
   scored.sort((a, b) => b.score - a.score || a.extra - b.extra || a.order - b.order);
   const out: T[] = [];
   const covered = new Set<string>();
@@ -62,6 +66,15 @@ export function answersFromFaqs<T extends { id: string; question: string; answer
     if (out.length === 3) break;
   }
   return out;
+}
+
+/**
+ * Whether a question asks if the clinic does or offers a thing ("Do you do laser therapy?", "Do you offer acupuncture?",
+ * "¿Hacen terapia láser?"), as opposed to whether it has one ("Do you have parking?") or takes one (insurance).
+ */
+export function asksIfOffered(question: string): boolean {
+  const t = normalise(question);
+  return /\b(?:do|does|can|will) (?:you|you guys|the clinic|your clinic|y'?all) (?:also |even |ever )?(?:do|offer|provide|perform|carry out)\b|\b(?:is|are) (?:\w+ ){1,3}(?:offered|available) (?:here|there|at the clinic)\b|\b(?:hacen|ofrecen|realizan|ofrece|hace|realiza|dan) (?:\w+ )?(?:terapia|tratamiento|servicio|cirugia|acupuntura|\w+)/.test(t);
 }
 
 /** The best common question for this one, or null (answersFromFaqs' first). */

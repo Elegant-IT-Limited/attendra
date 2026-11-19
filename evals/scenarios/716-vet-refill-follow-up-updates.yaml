@@ -1,0 +1,25 @@
+id: vet-refill-follow-up-updates
+title: "A caller who names the medicine after the refill request was taken changes that request, never makes a second; a new pet's check stays its own (call quality Q7, 2026-11-18)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550173"
+tags: [no-demo, call-quality, requests]
+turns:
+  - caller: Hi, Daniel Brooks. My rabbit Pepper needs a refill of this.
+    reply: "I've sent the refill request to the team; they'll review it and get back to you."
+    delegate:
+      - verify_caller: { owner_name: Daniel Brooks, pet_name: Pepper }
+      - create_refill_request: { medication: this, pharmacy: pick up at the clinic, callback_number: null, text_updates: false }
+  - caller: No, but let me finish. I want to say she needs a refill of her meloxicam.
+    reply: "Thanks, I've updated the refill request with that; the team will review it and get back to you."
+    delegate:
+      - create_refill_request: { medication: meloxicam, pharmacy: pick up at the clinic, callback_number: null, text_updates: false }
+  - caller: And can someone call me about my new puppy too?
+    reply: "Okay, I've passed that on to the team."
+    delegate:
+      - create_callback: { reason: "Wants to talk about a new puppy", callback_number: null, topic: null }
+expect:
+  outcome: task_created
+  verified: true
+  requests_created: 2
+  returned: ["updated the refill request"]

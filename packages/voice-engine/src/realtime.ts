@@ -734,6 +734,12 @@ export class RealtimeEngine implements VoiceEngine {
         return;
       }
       if (event.type === 'reply.go') return go();
+      // caller ID's context: a note, on either path; it starts no reply and cuts nothing off (call quality Q11)
+      if (event.type === 'context.caller') {
+        if (outstanding.size) stateNote = stateNote ? `${stateNote}\n${event.content}` : event.content;
+        else raw({ type: 'conversation.item.create', item: { type: 'message', role: 'system', content: [{ type: 'input_text', text: event.content }] } });
+        return;
+      }
       if (event.type === 'context.note') {
         if (!toolsPath) return;
         // while the model waits on its tool calls, the note goes after their results (a call and its output stay together)

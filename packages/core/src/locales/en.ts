@@ -221,6 +221,8 @@ export const en: LanguagePack = {
     goodbye: 'Take care, goodbye!',
     callbackTaken: ({ sameNumber }) => `Okay, I've passed that on to the team, and someone will call you back at ${sameNumber ? 'this number' : 'the number you gave me'}. Is there anything else I can help you with?`,
     refillTaken: 'I\'ve sent the refill request to the team; they\'ll review it and get back to you. Is there anything else I can help you with?',
+    smallTalk: 'I\'m doing well, thanks for asking. How can I help you today?',
+    refillUpdated: 'Thanks, I\'ve updated the refill request with that; the team will review it and get back to you. Is there anything else I can help you with?',
     urgentRequestTaken: 'I\'ve sent that to the team as urgent, and someone will call you back as soon as they can.',
     textSent: 'I\'m texting it to you now. Is there anything else I can help you with?',
     reminders: ({ agreed }) => `${agreed ? 'Great, you\'ll get a reminder text the day before the visit.' : 'No problem, no reminder texts.'} Is there anything else I can help you with?`,

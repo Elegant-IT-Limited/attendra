@@ -39,6 +39,9 @@ export const VAPI_PATH_SCENARIOS = [
   'vet-misheard-number-asked-again', 'vet-es-misheard-number-asked-again',
   'vet-text-caller-asks-is-consent', 'vet-es-text-caller-asks-is-consent', 'vet-text-ya-is-yes', 'vet-es-text-ok-is-yes',
   'vet-text-unclear-asked-once', 'vet-es-text-unclear-asked-once', 'vet-time-named-is-yes', 'vet-es-time-named-is-yes',
+  'vet-service-not-offered-no-weak-match', 'vet-es-service-not-offered-no-weak-match', 'vet-refill-follow-up-updates', 'vet-es-refill-follow-up-updates',
+  'vet-slot-args-as-meant', 'vet-es-slot-args-as-meant',
+  'vet-how-are-you-in-kind', 'vet-es-how-are-you-in-kind',
 ] as const;
 
 export interface VapiPathResult { id: string; passed: boolean; failures: string[]; outcome: string; ms: number }
@@ -168,6 +171,10 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
       check(verified === e.verified, `verified ${verified}, expected ${e.verified}`);
     }
     check(created.length === e.bookings_created, `${created.length} bookings created, expected ${e.bookings_created}`);
+    if (e.requests_created !== undefined) {
+      const made = (await withClinic(t.db, clinic.id, (tx) => tx.select().from(schema.tasks).where(eq(schema.tasks.callId, row.id)))).length;
+      check(made === e.requests_created, `${made} requests for the team, expected ${e.requests_created}`);
+    }
     check(sms.length === e.sms_sent, `${sms.length} texts sent, expected ${e.sms_sent}`);
     const transfer = controls.find((c) => c.type === 'transfer')?.body.destination as { type: string; number?: string; sipUri?: string } | undefined;
     const transferTo = transfer ? (transfer.type === 'number' ? `tel:${transfer.number}` : transfer.sipUri ?? null) : null;

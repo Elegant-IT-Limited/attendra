@@ -216,6 +216,10 @@ export interface LanguagePack {
     callbackTaken: (v: { sameNumber: boolean }) => string;
     /** A refill request logged: with the team, never approved or timed. */
     refillTaken: string;
+    /** The refill request already made on the call, changed with what the caller just said (call quality Q7). */
+    refillUpdated: string;
+    /** A caller who only greeted us, or asked how we are, answered in kind (call quality Q10). */
+    smallTalk: string;
     /** A request taken during an animal's emergency: with the team as urgent, at the top of their list. */
     urgentRequestTaken: string;
     /** A text just handed over, as textSent: being sent now, never "sent" or "arrived". */

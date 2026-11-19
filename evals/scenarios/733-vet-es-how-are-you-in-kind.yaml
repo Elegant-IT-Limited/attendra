@@ -1,0 +1,15 @@
+id: vet-es-how-are-you-in-kind
+title: "In Spanish: 'Hola, ¿cómo está usted hoy?' is answered in kind, never with the clock time and the opening hours (call quality Q10, 2026-11-18)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-quality, small-talk, es]
+turns:
+  - caller: Hola, buenas tardes, ¿cómo está usted?
+    reply: "Muy bien, gracias por preguntar. ¿En qué le puedo ayudar?"
+    delegate:
+      - get_clinic_info: { question: "Hola, buenas tardes, ¿cómo está usted?" }
+expect:
+  outcome: abandoned
+  language: es
+  refusals: []
+  returned: ["Muy bien, gracias por preguntar."]

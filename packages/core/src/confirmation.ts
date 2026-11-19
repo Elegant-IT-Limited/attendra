@@ -216,3 +216,13 @@ export function strayFragment(turn: string, current: Language, before: string | 
 /** A fragment as strayFragment compares it with the next one. */
 export const fragmentKey = (turn: string) => normalise(turn).replace(/[.,!?¿¡]+/g, ' ').replace(/\s+/g, ' ').trim();
 
+/**
+ * Only a greeting or "how are you?", nothing asked yet: "Hi, how are you?", "hello, how's it going?", "hola, ¿cómo está?"
+ * (call quality Q10, 2026-11-18: it was answered with the clock time and the opening hours). Answered in kind.
+ */
+export function isSmallTalk(callerText: string): boolean {
+  const t = normalise(callerText).replace(/[¿?¡!.,;:]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return t !== '' && SMALL_TALK.test(t);
+}
+const SMALL_TALK = /^(?:(?:hi|hello|hey|hiya|good (?:morning|afternoon|evening)|hola|buenas|buenos dias|buenas tardes|buenas noches|alo|oiga)(?: there| ivy)? ?)*(?:how are you(?: doing)?(?: today)?|how'?s it going|how are things|how'?s your day|how do you do|you doing ok|como esta(?:s|n)?(?: usted)?|que tal|como le va|como va todo)? ?(?:today|hoy)?$/;
+

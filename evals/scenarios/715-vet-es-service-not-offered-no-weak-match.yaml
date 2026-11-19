@@ -1,0 +1,16 @@
+id: vet-es-service-not-offered-no-weak-match
+title: "In Spanish: '¿Hacen terapia láser?' is never answered from another common question; the not-offered line and what the clinic books (call quality Q6, 2026-11-18)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-quality, common-questions, visit-types, es]
+turns:
+  - caller: Hola, ¿ustedes hacen terapia láser para los perros?
+    reply: "Eso no lo agendamos aquí."
+    delegate:
+      - get_clinic_info: { question: ¿Ofrecen terapia láser? }
+expect:
+  outcome: info
+  language: es
+  refusals: []
+  returned: ["Eso no lo agendamos aquí."]
+  never_returned: ["We do not offer boarding or grooming."]

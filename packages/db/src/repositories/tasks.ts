@@ -78,6 +78,21 @@ export class PostgresTaskQueue implements TaskQueue {
       return { id: raced!.id, number: raced!.number, created: false };
     });
   }
+
+  updateDetails(clinicId: string, taskId: string, callId: string, details: Record<string, string>): Promise<boolean> {
+    return updateCallTaskDetails(this.db, this.cipher, this.actor, clinicId, taskId, callId, details);
+  }
+}
+
+/** Audited as a change to the request, by the same actor; the details stay encrypted. */
+export async function updateCallTaskDetails(db: Database, cipher: PhiCipher, actor: string, clinicId: string, taskId: string, callId: string, details: Record<string, string>): Promise<boolean> {
+  return withClinic(db, clinicId, async (tx) => {
+    const [row] = await tx.update(tasks).set({ detailsEnc: cipher.encrypt(JSON.stringify(details), phiContext(clinicId, 'tasks.details')) })
+      .where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId), eq(tasks.callId, callId), eq(tasks.status, 'open'))).returning({ id: tasks.id });
+    if (!row) return false;
+    await tx.insert(auditLogs).values({ clinicId, actor, action: 'task.details.updated', entity: 'task', entityId: taskId, callId });
+    return true;
+  });
 }
 
 export class PostgresAuditLog implements AuditLog {
