@@ -105,7 +105,8 @@ export function askedToHangUp(lastCallerTurn: string): boolean {
   return HANG_UP.test(t) && !KEEP_ON.test(t);
 }
 // a caller who is leaving the call themselves, whatever was asked: nobody is kept on the line for "anything else?"
-const LEAVING = /\b(bye|goodbye|good bye|(have|got|need) to (go|run)|gotta go|talk (to you )?later|(i'?ll|i will|i'?m going to) (call|ring|phone) (you |u )?(back|again)( later| another time| tomorrow)?|call (you )?back later|(i'?ll|i will) get back to you|another time|adios|hasta luego|chao|chau|me tengo que ir|tengo que (irme|colgar)|hablamos (luego|despues|mas tarde|otro dia|manana)|((te|le|la|lo) )?(vuelvo a llamar|volvere a llamar)( luego| despues| mas tarde| otro dia| manana)?|((te|le|la|lo) )?(llamo|llamare) (luego|despues|mas tarde|otro dia|manana)|(despues |luego )?(te|le) (aviso|confirmo) (luego|despues|mas tarde))\b/;
+// "ya está bien, gracias" and "that's all, thanks" close a call too, the thanks with them (call quality R9, 2026-11-19)
+const LEAVING = /\b(bye|goodbye|good bye|ya esta (?:bien|todo),? gracias|eso (?:es|seria) todo,? gracias|(?:that'?s|that is) all,? (?:thanks|thank you)|(?:no,? )?(?:it'?s|that'?s) (?:fine|all),? (?:thanks|thank you)|(have|got|need) to (go|run)|gotta go|talk (to you )?later|(i'?ll|i will|i'?m going to) (call|ring|phone) (you |u )?(back|again)( later| another time| tomorrow)?|call (you )?back later|(i'?ll|i will) get back to you|another time|adios|hasta luego|chao|chau|me tengo que ir|tengo que (irme|colgar)|hablamos (luego|despues|mas tarde|otro dia|manana)|((te|le|la|lo) )?(vuelvo a llamar|volvere a llamar)( luego| despues| mas tarde| otro dia| manana)?|((te|le|la|lo) )?(llamo|llamare) (luego|despues|mas tarde|otro dia|manana)|(despues |luego )?(te|le) (aviso|confirmo) (luego|despues|mas tarde))\b/;
 
 /**
  * May the call end? Two steps, like a front desk: the assistant has asked whether

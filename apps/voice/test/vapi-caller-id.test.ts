@@ -58,8 +58,8 @@ describe('the caller ID\'s digits on a Vapi call', () => {
     // another number the caller gave is theirs to say: not the caller ID
     expect(wrongCallerIdDigits('The number ends in 0101.', '0090')).toBeNull();
     expect(wrongCallerIdDigits("the number you're calling from, ending 0 0 9 2", null)).toBeNull();
-    expect(callerIdCorrection('en', '0190')).toBe("Sorry, I misspoke: the number you're calling from ends in 0 1 9 0.");
-    expect(callerIdCorrection('es', '0190')).toBe('Perdón, me equivoqué: el número desde el que llama termina en 0 1 9 0.');
+    expect(callerIdCorrection('en', '0190')).toBe("Sorry, I misspoke: the number you're calling from ends in zero one nine zero.");
+    expect(callerIdCorrection('es', '0190')).toBe('Perdón, me equivoqué: el número desde el que llama termina en cero uno nueve cero.');
   });
 
   it('gives the caller ID\'s last four with an identity answer, and corrects other digits said for it at once, once', async () => {
@@ -69,13 +69,13 @@ describe('the caller ID\'s digits on a Vapi call', () => {
     const res = await post({ type: 'tool-calls', call, artifact: { messages: [ask] }, toolCallList: [{ id: 'tc_cid_1', function: { name: 'verify_caller', arguments: { owner_name: null, pet_name: null, phone: null } } }] });
     const out = JSON.parse((res.json() as { results: { result: string }[] }).results[0]!.result) as { ok: boolean; say?: string; data: Record<string, unknown> };
     expect(out.data.caller_id_last4).toBe('0190');
-    expect(out.say).toContain('ends in 0 1 9 0');
+    expect(out.say).toContain('ends in zero one nine zero');
 
     controls.length = 0;
     const wrong = { role: 'bot', message: "Is Bella's profile under the number you're calling from, ending 0 1 9 2?", secondsFromStart: 8, duration: 3000 };
     await post({ type: 'conversation-update', call, messages: [ask, wrong] });
     const said = controls.filter((c) => c.type === 'say').map((c) => c.content);
-    expect(said).toEqual(["Sorry, I misspoke: the number you're calling from ends in 0 1 9 0."]);
+    expect(said).toEqual(["Sorry, I misspoke: the number you're calling from ends in zero one nine zero."]);
     // said again, the same wrong digits are not corrected twice
     controls.length = 0;
     await post({ type: 'conversation-update', call, messages: [ask, wrong, { ...wrong, secondsFromStart: 14 }] });

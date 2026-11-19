@@ -55,6 +55,7 @@ export const VAPI_PATH_SCENARIOS = [
   'vet-emergency-just-asking', 'vet-es-emergency-just-asking', 'vet-pending-cancel-settled', 'vet-es-pending-cancel-settled',
   'vet-any-other-vet', 'vet-es-any-other-vet', 'vet-new-puppy-registered', 'vet-es-new-puppy-registered',
   'vet-name-pet-then-last-four', 'vet-es-name-pet-then-last-four',
+  'vet-ya-esta-bien-goodbye', 'vet-es-ya-esta-bien-goodbye', 'vet-found-then-no-request', 'vet-es-found-then-no-request',
 ] as const;
 
 export interface VapiPathResult { id: string; passed: boolean; failures: string[]; outcome: string; ms: number }

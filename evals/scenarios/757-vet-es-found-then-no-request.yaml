@@ -1,0 +1,17 @@
+id: vet-es-found-then-no-request
+title: "In Spanish: after the pet is found, an answer that asks for nothing gets the choices once, never the same question three times (call quality R8, 2026-11-19)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550199"
+tags: [no-demo, call-quality, identity, es]
+turns:
+  - caller: Hola, soy Carmen Ortiz. Mi perra es Luna y mi número termina en 0174.
+    reply: "Encontré a Luna, su perra. ¿Qué necesita para Luna hoy?"
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna, phone: null, phone_last4: "0174" }
+expect:
+  outcome: abandoned
+  verified: true
+  language: es
+  refusals: []
+  returned: ["give the choices once"]

@@ -28,6 +28,7 @@ type Row = [behaviour: string, check: (text: string) => unknown, english: string
 const ROWS: Row[] = [
   // call quality round 2, 2026-11-19: a question about emergencies is none (R2); a new puppy is new (R6)
   ['vetEmergency: asking about the emergency service', vetEmergency, "So, what's about the emergency?", '¿Y las emergencias?', ''],
+  ['saidGoodbye: a close with thanks (R9)', goodbye, "That's all, thanks.", 'Ya está bien, gracias.', true],
   ['newToClinic: a new puppy', newToClinic, 'Book a new puppy, his name is Rocky', 'Es un cachorro nuevo, se llama Rocky', 'new'],
   // call quality, 2026-11-18: the caller asking for the text is consent (Q2), and a greeting alone is small talk (Q10)
   ['asksForText: asking for the text', asksForText, 'Can you send me the text?', '¿Me lo puede mandar por mensaje?', true],

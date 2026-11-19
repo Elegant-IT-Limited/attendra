@@ -14,5 +14,5 @@ turns:
 expect:
   outcome: abandoned
   verified: false
-  vapi_returned: ['"caller_id_last4":"0172"', "ends in 0 1 7 2"]
-  vapi_said: ["Sorry, I misspoke: the number you're calling from ends in 0 1 7 2."]
+  vapi_returned: ['"caller_id_last4":"0172"', "ends in zero one seven two"]
+  vapi_said: ["Sorry, I misspoke: the number you're calling from ends in zero one seven two."]

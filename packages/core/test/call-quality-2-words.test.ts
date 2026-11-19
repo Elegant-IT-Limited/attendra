@@ -20,3 +20,14 @@ describe('a new puppy (R6)', () => {
     for (const t of ['Book a new puppy, his name is Rocky', 'I have a new kitten', 'Es un cachorro nuevo', 'Tengo un gatito nuevo']) expect(newToClinic(t), t).toBe('new');
   });
 });
+
+describe('a Spanish or English close with thanks (R9)', () => {
+  it('is a goodbye: "Ya está bien, gracias", "that\'s all, thanks"', async () => {
+    const { saidGoodbye } = await import('../src');
+    for (const t of ['Ya está bien, gracias.', 'Eso es todo, gracias', "That's all, thanks.", "No, it's fine, thank you"]) expect(saidGoodbye(t, ''), t).toBe(true);
+  });
+  it('but "ya está bien" alone, or with more to say, is not', async () => {
+    const { saidGoodbye } = await import('../src');
+    for (const t of ['Ya está bien.', 'Ya está bien, gracias, pero una pregunta más', "That's all, thanks, but wait"]) expect(saidGoodbye(t, ''), t).toBe(false);
+  });
+});
