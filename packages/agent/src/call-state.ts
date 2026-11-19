@@ -11,6 +11,8 @@ interface PendingBase {
   proposedAtMs: number;
   /** When the read-back was said: the assistant's words after the proposal carried its day and time. Null until then. */
   readbackAtMs: number | null;
+  /** The caller was asked once more whether they still want it, after the call moved on to something else (R4). */
+  stillAsked?: boolean;
   /** The slot as the read-back must say it (its start, in the clinic's time zone, "today" as of the proposal). */
   when?: { start: Date; timeZone: string; now: Date };
   /** What the assistant has said since the proposal, until the read-back is heard in it. */
@@ -28,7 +30,9 @@ const DETAILS: Record<string, string> = {
 /** The assistant asked whether the pet (or the caller) is new: "Is Biscuit new to us?", "¿Es la primera vez que Biscuit viene?". */
 const ASKED_IF_NEW = /\b(new|nuev[oa]s?|primera vez)\b[^.!]*\?/;
 /** "Is this for Juniper, or a new pet?" ("¿Es para Juniper, o para una mascota nueva?"): new is one of the choices, so a yes is not it. */
-const NEW_AS_CHOICE = /,\s*(?:or|o|u)\s+(?:a\s+|para\s+una?\s+)?(?:mascota\s+)?(?:new|nuev[oa])\b[^.!]*\?/;
+// with or without its comma: Vapi writes the line it said with no comma ("Is this for Rocky or a new pet?"), and a "Yeah.
+// Rocky." to it was read as "new", so a pet registered on an earlier call was asked for again (call quality R1, 2026-11-19)
+const NEW_AS_CHOICE = /,?\s+(?:or|o|u)\s+(?:a\s+|para\s+una?\s+)?(?:mascota\s+)?(?:new|nuev[oa])\b[^.!]*\?/;
 
 /** The assistant asked whether the animal is in danger now: "Is Ginger in danger right now?", "¿Está en peligro ahora mismo?". */
 const ASKED_DANGER = /\b(in danger|danger right now|en peligro|trouble breathing|le cuesta respirar)\b/;
@@ -246,6 +250,9 @@ export class CallState {
       const asked = normalise(this.turns.slice(0, i).reverse().find((t) => t.speaker === 'agent')?.text ?? '');
       // asked which pet, "or a new pet": a yes picks the pet named, and "a new one" ("una nueva") is new
       if (NEW_AS_CHOICE.test(asked)) { if (/\b(new|nuev[oa])\b/.test(normalise(turn.text))) return 'new'; continue; }
+      // a yes that names a pet on the number ("Yeah, Rocky") picks that pet: it is never "new"
+      const words = new Set(normalise(turn.text).split(/[^\p{L}\p{N}]+/u).filter(Boolean));
+      if (this.memory.pets.some((p) => { const w = normalise(p).split(/[^\p{L}\p{N}]+/u).filter(Boolean); return w.length > 0 && w.every((x) => words.has(x)); })) continue;
       if (ASKED_IF_NEW.test(asked) && isClearYes(turn.text, LANGUAGES)) return 'new';
     }
     return null;

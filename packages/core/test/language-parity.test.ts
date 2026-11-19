@@ -26,6 +26,9 @@ const birth = (s: string) => parsePetBirth(s, TODAY)?.dob ?? null;
 type Row = [behaviour: string, check: (text: string) => unknown, english: string, spanish: string, expected: unknown];
 
 const ROWS: Row[] = [
+  // call quality round 2, 2026-11-19: a question about emergencies is none (R2); a new puppy is new (R6)
+  ['vetEmergency: asking about the emergency service', vetEmergency, "So, what's about the emergency?", '¿Y las emergencias?', ''],
+  ['newToClinic: a new puppy', newToClinic, 'Book a new puppy, his name is Rocky', 'Es un cachorro nuevo, se llama Rocky', 'new'],
   // call quality, 2026-11-18: the caller asking for the text is consent (Q2), and a greeting alone is small talk (Q10)
   ['asksForText: asking for the text', asksForText, 'Can you send me the text?', '¿Me lo puede mandar por mensaje?', true],
   ['asksForText: a missing text is not asking', asksForText, "I didn't get the text", 'No recibí el mensaje', false],

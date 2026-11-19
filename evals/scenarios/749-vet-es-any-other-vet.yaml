@@ -1,0 +1,32 @@
+id: vet-es-any-other-vet
+title: "In Spanish: '¿Me puede dar otro veterinario?' after one vet's times gets another vet's times (call quality R5, 2026-11-19)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550172"
+tags: [no-demo, call-quality, scheduling, es]
+turns:
+  - caller: "Hola, soy Linh Nguyen. ¿Biscuit puede venir mañana a una consulta por enfermedad?"
+    reply: "{offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: "2026-09-29", part_of_day: any }
+  - caller: "¿Solo esa doctora? ¿Me puede dar otro veterinario?"
+    reply: "{offered.0}, or {offered.1}."
+    delegate:
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: "2026-09-29", part_of_day: any }
+  - caller: "La primera."
+    reply: "{readback}?"
+    delegate:
+      - propose_booking: { slot_id: "$found[0]", replaces_appointment_id: null }
+  - caller: "Sí."
+    reply: "All set."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  refusals: []
+  bookings_created: 1
+  sms_sent: 1
+  booked_with: prov_bell

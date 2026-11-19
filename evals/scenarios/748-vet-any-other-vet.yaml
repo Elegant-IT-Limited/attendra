@@ -1,0 +1,31 @@
+id: vet-any-other-vet
+title: "'Can you offer any other doctor?' after one vet's times gets another vet's times, and the booking is with them (call quality R5, 2026-11-19)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550172"
+tags: [no-demo, call-quality, scheduling]
+turns:
+  - caller: "Hi, Linh Nguyen. Can Biscuit come in tomorrow for a sick visit?"
+    reply: "{offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: "2026-09-29", part_of_day: any }
+  - caller: "Only that doctor is available? Can you offer any other doctor?"
+    reply: "{offered.0}, or {offered.1}."
+    delegate:
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: "2026-09-29", part_of_day: any }
+  - caller: "The first one."
+    reply: "{readback}?"
+    delegate:
+      - propose_booking: { slot_id: "$found[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "All set."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: []
+  bookings_created: 1
+  sms_sent: 1
+  booked_with: prov_bell

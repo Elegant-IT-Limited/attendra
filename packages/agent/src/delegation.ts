@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addTokens, isSmallTalk, bySubject, callFacts, claimsAuthority, type DemoLimitCode, demoEmergency, EMERGENCY_LINES, type EmergencyMatch, emergencyRoute, clinicDays, clinicNow, clinicNowLine, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, languageAfterTurn, emergencyNumberFor, hospitalNow, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, TRANSFER_KINDS, type ExcerptLine, type HandoffKind, type HandoffReason, type HandoffStep, type ToolName } from '@attendra/core';
+import { addTokens, emergencyHandlingSummary, isSmallTalk, bySubject, callFacts, claimsAuthority, type DemoLimitCode, demoEmergency, EMERGENCY_LINES, type EmergencyMatch, emergencyRoute, clinicDays, clinicNow, clinicNowLine, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, languageAfterTurn, emergencyNumberFor, hospitalNow, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, TRANSFER_KINDS, type ExcerptLine, type HandoffKind, type HandoffReason, type HandoffStep, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
 import { coachingInstruction, DOING, type LiveEvent, shortName } from './live';
@@ -7,8 +7,8 @@ import type { Planner, PlannerTiming } from './planner';
 import { afterTool, type FlowMemory, flowStage, nextStep } from './flow/booking';
 import { speculativeLookup } from './flow/speculate';
 import { excerptFor, handoffFor, type HandoffEvent, lastSteps, noteNames, reasonFromSteps, seenNames, stepResult } from './handoff';
-import { answerTo, BORDERLINE, confirmsCleared, doneAfterEmergency, type EmergencyCase, lastQuestionIsOurs, MILD, pastAndFineNow, SEVERE, saysSevere, staffNote } from './flow/emergency';
-import { askedAboutRecording, askedIfHuman, askedWhy, claimsIn, DISPUTE_NOTE, disputes, humanLine, notInTheClinicsLanguages, recordingLine, saysTextsNotArriving, sideTalkLine, textsNotArrivingNote, WHY } from './flow/guards';
+import { answerTo, BORDERLINE, confirmsCleared, doneAfterEmergency, justAsking, type EmergencyCase, lastQuestionIsOurs, MILD, pastAndFineNow, SEVERE, saysSevere, staffNote } from './flow/emergency';
+import { asksEmergencyHandling, askedAboutRecording, askedIfHuman, askedWhy, claimsIn, DISPUTE_NOTE, disputes, humanLine, notInTheClinicsLanguages, recordingLine, saysTextsNotArriving, sideTalkLine, textsNotArrivingNote, WHY } from './flow/guards';
 import { outOfScopeLine } from '@attendra/knowledge/scope';
 import { isVoiceTool, shapeForVoice, type VoiceToolOutput } from './flow/voice-tools';
 import { asksHours, type Backend, type CallContext, runTool, textOfferAfter, type ToolResult } from './tools';
@@ -366,6 +366,11 @@ export class CallAgent {
     if (!words) return [];
     // after the route, a caller who is done ("ya está bien, gracias", "hang up") is let go, never asked about booking
     if (c.stage === 'escalated' && !c.confirming && doneAfterEmergency(words)) return this.endAfterEmergency();
+    // before the route, a caller asking how emergencies are handled, or saying they only want the information, was never
+    // reporting one: no emergency, no label, the clinic's handling instead (call quality R2, 2026-11-19)
+    // never when the same words carry a danger sign ("I just need the information, he's choking")
+    const sign = detectEmergencies(words, industryPack(this.ctx.clinic.industry).emergency?.phrases).some((m) => m.kind !== 'general');
+    if (c.stage !== 'escalated' && !sign && (justAsking(words) || asksEmergencyHandling(words))) return this.onlyAQuestion();
     // before the route, only an answer to our question counts: the assistant may have asked something else since
     if (c.stage !== 'escalated' && !lastQuestionIsOurs([...s.turns].reverse().find((t) => t.speaker === 'agent')?.text ?? '')) return [];
     let a = answerTo(words, c.stage === 'escalated');
@@ -386,6 +391,19 @@ export class CallAgent {
     if (a === 'clear_no' || (a === 'bare_not' && c.signAsked)) return this.clearEmergencyCase();
     if (a === 'bare_not') return this.askAboutTheSign();
     return [];
+  }
+
+  /** The emergency word was a question about the clinic's handling: the case goes, as if never flagged (R2). */
+  private onlyAQuestion(): Outbound[] {
+    const s = this.state;
+    const c = s.emergencyCase!;
+    s.emergencyCase = null;
+    s.revision++;
+    this.log.info({ call_id: this.ctx.callId, emergency_kind: c.kind }, 'the caller was asking how emergencies are handled, not reporting one');
+    this.emitState();
+    const language = s.language;
+    const line = emergencyHandlingSummary(this.ctx.clinic, this.ctx.now(), language);
+    return [{ type: 'instructions', delegationId: null, content: `They were asking how the clinic handles emergencies, not reporting one. Say, in ${PACKS[language].name}, in a sentence or two: "${line}" Do not ask whether it is an emergency again, and do not bring it up again unless they describe a danger sign.` }];
   }
 
   /** After the emergency line, the caller is done: one warm goodbye and the end of the call (call quality Q9). */

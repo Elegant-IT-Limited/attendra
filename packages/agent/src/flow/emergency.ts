@@ -179,3 +179,13 @@ export function doneAfterEmergency(words: string): boolean {
   return askedToHangUp(t) || saidGoodbye(t) || /\b(?:gracias|thanks|thank you|that'?s all|eso es todo|nada mas)\b/.test(t);
 }
 
+/**
+ * The caller was asking about the clinic's emergency handling, not reporting one: "not really, I just need the
+ * information", "I'm just asking", "solo quiero la información" (call quality R2, 2026-11-19: it was asked the danger
+ * question twice and the call was labelled "Emergency cleared").
+ */
+export function justAsking(words: string): boolean {
+  const t = normalise(words).replace(/[¿?¡!.,;:]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return /\b(?:just (?:asking|wondering|curious|a question)|(?:need|want|wanted|looking for) (?:the |some |more )?(?:info|information)|for (?:the |your )?information|for future reference|in case (?:it happens|that happens|of one)|solo (?:pregunto|preguntaba|para saber|queria saber|(?:quiero|necesito) (?:la |mas )?informacion)|es solo una pregunta|nada mas queria saber|por si acaso)\b/.test(t);
+}
+

@@ -50,6 +50,11 @@ export const VAPI_PATH_SCENARIOS = [
   'vet-how-are-you-in-kind', 'vet-es-how-are-you-in-kind',
   // the demo emergency that closes on a goodbye (Q9): played once the harness plays demo calls (V4's fix)
   'demo-emergency-closes-on-goodbye', 'demo-emergency-closes-on-goodbye-es',
+  // call quality round 2 (2026-11-19)
+  'vet-yes-names-pet-on-number', 'vet-es-yes-names-pet-on-number', 'vet-emergency-policy-question', 'vet-es-emergency-policy-question',
+  'vet-emergency-just-asking', 'vet-es-emergency-just-asking', 'vet-pending-cancel-settled', 'vet-es-pending-cancel-settled',
+  'vet-any-other-vet', 'vet-es-any-other-vet', 'vet-new-puppy-registered', 'vet-es-new-puppy-registered',
+  'vet-name-pet-then-last-four', 'vet-es-name-pet-then-last-four',
 ] as const;
 
 export interface VapiPathResult { id: string; passed: boolean; failures: string[]; outcome: string; ms: number }
@@ -66,6 +71,12 @@ function resolve(args: Record<string, unknown>, offered: string[], results: Reco
     if (o) return [k, offered[Number(o[1])] ?? v];
     const a = /^\$appointments\[(\d+)\]$/.exec(v);
     if (a) return [k, appointments[Number(a[1])]?.appointment_id ?? v];
+    // the Nth time of the latest search, as the planner path's script reads it
+    const f = /^\$found\[(\d+)\]$/.exec(v);
+    if (f) {
+      const latest = [...results].reverse().find((d) => Array.isArray(d.slots) && (d.slots as unknown[]).length);
+      return [k, (latest?.slots as { slot_id: string }[] | undefined)?.[Number(f[1])]?.slot_id ?? v];
+    }
     if (v === '$next_week') { const today = localDateOf(now, clinic.timezone); return [k, addDays(today, 7 - ((weekdayOf(today) + 6) % 7))]; }
     return [k, v];
   }));
@@ -195,6 +206,7 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
     if (e.language) check(row.language === e.language, `answered in ${row.language}, expected ${e.language}`);
     // how an animal's emergency ended, as the call page labels it ("Emergency · demo line" on a demo clinic)
     if (e.emergency_result !== undefined) check(row.emergencyResult === e.emergency_result, `emergency result ${row.emergencyResult ?? 'none'}, expected ${e.emergency_result}`);
+    if (e.no_emergency_result) check(!row.emergencyResult, `emergency result ${row.emergencyResult}, expected none`);
     // what the tools handed the voice, as on the planner path: the same facts and words
     const handed = JSON.stringify(outputs).toLowerCase();
     // a phrase in the words Vapi's voice gets (forVapiVoice: "Dr. Vance" is "Doctor Vance" there), so a check means the same

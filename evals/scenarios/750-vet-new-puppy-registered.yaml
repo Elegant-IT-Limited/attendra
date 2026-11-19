@@ -1,0 +1,17 @@
+id: vet-new-puppy-registered
+title: "'Book a new puppy, his name is Rocky' is a new pet: never looked up ('I don't see Rocky under that number'), registered directly (call quality R6, 2026-11-19)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550199"
+tags: [no-demo, call-quality, identity]
+turns:
+  - caller: Okay, book a new puppy and his name is Rocky. He's a three month old male. I'm Johnny.
+    reply: "Rocky is registered."
+    delegate:
+      - verify_caller: { owner_name: Johnny, pet_name: Rocky, phone: null }
+      - register_patient: { pet_name: Rocky, owner_name: Johnny, species: dog, sex: male, birthday_or_age: 3 months, phone: null }
+expect:
+  outcome: abandoned
+  verified: true
+  refusals: [pet_is_new]
+  never_returned: ["I don't see Rocky"]

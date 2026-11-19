@@ -1,0 +1,20 @@
+id: vet-emergency-policy-question
+title: "'So, what's about the emergency? Do you handle emergency?' is a question about the clinic: the demo clinic's handling, never the danger question or an emergency label (call quality R2, 2026-11-19)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-quality, safety, demo-clinic]
+settings:
+  emergencyTransferEnabled: false
+  demoClinic: { enabled: true, baselineAt: null }
+turns:
+  - caller: Let me check. So, what's about the emergency?
+  - caller: Do you handle emergency?
+    reply: "This is a demo line, so I can't send you to a real hospital."
+    delegate:
+      - get_clinic_info: { question: do you handle emergencies }
+expect:
+  outcome: info
+  refusals: []
+  emergency_instruction: false
+  no_emergency_result: true
+forbid_spoken: ["Is this still an emergency right now?"]

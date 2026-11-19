@@ -1,0 +1,20 @@
+id: vet-emergency-just-asking
+title: "Asked the danger question, a caller who says 'Not really, I just need the information' hears the clinic's handling once, is never asked again, and the call has no emergency label (call quality R2, 2026-11-19)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, call-quality, safety, demo-clinic]
+settings:
+  emergencyTransferEnabled: false
+  demoClinic: { enabled: true, baselineAt: null }
+turns:
+  - caller: What if my dog has an emergency?
+  - assistant: I'm sorry to hear that. Is this still an emergency right now? Do you need help getting emergency care?
+  - caller: Not really, I just need the information.
+    reply: "This is a demo line, so I can't send you to a real hospital."
+    delegate:
+      - get_clinic_info: { question: how do you handle emergencies }
+expect:
+  outcome: info
+  refusals: []
+  no_emergency_result: true
+  spoken_contains: ["This is a demo line"]
