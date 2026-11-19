@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { voiceToolDefinitions } from '@attendra/agent';
-import { type ClinicConfig, VAPI_VOICE_MODEL, VAPI_VOICES, type VapiVoiceChoice, vapiVoiceFor } from '@attendra/core';
+import { type ClinicConfig, forVapiVoice, VAPI_DEFAULT_VOICE_ID, VAPI_VOICE_MODEL, type VapiVoiceChoice, vapiDefaultVoice, vapiVoiceOf } from '@attendra/core';
 import { createHash } from 'node:crypto';
 import { toolsVapiPrompt } from './tools-prompt';
 
@@ -31,7 +31,7 @@ export const VAPI_DEFAULTS = {
   /** Each provider's voice when the location has not chosen one; all billed through Vapi. */
   voice: {
     vapi: { provider: 'vapi', voiceId: 'Elliot' },
-    '11labs': { provider: '11labs', voiceId: VAPI_VOICES[0].voiceId, model: VAPI_VOICE_MODEL },
+    '11labs': { provider: '11labs', voiceId: VAPI_DEFAULT_VOICE_ID, model: VAPI_VOICE_MODEL },
     // Cartesia has no preset names: a location on Cartesia names its voice id (VapiVoiceChoice)
     cartesia: { provider: 'cartesia', model: 'sonic-3.5' },
   },
@@ -99,11 +99,11 @@ export const forVapi = (v: unknown): unknown => {
 };
 
 /**
- * The voice a location speaks with on Vapi: its own choice, else an ElevenLabs voice of the same kind as the clinic's
- * own voice (note 46): never Vapi's own default, "Elliot".
+ * The voice a location speaks with on Vapi: its own choice, else the default ElevenLabs voice, a man's (core
+ * vapiDefaultVoice, V5): never Vapi's own default, "Elliot".
  */
-export function vapiVoice(choice: VapiVoiceChoice | undefined, clinicVoice?: string): Record<string, unknown> {
-  const v = choice ?? vapiVoiceFor(clinicVoice);
+export function vapiVoice(choice: VapiVoiceChoice | undefined): Record<string, unknown> {
+  const v = choice ?? vapiDefaultVoice();
   return { ...VAPI_DEFAULTS.voice[v.provider], ...v };
 }
 
@@ -140,16 +140,18 @@ export function vapiAssistant(clinic: ClinicConfig, input: VapiAssistantInput) {
   const st = VAPI_DEFAULTS.stopSpeaking;
   return {
     name: input.name ?? `Attendra ${clinic.id}`.slice(0, 40),
-    firstMessage: clinic.greeting,
+    // in the words Vapi's voice says right ("Doctor Maya Chen", "8, 8:30 or 9 AM"): core forVapiVoice (V3)
+    firstMessage: forVapiVoice(clinic.greeting),
     firstMessageMode: VAPI_DEFAULTS.firstMessageMode,
     firstMessageInterruptionsEnabled: VAPI_DEFAULTS.firstMessageInterruptionsEnabled,
     model: {
       ...VAPI_DEFAULTS.model,
       // the same on every call of the location: each call's own facts are sent as it opens (apps/voice vapi.ts)
-      messages: [{ role: 'system', content: toolsVapiPrompt(clinic) }],
+      messages: [{ role: 'system', content: forVapiVoice(toolsVapiPrompt(clinic)) }],
       tools: voiceToolDefinitions(clinic).map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: forVapi(t.parameters) }, server })),
     },
-    voice: vapiVoice(clinic.vapi?.voice, clinic.voice),
+    // its own Vapi voice, else one of the kind the clinic picked for itself, else the default (core vapiVoiceOf)
+    voice: vapiVoice(vapiVoiceOf(clinic)),
     transcriber: { ...VAPI_DEFAULTS.transcriber, language: clinic.languages.length > 1 ? 'multi' : clinic.languages[0] },
     startSpeakingPlan: {
       waitSeconds: s.waitSeconds,

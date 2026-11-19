@@ -19,7 +19,7 @@ turns:
 expect:
   outcome: emergency
   emergency_instruction: true
-  emergency_result: hospital_said
+  emergency_result: demo_line
   refusals: []
   spoken_contains:
     - "Would you like me to take a message so the team can call you back?"

@@ -26,8 +26,8 @@ for (const [label, width, height] of [['phone', 375, 812], ['tablet', 768, 1024]
     await page.goto(`/c/${clinic}/settings`);
     const voice = page.locator('#voice');
     await expect(voice).toBeVisible();
-    // the default of the clinic's own kind (a woman's voice for marin), never Vapi's own "Elliot"
-    await expect(voice.locator('option:checked')).toHaveText("Sarah, a woman's voice, soft and warm");
+    // the default is the man's voice (V5, the owner's choice), never Vapi's own "Elliot"
+    await expect(voice.locator('option:checked')).toHaveText("Chris, a man's voice, casual and friendly");
     await expect(voice.locator('option')).toHaveCount(4);
     await expect(page.getByText('Elliot')).toHaveCount(0);
     await expect(page.getByTestId('vapi-voice-hint')).toContainText('is kept for when it moves back');

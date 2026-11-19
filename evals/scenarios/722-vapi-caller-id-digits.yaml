@@ -1,0 +1,18 @@
+id: vapi-caller-id-digits
+title: "The caller ID's last four are ours (V2): an identity answer gives them, and a line that says other digits for the number they are calling from is corrected at once"
+clinic: riverbend
+caller_number: "+17205550172"
+tags: [no-demo, vapi, identity]
+facts: "You want a checkup for your dog Biscuit. You are calling from the number on your file."
+turns:
+  - caller: Hi, I'd like to book a checkup for my dog.
+    reply: "Sure. Is this for Biscuit or Mochi, or a new pet?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: null }
+  - assistant: "Is your pet's profile under the number you're calling from, ending 0 1 7 9?"
+  - caller: It's for Biscuit, and yes, that's my number.
+expect:
+  outcome: abandoned
+  verified: false
+  vapi_returned: ['"caller_id_last4":"0172"', "ends in 0 1 7 2"]
+  vapi_said: ["Sorry, I misspoke: the number you're calling from ends in 0 1 7 2."]

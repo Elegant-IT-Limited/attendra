@@ -6,7 +6,7 @@ import { BuiltinScheduler } from '@attendra/scheduling';
 import Fastify from 'fastify';
 import { Writable } from 'node:stream';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { quotedLines, registerVapi, vapiControlUrl, vapiDestination, vapiTurnEvents } from '../src/vapi';
+import { quotedLines, registerVapi, vapiControlUrl, vapiDestination, vapiRecordLines, vapiTurnEvents } from '../src/vapi';
 
 // Vapi as a location's backup engine (batch 6; path C of the bake-off before it): a Vapi assistant whose tools are ours.
 // Same agent, same rules, its own engine on the call row. Made-up demo data only; nothing here reaches Vapi.
@@ -259,12 +259,13 @@ describe('Vapi calling our tools', () => {
     };
     const open = await factsAt('vapi-oak-facts-open', '10:00');
     expect(open).toContain('Today at the clinic is Monday, March 1 (2027-03-01)');
-    expect(open).toContain('It\'s 10:00 AM on Monday, March 1, clinic time (MST).');
-    expect(open).toContain('The clinic is open until 6:00 PM.');
+    // a time on the hour as Vapi's voice says it right (forVapiVoice, V3): "10 AM", never "10:00 AM"
+    expect(open).toContain('It\'s 10 AM on Monday, March 1, clinic time (MST).');
+    expect(open).toContain('The clinic is open until 6 PM.');
     expect(open).toContain('ending 0149');
     const closed = await factsAt('vapi-oak-facts-closed', '20:00');
-    expect(closed).toContain('It\'s 8:00 PM on Monday, March 1, clinic time (MST).');
-    expect(closed).toContain('The clinic is closed; it opens at 8:00 AM on Tuesday, March 2.');
+    expect(closed).toContain('It\'s 8 PM on Monday, March 1, clinic time (MST).');
+    expect(closed).toContain('The clinic is closed; it opens at 8 AM on Tuesday, March 2.');
   });
 
   it('counts the Vapi calls live at once, keeps the day\'s peak and says it once at 70% of the limit', async () => {
@@ -353,5 +354,16 @@ describe('the control address a Vapi message may carry (CodeQL #20: checked, the
     ]) expect(vapiControlUrl(bad), bad).toBeNull();
     expect(vapiControlUrl(undefined)).toBeNull();
     expect(vapiControlUrl(42)).toBeNull();
+  });
+});
+
+// V3 (2026-11-18): Vapi's voice formatting writes a time with a space ("8 30 AM"): the record reads it as the clock time
+describe('the record of a Vapi call', () => {
+  it('keeps the assistant\'s times as clock times and the caller\'s words as they were said', () => {
+    const lines = vapiRecordLines([
+      { role: 'bot', message: 'I have 8, 8 30 or 9 AM with Doctor Maya Chen.', secondsFromStart: 1, duration: 2000 },
+      { role: 'user', message: 'The 8 30 one, my number is 555 0123.', secondsFromStart: 4, duration: 2000 },
+    ]);
+    expect(lines.map((l) => l.text)).toEqual(['I have 8, 8:30 or 9 AM with Doctor Maya Chen.', 'The 8 30 one, my number is 555 0123.']);
   });
 });

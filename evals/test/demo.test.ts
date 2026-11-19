@@ -27,7 +27,7 @@ describe('demo calls', () => {
 
   it('writes one call per scenario and per ordinary demo call, all in the past, over about two weeks', async () => {
     const calls = await new FrontDeskRepository(t.db, cipher).listCalls(DEMO_CLINIC.id, { limit: 100 });
-    expect(calls).toHaveLength(loadScenarios().filter((s) => s.clinic === 'maple' && !s.settings).length + loadScenarios(DEMO_CALL_DIR).length);
+    expect(calls).toHaveLength(loadScenarios().filter((s) => s.clinic === 'maple' && !s.settings && !s.tags.includes('no-demo')).length + loadScenarios(DEMO_CALL_DIR).length);
     expect(calls[0]!.startedAt.getTime()).toBeLessThan(NOW.getTime());
     expect(NOW.getTime() - calls.at(-1)!.startedAt.getTime()).toBeLessThan(15 * 24 * 3_600_000);
   });

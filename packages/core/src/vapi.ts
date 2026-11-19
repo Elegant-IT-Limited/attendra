@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { z } from 'zod';
 import type { VoiceEngineName } from './call-costs';
+import { DEFAULT_VOICE } from './voices';
 
 /**
  * Vapi as a location's backup voice engine (batch 6). Attendra's own engine is every clinic's default; a location is on
@@ -86,9 +87,9 @@ export const isVapiTestClinic = (clinicId: string) => clinicId.startsWith('clini
 
 /**
  * The voices a location on Vapi speaks with (note 46, items 1-3): ElevenLabs voices billed through Vapi, on
- * eleven_flash_v2_5, the fastest ElevenLabs model that speaks Spanish too. Three warm female front-desk voices to pick
- * from by ear on one Vapi phone call (Sarah is the default until then), and one male voice, so a clinic whose own voice
- * is a man's keeps a man's voice on Vapi. Never Vapi's own "Elliot": a location that never chose one hears these.
+ * eleven_flash_v2_5, the fastest ElevenLabs model that speaks Spanish too. Three warm female front-desk voices and one
+ * male voice, each a choice in Settings > Voice; a location that never chose one hears the male voice (the owner's
+ * choice, 2026-11-18, V5: VAPI_DEFAULT_VOICE_ID). Never Vapi's own "Elliot".
  * `preview`: ElevenLabs' own sample of the voice (a public clip), played through our API by Settings > Voice; null when
  * it has none we know of, and the voice is heard on a Vapi call.
  */
@@ -101,22 +102,31 @@ export const VAPI_VOICES = [
 ] as const satisfies readonly { voiceId: string; name: string; kind: 'female' | 'male'; sound: string; preview: string | null }[];
 export type VapiVoice = (typeof VAPI_VOICES)[number];
 
-/** The OpenAI voices whose kind is known (female or male); any other counts as female, like the default, marin. */
+/**
+ * The voice a location on Vapi speaks with when it has chosen none: the male voice, Chris (the owner's choice,
+ * 2026-11-18, V5). Before, it followed the kind of the clinic's own OpenAI voice even when that was only the starting
+ * one (marin), so every location heard Sarah.
+ */
+export const VAPI_DEFAULT_VOICE_ID: string = VAPI_VOICES.find((v) => v.name === 'Chris')!.voiceId;
+export const vapiDefaultVoice = (): VapiVoiceChoice => ({ provider: '11labs', voiceId: VAPI_DEFAULT_VOICE_ID, model: VAPI_VOICE_MODEL });
+
+/** The OpenAI voices whose kind is known (female or male). */
 const OPENAI_VOICE_KIND: Record<string, 'female' | 'male'> = {
   marin: 'female', coral: 'female', sage: 'female', shimmer: 'female', alloy: 'female',
   cedar: 'male', ash: 'male', ballad: 'male', echo: 'male', verse: 'male',
 };
 
-/** The ElevenLabs voice of the same kind as the clinic's own voice: a woman's stays a woman's (note 46, item 3). */
-export function vapiVoiceFor(clinicVoice: string | undefined): VapiVoiceChoice {
-  const kind = OPENAI_VOICE_KIND[clinicVoice ?? ''] ?? 'female';
-  const v = VAPI_VOICES.find((x) => x.kind === kind)!;
-  return { provider: '11labs', voiceId: v.voiceId, model: VAPI_VOICE_MODEL };
-}
-
-/** The voice a location speaks with on Vapi: its own choice, else the one of the same kind as its own voice. */
+/**
+ * The voice a location speaks with on Vapi (the owner's rule, 2026-11-19): its own Vapi voice when it chose one (Settings
+ * > Voice); else, when the clinic picked its own voice (any but the starting marin, which every clinic has until it
+ * changes it), the ElevenLabs voice of the same kind, so a choice it made is never changed (note 46, item 3); else the
+ * default, Chris (V5). A clinic that picked marin itself can't be told from one that never chose: it hears the default.
+ */
 export function vapiVoiceOf(clinic: { voice?: string; vapi?: { voice?: VapiVoiceChoice } }): VapiVoiceChoice {
-  return clinic.vapi?.voice ?? vapiVoiceFor(clinic.voice);
+  if (clinic.vapi?.voice) return clinic.vapi.voice;
+  const kind = clinic.voice && clinic.voice !== DEFAULT_VOICE ? OPENAI_VOICE_KIND[clinic.voice] : undefined;
+  const same = kind ? VAPI_VOICES.find((v) => v.kind === kind) : undefined;
+  return same ? { provider: '11labs', voiceId: same.voiceId, model: VAPI_VOICE_MODEL } : vapiDefaultVoice();
 }
 
 /** One of the listed voices, by id; null for one set by provisioning that Settings does not list. */
@@ -128,3 +138,34 @@ export const listedVapiVoice = (voiceId: string) => VAPI_VOICES.find((v) => v.vo
  */
 export const vapiTestCallLine = (number: string | null) =>
   `This test call uses Attendra's engine. ${number ? `To hear Vapi, call ${number}.` : 'To hear Vapi, call the location\'s number.'}`;
+
+/** A time's part of the day, after it: "AM", "p.m.", "de la mañana". */
+const PART_OF_DAY = String.raw`(?:[AaPp]\.?\s?[Mm]\.?(?![A-Za-z])|de la mañana|de la tarde|de la noche|del mediodía)`;
+/** The rest of a run of times up to its part of the day: ", 8:30 or 9:00 AM", " o 9:20 de la mañana", " PM". */
+const REST_OF_RUN = String.raw`(?=(?:(?:,?\s+(?:or|and|o|y)\s+|,\s*)(?:1[0-2]|[1-9])(?:[: ][0-5]\d)?)*\s*${PART_OF_DAY})`;
+const ON_THE_HOUR = new RegExp(String.raw`(?<![\d:.])(1[0-2]|[1-9]):00(?![\d:])${REST_OF_RUN}`, 'g');
+const SPACED_TIME = new RegExp(String.raw`(?<![\d:.])(1[0-2]|[1-9]) ([0-5]\d)(?![\d:])${REST_OF_RUN}`, 'g');
+
+/**
+ * Text Vapi's voice speaks, as a front desk says it (V3, 2026-11-18). Vapi's voice formatting and its sentence chunks
+ * rewrote what we sent: "with Dr. Maya Chen" was said "with Doctor. Maya Chen", a pause after the title (the period ends
+ * a chunk), and "8:00, 8:30 or 9:00 AM" was said "8 8 30, or 9 AM". So what reaches Vapi's model and voice (its prompt and
+ * greeting, each tool result, each line said through the control URL, the call's facts) has the title in full, with no
+ * period ("Doctor Maya Chen", "Doctora Ana Ruiz"), and a time on the hour as the hour alone in a run of times that ends in
+ * its part of the day ("8, 8:30 or 9 AM", "a las 8, 8:40 o 9 de la mañana"). A 24-hour time ("08:00 to 12:00") and an id
+ * are left as they are. Our engines' text is unchanged: OpenAI's voices say it right.
+ */
+export function forVapiVoice(text: string): string {
+  return text
+    .replace(/\bDra\.(?=\s+\p{Lu})/gu, 'Doctora')
+    .replace(/\bDr\.(?=\s+\p{Lu})/gu, 'Doctor')
+    .replace(ON_THE_HOUR, '$1');
+}
+
+/**
+ * The assistant's words as Vapi reports them, with a time its voice formatting wrote with a space ("8 30 AM") as the
+ * clock time it is ("8:30 AM"): the read-back check (core saysSlot) and the transcript read times with a colon.
+ */
+export function fromVapiVoice(text: string): string {
+  return text.replace(SPACED_TIME, '$1:$2');
+}

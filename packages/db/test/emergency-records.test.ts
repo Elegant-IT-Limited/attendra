@@ -27,6 +27,14 @@ describe('emergency records (migration 0050)', () => {
     await expect(withClinic(t.db, clinic, (tx) => tx.execute(sql`update calls set emergency_result = 'maybe' where id = ${id}`))).rejects.toThrow();
   });
 
+  it('keeps a demo clinic\'s emergency as the demo line (migration 0064)', async () => {
+    const calls = new CallRepository(t.db, cipher);
+    const id = await calls.open(clinic, 'vapi_emergency_demo_1', '+17205550173', 'phone', undefined, null, { engine: 'vapi', voiceFlow: 'tools' });
+    await calls.close(clinic, id, { reason: 'customer-ended-call', voiceSeconds: 30, outcome: 'emergency', emergency: true, emergencyResult: 'demo_line' });
+    const [row] = await withClinic(t.db, clinic, (tx) => tx.select({ result: schema.calls.emergencyResult }).from(schema.calls).where(sql`id = ${id}`));
+    expect(row).toEqual({ result: 'demo_line' });
+  });
+
   it('marks the urgent request an emergency leaves as from an emergency', async () => {
     const tasks = new PostgresTaskQueue(t.db, cipher);
     const task = await tasks.create(clinic, { type: 'callback', callId: null, patientId: null, idempotencyKey: 'emergency-test-1', details: { reason: 'Emergency: the transfer did not go through.' }, urgent: true, origin: 'emergency' });

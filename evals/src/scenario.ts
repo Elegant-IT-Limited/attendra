@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 import { z } from 'zod';
-import { LANGUAGES } from '@attendra/core';
+import { EMERGENCY_RESULTS, LANGUAGES } from '@attendra/core';
 
 /**
  * One scenario is one phone call. Caller turns are always scripted. The backend's
@@ -68,12 +68,17 @@ export const Scenario = z.object({
     transfer_to: z.string().nullable().default(null),
     emergency_instruction: z.boolean().default(false),
     // how the call's emergency ended, as the Calls page shows it ('cleared' is "Emergency cleared"; note 49 B1)
-    emergency_result: z.enum(['transferred', 'hospital_said', 'hospital_texted', 'urgent_request', 'cleared']).optional(),
+    emergency_result: z.enum(EMERGENCY_RESULTS).optional(),
     language: z.enum(LANGUAGES).optional(), // the language the call ended in
     spoken_contains: z.array(z.string()).default([]), // phrases the backend must have given the voice model, like the 999 line
     // phrases the backend's tool results gave the planner (a vet's own field from get_clinic_info), and ones they never gave (a field kept for the team)
     returned: z.array(z.string()).default([]),
     never_returned: z.array(z.string()).default([]),
+    // the same, on the Vapi path only, as its voice gets them (core forVapiVoice: "Doctor Maya Chen", "8, 8:30 or 9 AM")
+    vapi_returned: z.array(z.string()).default([]),
+    vapi_never_returned: z.array(z.string()).default([]),
+    // lines said on the Vapi call through its control URL (a correction our rules decided), each exactly as said
+    vapi_said: z.array(z.string()).default([]),
     answered_from: z.string().optional(), // the FAQ entry a clinic question must be answered from
     cites: z.array(z.string()).optional(), // documents a knowledge answer must cite, the first as the best match; an empty list means none
     booked_with: z.string().optional(), // the provider every booking made on the call must be with

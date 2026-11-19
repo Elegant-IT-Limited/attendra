@@ -61,6 +61,8 @@ export const EMERGENCY_RESULTS: Record<EmergencyResult, { label: string; text: s
   hospital_texted: { label: 'Emergency · hospital texted', text: 'The caller said it was still an emergency, was told to take their pet to your emergency hospital, and was texted its address.' },
   urgent_request: { label: 'Emergency · urgent request', text: 'The caller said it was still an emergency, and nobody could be put through: an urgent request is at the top of Requests for your team.' },
   cleared: { label: 'Emergency cleared', text: 'The caller reported a danger sign, then said it was not an emergency now. The call went on, with a note on what they reported for the team.' },
+  // a demo clinic: the caller heard the demo line only; no hospital was named and nobody was put through
+  demo_line: { label: 'Emergency · demo line', text: 'The caller said it was still an emergency and heard the demo line: this is a demo clinic, so no hospital was named and nobody was put through.' },
 };
 
 /**

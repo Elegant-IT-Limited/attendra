@@ -1,0 +1,21 @@
+id: vapi-es-caller-id-digits
+title: "In Spanish, the caller ID's last four are ours (V2): an identity answer gives them, and other digits said for them are corrected at once"
+clinic: riverbend
+caller_number: "+17205550172"
+tags: [no-demo, vapi, identity, language, es]
+settings:
+  languages: [en, es]
+facts: "You speak only Spanish. You want a checkup for your dog Biscuit. You are calling from the number on your file."
+turns:
+  - caller: Hola, quiero una cita de chequeo para mi perro, por favor.
+    reply: "Claro. ¿Es para Biscuit o Mochi, o es una mascota nueva?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: null }
+  - assistant: "¿La ficha de su mascota está con el número desde el que llama, que termina en cero uno siete nueve?"
+  - caller: Es para Biscuit, y sí, ese es mi número.
+expect:
+  outcome: abandoned
+  verified: false
+  language: es
+  vapi_returned: ['"caller_id_last4":"0172"', "ends in 0 1 7 2"]
+  vapi_said: ["Perdón, me equivoqué: el número desde el que llama termina en 0 1 7 2."]

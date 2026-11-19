@@ -4,7 +4,7 @@
 // each scripted tool step as a tool-calls message, then the end-of-call report. What our rules send back to the call
 // (a script to say, a transfer, the end of the call) goes to a stand-in for the call's control URL. The same outcomes as
 // on our own engines are checked. Never a call to Vapi, never a model.
-import { addDays, type ClinicConfig, localDateOf, type Messenger, weekdayOf, zonedInstant } from '@attendra/core';
+import { addDays, type ClinicConfig, forVapiVoice, localDateOf, type Messenger, weekdayOf, zonedInstant } from '@attendra/core';
 import { CallRepository, createPhiCipher, KnowledgeRepository, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, schema, withClinic } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { HybridKnowledgeBase, LocalEmbedder, seedDemoKnowledge } from '@attendra/knowledge';
@@ -34,6 +34,12 @@ export const VAPI_PATH_SCENARIOS = [
   'not-an-emergency', 'es-booking', 'es-hedge', 'es-emergency', 'es-refill', 'es-wrong-dob',
   // a visit the clinic does not offer, and "what can I book?": the same answer as on the planner path (2026-11-16)
   'vet-visit-not-offered', 'vet-es-visit-not-offered', 'vet-what-visits', 'vet-es-what-visits', 'vet-not-offered-common-question-wins',
+  // a demo clinic's emergency: the demo line, recorded as demo_line, never "sent to hospital" (V4, 2026-11-18)
+  'demo-emergency-refer-setting', 'demo-emergency-refer-setting-es', 'demo-emergency-handle-open', 'demo-emergency-handle-open-es',
+  // Vapi's voice: "Doctor Nkem Okafor" with no pause, and "8, 8:30 or 9 AM" (V3, 2026-11-18)
+  'vapi-speech-times-and-title', 'vapi-es-speech-times-and-title',
+  // the caller ID's last four are ours: given with an identity answer, and other digits said for it corrected (V2)
+  'vapi-caller-id-digits', 'vapi-es-caller-id-digits',
   // the call quality batch (2026-11-18): each test call's failure as a scripted call, on both paths
   'vet-volunteered-last-four-one-step', 'vet-es-volunteered-last-four-one-step', 'vet-last-four-as-phone', 'vet-es-last-four-as-phone',
   'vet-misheard-number-asked-again', 'vet-es-misheard-number-asked-again',
@@ -42,6 +48,8 @@ export const VAPI_PATH_SCENARIOS = [
   'vet-service-not-offered-no-weak-match', 'vet-es-service-not-offered-no-weak-match', 'vet-refill-follow-up-updates', 'vet-es-refill-follow-up-updates',
   'vet-slot-args-as-meant', 'vet-es-slot-args-as-meant',
   'vet-how-are-you-in-kind', 'vet-es-how-are-you-in-kind',
+  // the demo emergency that closes on a goodbye (Q9): played once the harness plays demo calls (V4's fix)
+  'demo-emergency-closes-on-goodbye', 'demo-emergency-closes-on-goodbye-es',
 ] as const;
 
 export interface VapiPathResult { id: string; passed: boolean; failures: string[]; outcome: string; ms: number }
@@ -87,7 +95,9 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
       secretMatches: async (id, presented) => id === clinic.id && presented === SECRET,
       maxConcurrency: 4,
       fetch: (async (_url: string, init: { body: string }) => { const body = JSON.parse(init.body) as Record<string, unknown>; controls.push({ type: String(body.type), body, onCallerWords }); return new Response('{"status":"ok"}'); }) as unknown as typeof fetch,
-      later: (_ms, fn) => fn(),
+      // a transfer or a hang-up after its line runs at once; a demo call's 14- and 15-minute limits never come in a
+      // scripted call (run at once, they ended every demo call before its first turn)
+      later: (ms, fn) => { if (ms < 60_000) fn(); },
       clinicById: async (id) => (id === clinic.id ? clinic : null),
       openCall: (clinicId, sessionId, from, channel, startedBy, last4, how) => calls.open(clinicId, sessionId, from, channel, startedBy, last4, how),
       recorderFor: (clinicId, callId) => ({ appendSegment: (s) => calls.appendSegment(clinicId, callId, s), close: (c) => calls.close(clinicId, callId, c) }),
@@ -183,10 +193,19 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
     const script = controls.some((c) => c.type === 'say' && c.onCallerWords) && row.emergencyFlag;
     check(script === e.emergency_instruction, `emergency script said ${script}, expected ${e.emergency_instruction}`);
     if (e.language) check(row.language === e.language, `answered in ${row.language}, expected ${e.language}`);
+    // how an animal's emergency ended, as the call page labels it ("Emergency · demo line" on a demo clinic)
+    if (e.emergency_result !== undefined) check(row.emergencyResult === e.emergency_result, `emergency result ${row.emergencyResult ?? 'none'}, expected ${e.emergency_result}`);
     // what the tools handed the voice, as on the planner path: the same facts and words
     const handed = JSON.stringify(outputs).toLowerCase();
-    for (const phrase of e.returned) check(handed.includes(phrase.toLowerCase()), `no tool result gave "${phrase}"`);
-    for (const phrase of e.never_returned) check(!handed.includes(phrase.toLowerCase()), `a tool result gave "${phrase}", which it must not`);
+    // a phrase in the words Vapi's voice gets (forVapiVoice: "Dr. Vance" is "Doctor Vance" there), so a check means the same
+    // (a phrase written in lower case, "dr. elena ruiz", is the title in full too)
+    const vapiWords = (p: string) => forVapiVoice(p).toLowerCase().replace(/\bdra\. /g, 'doctora ').replace(/\bdr\. /g, 'doctor ');
+    for (const phrase of e.returned) check(handed.includes(vapiWords(phrase)), `no tool result gave "${phrase}"`);
+    for (const phrase of e.never_returned) check(!handed.includes(vapiWords(phrase)), `a tool result gave "${phrase}", which it must not`);
+    for (const phrase of e.vapi_returned) check(handed.includes(phrase.toLowerCase()), `no tool result gave "${phrase}" on the Vapi path`);
+    for (const phrase of e.vapi_never_returned) check(!handed.includes(phrase.toLowerCase()), `a tool result gave "${phrase}" on the Vapi path, which it must not`);
+    const said = controls.filter((c) => c.type === 'say').map((c) => String(c.body.content));
+    for (const line of e.vapi_said) check(said.includes(line), `the call never heard "${line}" on the Vapi path`);
     if (e.hung_up !== undefined) {
       const byRule = controls.some((c) => c.type === 'end-call' && c.onCallerWords);
       check(byRule === e.hung_up, `the assistant ${byRule ? 'ended the call itself' : 'did not end the call itself'}, expected ${e.hung_up ? 'it to' : 'not to'}`);

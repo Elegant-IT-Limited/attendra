@@ -441,7 +441,8 @@ export class CallAgent {
     const number = emergencyNumberFor(clinic, language);
     // a demo clinic (2026-11-16): the demo line in place of the route; nothing texted, nobody put through
     if (demo) {
-      s.emergencyResult = 'hospital_said';
+      // recorded as the demo line it was: the call page said "sent to hospital" for a demo call (2026-11-17)
+      s.emergencyResult = 'demo_line';
       const line = EMERGENCY_LINES.demo(language);
       this.state.emergencyScriptSaid = false;
       this.state.emergencyScriptSaidAtTurn = null;

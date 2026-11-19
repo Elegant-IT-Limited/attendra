@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, type Backend, CallAgent, CallCache, cachedBackend, CallState, type Outbound, type Planner } from '@attendra/agent';
-import { callFacts, type CallEventSink, ClinicConfig, DEMO_BUSY_LINE, DEMO_GOODBYE_LINE, DEMO_LIMITS, DEMO_WRAP_UP_LINE, type DemoLimitCode, isDemoClinic, isVapiTestClinic, maxGapMs, repeatedQuestions, vapiAlertAt } from '@attendra/core';
+import { callFacts, type CallEventSink, ClinicConfig, DEMO_BUSY_LINE, DEMO_GOODBYE_LINE, DEMO_LIMITS, DEMO_WRAP_UP_LINE, type DemoLimitCode, forVapiVoice, fromVapiVoice, isDemoClinic, type Language, lastFour, spokenDigits, isVapiTestClinic, maxGapMs, repeatedQuestions, vapiAlertAt } from '@attendra/core';
 import { type Alerter, isVapiCreditEnd, isVapiOpenAiQuotaEnd, type Logger } from '@attendra/observability';
 import { type CallRecorder, callFactsNote, VAPI_EVENTS_PATH, VAPI_SECRET_HEADER } from '@attendra/voice-engine';
 import type { FastifyInstance } from 'fastify';
 import { createHash, timingSafeEqual } from 'node:crypto';
+import type { LiveRegistry } from './live';
 
 export { VAPI_EVENTS_PATH } from '@attendra/voice-engine';
 
@@ -49,6 +50,12 @@ export interface VapiDeps extends VapiOptions {
   now: () => Date;
   /** A demo clinic's limits (core demo-clinic.ts), checked when its phone call opens; the voice service's own check. */
   demoLimitFor?(clinic: ClinicConfig, from: string | null): Promise<DemoLimitCode | null>;
+  /**
+   * The calls staff watch live (live.ts), the same registry path A's calls are in: a Vapi call is on the dashboard's
+   * live strip from its first message, with its captions, tool steps and state, and "Take the call", a staff note and
+   * "End" act on it through its control URL (V1, 2026-11-18: a Vapi call showed nothing until it ended).
+   */
+  live?: LiveRegistry;
 }
 
 /** A demo call turned away on Vapi is ended this long after it opened, whatever Vapi's assistant does. */
@@ -99,6 +106,10 @@ interface Session {
   over?: boolean;
   /** The call's event log: each message's type, never its content. */
   events: CallEventSink;
+  /** The caller ID's last four digits (ours, from the call), or null without one: the only digits said for it (V2). */
+  callerLast4: string | null;
+  /** Wrong caller-ID digits the assistant said and was corrected for, so each is corrected once. */
+  corrected: Set<string>;
 }
 
 const NO_EVENTS: CallEventSink = { add: () => {}, close: async () => ({ written: 0, dropped: 0 }) };
@@ -132,7 +143,8 @@ const overlaps = (a: { start: number; end: number }, b: { start: number; end: nu
 export function vapiRecordLines(lines: VapiLine[]): { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }[] {
   const out: { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }[] = [];
   for (const l of [...lines].filter(spoken).sort((a, b) => startOf(a) - startOf(b))) {
-    const line = { speaker: whoOf(l), text: (l.message ?? '').trim(), startMs: startOf(l), endMs: endOf(l) };
+    const text = (l.message ?? '').trim();
+    const line = { speaker: whoOf(l), text: whoOf(l) === 'agent' ? fromVapiVoice(text) : text, startMs: startOf(l), endMs: endOf(l) };
     const same = out.findLast((o) => o.speaker === line.speaker && overlaps({ start: o.startMs, end: o.endMs }, { start: line.startMs, end: line.endMs }));
     if (!same) { out.push(line); continue; }
     if (line.text.length > same.text.length) Object.assign(same, line);
@@ -163,6 +175,25 @@ export function vapiAnswerWaits(lines: VapiLine[]): { waitMs: number; tools: num
 export const vapiFirstAudioMs = (lines: VapiLine[]): number | null => {
   const first = lines.find((l) => (l.role === 'bot' || l.role === 'assistant') && spoken(l));
   return first ? startOf(first) : null;
+};
+
+/**
+ * The caller-ID digits the assistant said, when it said ones that are not the caller ID's (V2, 2026-11-17: "the number
+ * you're calling from, ending 0 0 9 2" on a call from a number ending 0090); null when it said none, or the right ones.
+ * Only a mention of the number they are calling from counts, in English or Spanish, in digits or in words.
+ */
+export function wrongCallerIdDigits(line: string, last4: string | null): string | null {
+  if (!last4) return null;
+  const m = /(?:calling (?:us )?from|call(?:ing)? from|desde el que (?:nos )?llama)\W+(?:[^.?!]{0,30}?\b)?(?:ending(?: in| with)?|ends (?:in|with)|que termina en|termina en)\s+([^.?!]{1,40})/i.exec(line);
+  if (!m) return null;
+  const said = spokenDigits(m[1]!).replace(/\D/g, '').slice(0, 4);
+  return said.length === 4 && said !== last4 ? said : null;
+}
+
+/** The assistant's correction of the caller ID's digits: ours, one by one. */
+export const callerIdCorrection = (lang: Language, last4: string) => {
+  const digits = last4.split('').join(' ');
+  return lang === 'es' ? `Perdón, me equivoqué: el número desde el que llama termina en ${digits}.` : `Sorry, I misspoke: the number you're calling from ends in ${digits}.`;
 };
 
 /** What the voice says of a rule's instruction: its quoted lines ("Say: \"...\""), or nothing when it quotes none (a note for the voice alone). */
@@ -225,25 +256,37 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
     });
   }
 
-  /** Sends one command to the call at Vapi; a failure is logged and said, never thrown into the call. */
-  async function control(s: Session, body: Record<string, unknown>) {
-    if (!s.controlUrl || s.closed) return;
+  /** A command's words as Vapi's voice should say them (forVapiVoice): a line to say, or a message for its model. */
+  const spokenForVapi = (c: Record<string, unknown>): Record<string, unknown> => {
+    if (typeof c.content === 'string') return { ...c, content: forVapiVoice(c.content) };
+    const m = c.message as { role?: string; content?: unknown } | undefined;
+    return m && typeof m.content === 'string' ? { ...c, message: { ...m, content: forVapiVoice(m.content) } } : c;
+  };
+
+  /** Sends one command to the call at Vapi; a failure is logged and said, never thrown into the call. Whether it went. */
+  async function control(s: Session, command: Record<string, unknown>): Promise<boolean> {
+    if (!s.controlUrl || s.closed) return false;
+    const body = spokenForVapi(command);
     try {
       // never follows a redirect (a redirect is a failure, like any answer that is not 2xx), and gives up after 5 s
       const res = await post(s.controlUrl, { method: 'POST', redirect: 'error', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) });
       if (!res.ok || res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) throw new Error(`control ${String(body.type)}: ${res.status}`);
+      return true;
     } catch (err) {
       deps.log.error({ call_id: s.callId, type: body.type, err: { message: (err as Error).message } }, 'vapi: a call control command failed');
       deps.alerts?.alert('vapi_control_failed', `A Vapi call could not be ${body.type === 'transfer' ? 'transferred' : body.type === 'end-call' ? 'ended' : 'told what to say'} (${(err as Error).message.slice(0, 80)}).`, { clinicId: s.clinicId, callId: s.callId });
+      return false;
     }
   }
 
   /**
    * What our rules decided, on Vapi's call: a script the caller must hear (the emergency lines, word for word) is said at
    * once over whatever the model was saying, and the whole instruction goes into the conversation for the model; a
-   * transfer or the end of the call follows the line before it, as on our engines (afterMs).
+   * transfer or the end of the call follows the line before it, as on our engines (afterMs). `staff`: a staff member's
+   * take-over or end (the live page): one that does not go through gives the call back to staff and the assistant offers
+   * a callback, as on path A (CallAgent.onControlFailed).
    */
-  function act(s: Session, outs: Outbound[]) {
+  function act(s: Session, outs: Outbound[], staff = false) {
     for (const o of outs) {
       if (o.type === 'instructions') {
         // without a control URL (none in the message), it goes with the next tool result, as before
@@ -254,11 +297,37 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
       } else if (o.type === 'transfer') {
         const destination = vapiDestination(o.uri);
         if (!destination) { deps.log.error({ call_id: s.callId }, 'vapi: a transfer to an address Vapi cannot dial'); continue; }
-        later(o.afterMs ?? 0, () => void control(s, { type: 'transfer', destination }));
+        later(o.afterMs ?? 0, () => void control(s, { type: 'transfer', destination }).then((ok) => { if (staff && !ok && !s.closed) act(s, s.agent.onControlFailed('transfer')); }));
       } else if (o.type === 'hangup') {
-        later(o.afterMs ?? 0, () => void control(s, { type: 'end-call' }));
+        later(o.afterMs ?? 0, () => void control(s, { type: 'end-call' }).then((ok) => { if (staff && !ok && !s.closed) act(s, s.agent.onControlFailed('hangup')); }));
       }
     }
+  }
+
+  /**
+   * The call on the live strip (live.ts), as path A opens it (server.ts): every agent event is published (captions from
+   * Vapi's conversation, tool steps, state, the emergency), and staff act on the call through its control URL. A staff
+   * note goes to the model as a system message only: its words are quoted, and act() says quoted lines aloud.
+   */
+  function openLive(s: Session, clinic: ClinicConfig, web: boolean) {
+    const live = deps.live;
+    if (!live) return;
+    const { agent, callId } = s;
+    const frontDesk = clinic.routing.find((r) => r.target === 'front_desk')?.uri ?? null;
+    live.open(callId, { clinicId: s.clinicId, channel: web ? 'web' : 'phone', startedAt: deps.now(), frontDesk }, {
+      coach: async (note, by) => {
+        const [first, ...rest] = agent.coach(note, by);
+        const content = first?.type === 'instructions' ? first.content : '';
+        if (!(await control(s, { type: 'add-message', message: { role: 'system', content }, triggerResponseEnabled: false }))) throw new Error('the staff note did not reach the Vapi call');
+        agent.onCoachDelivered();
+        // the emergency script, sent again after a note (CallAgent.coach), is said as any rule's script
+        act(s, rest);
+      },
+      takeOver: async (uri, by) => { act(s, agent.takeOver(uri, by), true); },
+      end: async (by) => { act(s, agent.endByStaff(by), true); },
+      canEnd: () => agent.canEndByStaff(),
+    });
+    agent.observer = (e) => live.publish(callId, e);
   }
 
   /** A command that must reach the call even when its control URL is not known yet: kept until it is. */
@@ -332,8 +401,10 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
     agent.state.answersAcrossPieces = true;
     // the caller ID reaches every tool as on path A (the agent's callerNumber), and the voice hears it with the date
     const s: Session = { agent, clinicId: clinic.id, callId, fed: [], startedAt: Date.now(), notes: [], controlUrl: controlUrlOf(m), closed: false,
-      facts: demoLimit ? null : callFactsNote(clinic, callFacts(clinic, deps.now(), from)), refused: !!demoLimit, pending: [], events: deps.callEventsFor?.(clinic.id, callId, 'vapi/tools') ?? NO_EVENTS };
+      facts: demoLimit ? null : callFactsNote(clinic, callFacts(clinic, deps.now(), from)), refused: !!demoLimit, pending: [], events: deps.callEventsFor?.(clinic.id, callId, 'vapi/tools') ?? NO_EVENTS,
+      callerLast4: from ? lastFour(from) : null, corrected: new Set() };
     sessions.set(vapiId, s);
+    openLive(s, clinic, web);
     if (demoLimit) {
       // over a limit: the one fixed line over whatever Vapi's assistant began, then the end; recorded with the limit's code
       agent.demoLimited(demoLimit);
@@ -354,6 +425,32 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
     return s;
   }
 
+  /**
+   * The caller ID's last four digits, ours, with an identity tool's answer that does not end the check (a refusal, a
+   * question, the household's pets), so the model never says them from memory (V2: it said "ending 0 0 9 2" for 0090,
+   * the facts message far back in the call). A found pet needs none; a call without caller ID has none.
+   */
+  function withCallerId(s: Session, tool: string, output: { ok: boolean; say?: string; data: Record<string, unknown> }) {
+    if (!s.callerLast4 || (tool !== 'verify_caller' && tool !== 'register_patient')) return;
+    if (output.data.verified === true || output.data.registered === true) return;
+    output.data.caller_id_last4 = s.callerLast4;
+    const note = `The number they are calling from (caller ID) ends in ${s.callerLast4.split('').join(' ')}: if you mention it, say exactly these four digits, never others.`;
+    output.say = [output.say, note].filter(Boolean).join(' ');
+  }
+
+  /**
+   * The caller ID's digits are ours, never the model's (V2): when the assistant says the number they are calling from
+   * ends in other digits, the right ones are said at once, and the model is told, once per wrong number.
+   */
+  function correctCallerId(s: Session, line: string) {
+    const wrong = wrongCallerIdDigits(line, s.callerLast4);
+    if (!wrong || !s.callerLast4 || s.corrected.has(wrong)) return;
+    s.corrected.add(wrong);
+    deps.log.warn({ call_id: s.callId }, 'vapi: the assistant said other digits for the caller ID; corrected');
+    const said = callerIdCorrection(s.agent.state.language, s.callerLast4);
+    act(s, [{ type: 'instructions', delegationId: null, content: `You said the wrong digits for the number they are calling from. Say: "${said}" Then carry on. Its last four digits are ${s.callerLast4}: say only these, never others.` }]);
+  }
+
   /** Vapi's conversation so far into the call state: the caller's lines through the guardrails, the assistant's as said. */
   function sync(s: Session, lines: VapiLine[] | undefined) {
     // a demo call turned away hears its one line and ends: nothing a caller says there is acted on
@@ -363,7 +460,9 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
       const span = { who: whoOf(l), start: startOf(l), end: endOf(l) };
       if (s.fed.some((f) => f.who === span.who && overlaps(f, span))) continue;
       s.fed.push(span);
-      const text = (l.message ?? '').trim();
+      const said = (l.message ?? '').trim();
+      // the assistant's words with Vapi's spaced times read as clock times ("8 30 AM" is 8:30), for the read-back check
+      const text = l.role === 'user' ? said : fromVapiVoice(said);
       // duration is already in ms: read as seconds, every line ended ~1000x too late, so a caller's yes always fell
       // before the read-back's end and the number was never confirmed (bake-off call, 2026-11-07: verify_caller looped)
       const at = startOf(l);
@@ -374,6 +473,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
       } else if (l.role === 'bot' || l.role === 'assistant') {
         // a correction (a result said with no tool behind it) goes with the next result, as the guardrails' lines did
         for (const o of s.agent.onAgentTranscript(text, at, end)) if (o.type === 'instructions') s.notes.push(o.content);
+        correctCallerId(s, text);
       }
     }
   }
@@ -384,7 +484,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
     if (!clinicId || !CLINIC_ID.test(clinicId) || !(await authorised(clinicId, presentedOf(req.headers)))) return reply.code(401).send({ error: 'unauthorized' });
     let m: VapiMessage;
     try { m = (JSON.parse(req.body as string) as { message?: VapiMessage }).message ?? {}; } catch { return reply.code(400).send({ error: 'invalid body' }); }
-    for (const [id, s] of sessions) if (Date.now() - s.startedAt > SESSION_TTL_MS) { sessions.delete(id); void s.events.close(); }
+    for (const [id, s] of sessions) if (Date.now() - s.startedAt > SESSION_TTL_MS) { sessions.delete(id); deps.live?.end(s.callId, s.agent.state.outcome); void s.events.close(); }
     if (refused.size > 10_000) refused.clear();
     const vapiId = m.call?.id;
 
@@ -392,7 +492,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
     if (vapiId && m.type === 'status-update' && m.status === 'in-progress') await live(vapiId);
     if (vapiId && ((m.type === 'status-update' && m.status === 'ended') || m.type === 'end-of-call-report')) {
       const known = sessions.get(vapiId);
-      if (known) known.over = true;
+      if (known) { known.over = true; deps.live?.end(known.callId, known.agent.state.outcome); }
       await ended(vapiId);
     }
     // money: Vapi has no API for its credit, so a call it would not start for credit is how we hear it ran out (P0)
@@ -414,9 +514,11 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
         const { output, controls } = await s.agent.onToolCall(t.function?.name ?? '', args);
         // a transfer or the end of the call that a tool decided happens after its line is said, as on our engines
         act(s, controls);
+        withCallerId(s, t.function?.name ?? '', output);
         // Vapi's voice hears what could not go through the control URL with the result: an emergency script first
         const notes = s.notes.splice(0);
-        results.push({ toolCallId: t.id, result: JSON.stringify(notes.length ? { ...output, say: [notes.join(' '), output.say].filter(Boolean).join(' ') } : output) });
+        // in the words Vapi's voice says right: "Doctor Maya Chen", "8, 8:30 or 9 AM" (forVapiVoice, V3)
+        results.push({ toolCallId: t.id, result: forVapiVoice(JSON.stringify(notes.length ? { ...output, say: [notes.join(' '), output.say].filter(Boolean).join(' ') } : output)) });
       }
       return reply.code(200).send({ results });
     }
@@ -434,6 +536,8 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
       const lines = m.artifact?.messages ?? [];
       sync(s, lines);
       s.closed = true;
+      // off the live strip (if Vapi's ended status did not already take it off), with how it ended
+      deps.live?.end(s.callId, s.agent.state.outcome);
       // a change waiting for a yes when the call ended becomes a request for the team (note 45, A4), as on our engines
       await s.agent.onCallEnd();
       // the waits for an answer that needed our tools, and the first audio, from Vapi's own times: as exact as our engines'
