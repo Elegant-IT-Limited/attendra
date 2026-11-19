@@ -15,7 +15,17 @@ describe('the voice on Vapi', () => {
   it('keeps the location\'s own choice', () => {
     const own = { provider: '11labs' as const, voiceId: 'XrExE9yKIg1WjnnlVkGX', model: 'eleven_flash_v2_5' as const };
     expect(vapiVoiceOf({ vapi: { voice: own } })).toEqual(own);
+    expect(vapiVoiceOf({ voice: 'cedar', vapi: { voice: own } })).toEqual(own);
     expect(vapiVoiceOf({ vapi: {} }).voiceId).toBe(VAPI_DEFAULT_VOICE_ID);
+  });
+  it('keeps the kind of a voice the clinic picked itself; the starting voice, marin, is no choice (the owner\'s rule, 2026-11-19)', () => {
+    const sarah = VAPI_VOICES.find((v) => v.name === 'Sarah')!.voiceId;
+    expect(vapiVoiceOf({ voice: 'coral' }).voiceId).toBe(sarah);
+    expect(vapiVoiceOf({ voice: 'shimmer' }).voiceId).toBe(sarah);
+    expect(vapiVoiceOf({ voice: 'cedar' }).voiceId).toBe(VAPI_DEFAULT_VOICE_ID);
+    expect(vapiVoiceOf({ voice: 'marin' }).voiceId).toBe(VAPI_DEFAULT_VOICE_ID);
+    // a voice of another kind of engine, or one not known: the default
+    expect(vapiVoiceOf({ voice: 'unknown-voice' }).voiceId).toBe(VAPI_DEFAULT_VOICE_ID);
   });
   it('offers three female voices and one male, each a valid choice, with a preview from ElevenLabs where known', () => {
     expect(VAPI_VOICES.filter((v) => v.kind === 'female')).toHaveLength(3);

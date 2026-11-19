@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { voiceToolDefinitions } from '@attendra/agent';
-import { type ClinicConfig, forVapiVoice, VAPI_DEFAULT_VOICE_ID, VAPI_VOICE_MODEL, type VapiVoiceChoice, vapiDefaultVoice } from '@attendra/core';
+import { type ClinicConfig, forVapiVoice, VAPI_DEFAULT_VOICE_ID, VAPI_VOICE_MODEL, type VapiVoiceChoice, vapiDefaultVoice, vapiVoiceOf } from '@attendra/core';
 import { createHash } from 'node:crypto';
 import { toolsVapiPrompt } from './tools-prompt';
 
@@ -150,7 +150,8 @@ export function vapiAssistant(clinic: ClinicConfig, input: VapiAssistantInput) {
       messages: [{ role: 'system', content: forVapiVoice(toolsVapiPrompt(clinic)) }],
       tools: voiceToolDefinitions(clinic).map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: forVapi(t.parameters) }, server })),
     },
-    voice: vapiVoice(clinic.vapi?.voice),
+    // its own Vapi voice, else one of the kind the clinic picked for itself, else the default (core vapiVoiceOf)
+    voice: vapiVoice(vapiVoiceOf(clinic)),
     transcriber: { ...VAPI_DEFAULTS.transcriber, language: clinic.languages.length > 1 ? 'multi' : clinic.languages[0] },
     startSpeakingPlan: {
       waitSeconds: s.waitSeconds,

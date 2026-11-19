@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { z } from 'zod';
 import type { VoiceEngineName } from './call-costs';
+import { DEFAULT_VOICE } from './voices';
 
 /**
  * Vapi as a location's backup voice engine (batch 6). Attendra's own engine is every clinic's default; a location is on
@@ -102,16 +103,30 @@ export const VAPI_VOICES = [
 export type VapiVoice = (typeof VAPI_VOICES)[number];
 
 /**
- * The voice a location on Vapi speaks with until it chooses one: the male voice, Chris (the owner's choice, 2026-11-18,
- * V5). Before, it followed the kind of the clinic's own OpenAI voice (note 46, item 3), and since every clinic starts on
- * marin, every location heard Sarah. A location's own choice (Settings > Voice) still wins.
+ * The voice a location on Vapi speaks with when it has chosen none: the male voice, Chris (the owner's choice,
+ * 2026-11-18, V5). Before, it followed the kind of the clinic's own OpenAI voice even when that was only the starting
+ * one (marin), so every location heard Sarah.
  */
 export const VAPI_DEFAULT_VOICE_ID: string = VAPI_VOICES.find((v) => v.name === 'Chris')!.voiceId;
 export const vapiDefaultVoice = (): VapiVoiceChoice => ({ provider: '11labs', voiceId: VAPI_DEFAULT_VOICE_ID, model: VAPI_VOICE_MODEL });
 
-/** The voice a location speaks with on Vapi: its own choice, else the default (the male voice). */
-export function vapiVoiceOf(clinic: { vapi?: { voice?: VapiVoiceChoice } }): VapiVoiceChoice {
-  return clinic.vapi?.voice ?? vapiDefaultVoice();
+/** The OpenAI voices whose kind is known (female or male). */
+const OPENAI_VOICE_KIND: Record<string, 'female' | 'male'> = {
+  marin: 'female', coral: 'female', sage: 'female', shimmer: 'female', alloy: 'female',
+  cedar: 'male', ash: 'male', ballad: 'male', echo: 'male', verse: 'male',
+};
+
+/**
+ * The voice a location speaks with on Vapi (the owner's rule, 2026-11-19): its own Vapi voice when it chose one (Settings
+ * > Voice); else, when the clinic picked its own voice (any but the starting marin, which every clinic has until it
+ * changes it), the ElevenLabs voice of the same kind, so a choice it made is never changed (note 46, item 3); else the
+ * default, Chris (V5). A clinic that picked marin itself can't be told from one that never chose: it hears the default.
+ */
+export function vapiVoiceOf(clinic: { voice?: string; vapi?: { voice?: VapiVoiceChoice } }): VapiVoiceChoice {
+  if (clinic.vapi?.voice) return clinic.vapi.voice;
+  const kind = clinic.voice && clinic.voice !== DEFAULT_VOICE ? OPENAI_VOICE_KIND[clinic.voice] : undefined;
+  const same = kind ? VAPI_VOICES.find((v) => v.kind === kind) : undefined;
+  return same ? { provider: '11labs', voiceId: same.voiceId, model: VAPI_VOICE_MODEL } : vapiDefaultVoice();
 }
 
 /** One of the listed voices, by id; null for one set by provisioning that Settings does not list. */
