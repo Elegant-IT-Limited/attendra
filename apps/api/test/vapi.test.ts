@@ -83,7 +83,8 @@ describe('Vapi per location (provisioning)', () => {
     expect(prompt).toContain('The call facts (today\'s date at the clinic, and whether there is caller ID) come as a message at the start of the call');
     // never Vapi's own "Elliot": the default ElevenLabs voice, a man's (V5, the owner's choice), whatever the clinic's own voice
     expect(assistant.voice).toEqual({ provider: '11labs', voiceId: 'iP95p4xoKVk53GoZ742B', model: 'eleven_flash_v2_5' });
-    expect(assistant.serverMessages).toEqual(['conversation-update', 'end-of-call-report', 'status-update']);
+    // the caller's final transcripts too: the lookup they ask for runs before Vapi's model does (call speed, 2026-11-19)
+    expect(assistant.serverMessages).toEqual(['conversation-update', 'end-of-call-report', 'status-update', 'transcript[transcriptType="final"]']);
     expect(vapi.sent.find((s) => s.op === 'createPhoneNumber')!.body).toEqual({ provider: 'byo-phone-number', credentialId: 'cred_twilio_vapi', number: NUMBER, numberE164CheckEnabled: true, assistantId: 'asst_1', name: `Attendra ${C}` });
     // kept: ids in the settings; the secret encrypted with its keyed hash, never in the settings or the answer
     const state = await vapiState();

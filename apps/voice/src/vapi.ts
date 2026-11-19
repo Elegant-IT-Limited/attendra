@@ -2,7 +2,7 @@
 import { type ActionRecorder, type Backend, CallAgent, CallCache, cachedBackend, CallState, type Outbound, type Planner } from '@attendra/agent';
 import { digitsAsWords, callFacts, type CallEventSink, ClinicConfig, DEMO_BUSY_LINE, DEMO_GOODBYE_LINE, DEMO_LIMITS, DEMO_WRAP_UP_LINE, type DemoLimitCode, forVapiVoice, fromVapiVoice, isDemoClinic, type Language, lastFour, spokenDigits, isVapiTestClinic, maxGapMs, repeatedQuestions, vapiAlertAt } from '@attendra/core';
 import { type Alerter, isVapiCreditEnd, isVapiOpenAiQuotaEnd, type Logger } from '@attendra/observability';
-import { type CallRecorder, callFactsNote, VAPI_EVENTS_PATH, VAPI_SECRET_HEADER } from '@attendra/voice-engine';
+import { type CallRecorder, callFactsNote, LOOKUPS_AHEAD_MAX, VAPI_EVENTS_PATH, VAPI_SECRET_HEADER } from '@attendra/voice-engine';
 import type { FastifyInstance } from 'fastify';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { LiveRegistry } from './live';
@@ -75,6 +75,10 @@ interface VapiMessage {
   durationSeconds?: number;
   /** What Vapi charged for the call, all parts, in dollars. */
   cost?: number;
+  /** A transcript message: whose words, partial or final, and the words. */
+  role?: string;
+  transcriptType?: string;
+  transcript?: string;
 }
 /** A line of Vapi's conversation: `secondsFromStart` in seconds, `duration` in milliseconds (as Vapi sends them). */
 interface VapiLine { role?: string; message?: string; secondsFromStart?: number; duration?: number }
@@ -110,6 +114,11 @@ interface Session {
   callerLast4: string | null;
   /** Wrong caller-ID digits the assistant said and was corrected for, so each is corrected once. */
   corrected: Set<string>;
+  /**
+   * The caller's words given to the agent from Vapi's final transcripts, before Vapi's own line for them (lookup-ahead):
+   * that line, when it comes, is fed only for any words it adds. Normalised words, cleared once the line is matched.
+   */
+  early: string;
 }
 
 const NO_EVENTS: CallEventSink = { add: () => {}, close: async () => ({ written: 0, dropped: 0 }) };
@@ -135,6 +144,26 @@ const endOf = (l: VapiLine) => startOf(l) + (Math.round(l.duration ?? 0) || 500)
 const spoken = (l: VapiLine) => (l.role === 'user' || l.role === 'bot' || l.role === 'assistant') && !!(l.message ?? '').trim();
 const whoOf = (l: VapiLine) => (l.role === 'user' ? 'caller' : 'agent') as 'caller' | 'agent';
 const overlaps = (a: { start: number; end: number }, b: { start: number; end: number }) => a.start < b.end && b.start < a.end;
+/** Words for comparing a line with transcripts: lower case, letters and digits only, single spaces. */
+const normalWords = (text: string) => text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+/**
+ * Vapi's line for the caller, against the words already given from its final transcripts (`early`): what of the line is
+ * still to be fed ('' for nothing, null for the whole line: not those words), and what of `early` is left for the next
+ * line (the caller spoke twice before Vapi's lines came: "Yes." then "For Rocky.").
+ */
+export function afterEarly(line: string, early: string): { rest: string | null; early: string } {
+  const said = normalWords(line);
+  if (!said || said === early) return { rest: '', early: '' };
+  if (early.startsWith(`${said} `)) return { rest: '', early: early.slice(said.length + 1) };
+  if (!said.startsWith(`${early} `)) return { rest: null, early: '' };
+  // the rest in the line's own words: its words from where the early words end
+  const want = early.split(' ').length;
+  const words = line.trim().split(/\s+/);
+  let n = 0;
+  let i = 0;
+  while (i < words.length && n < want) { n += normalWords(words[i]!).split(' ').filter(Boolean).length; i++; }
+  return { rest: words.slice(i).join(' '), early: '' };
+}
 
 /**
  * The call's lines for the record, from Vapi's final transcript (the end-of-call report holds the whole call): in time
@@ -403,9 +432,11 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
     // the caller ID reaches every tool as on path A (the agent's callerNumber), and the voice hears it with the date
     const s: Session = { agent, clinicId: clinic.id, callId, fed: [], startedAt: Date.now(), notes: [], controlUrl: controlUrlOf(m), closed: false,
       facts: demoLimit ? null : callFactsNote(clinic, callFacts(clinic, deps.now(), from)), refused: !!demoLimit, pending: [], events: deps.callEventsFor?.(clinic.id, callId, 'vapi/tools') ?? NO_EVENTS,
-      callerLast4: from ? lastFour(from) : null, corrected: new Set() };
+      callerLast4: from ? lastFour(from) : null, corrected: new Set(), early: '' };
     sessions.set(vapiId, s);
     openLive(s, clinic, web);
+    // the household on the caller ID, read while the greeting plays: the first identity lookup answers from memory
+    if (!demoLimit) void agent.preloadHousehold();
     if (demoLimit) {
       // over a limit: the one fixed line over whatever Vapi's assistant began, then the end; recorded with the limit's code
       agent.demoLimited(demoLimit);
@@ -462,7 +493,14 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
       const span = { who: whoOf(l), start: startOf(l), end: endOf(l) };
       if (s.fed.some((f) => f.who === span.who && overlaps(f, span))) continue;
       s.fed.push(span);
-      const said = (l.message ?? '').trim();
+      let said = (l.message ?? '').trim();
+      // the caller's words already given from the final transcripts (lookup-ahead): only what this line adds
+      if (l.role === 'user' && s.early) {
+        const { rest, early } = afterEarly(said, s.early);
+        s.early = early;
+        if (rest === '') continue;
+        if (rest !== null) said = rest;
+      }
       // the assistant's words with Vapi's spaced times read as clock times ("8 30 AM" is 8:30), for the read-back check
       const text = l.role === 'user' ? said : fromVapiVoice(said);
       // duration is already in ms: read as seconds, every line ended ~1000x too late, so a caller's yes always fell
@@ -477,6 +515,34 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
         for (const o of s.agent.onAgentTranscript(text, at, end)) if (o.type === 'instructions') s.notes.push(o.content);
         correctCallerId(s, text);
       }
+    }
+  }
+
+  /**
+   * A final transcript of the caller's words (lookup-ahead, call speed 2026-11-19): the words go to the agent at once
+   * (its guardrails hear them, as from Vapi's line), timed just after the last line fed; then the lookups they ask for
+   * (flow/speculate.ts, at most two) run, and each result is added to Vapi's conversation without a reply of its own.
+   * When it lands before Vapi's model runs, the model answers from it in one round; when it lands after, a tool call for
+   * the same thing answers from the call's memory. Vapi's own line for these words is later fed only for what it adds.
+   */
+  async function lookAhead(s: Session, words: string) {
+    const at = Math.max(Date.now() - s.startedAt, ...s.fed.map((f) => f.end + 1));
+    s.early = [s.early, normalWords(words)].filter(Boolean).join(' ');
+    act(s, s.agent.onCallerTranscript(words, at, at + 1));
+    s.events.add({ type: 'vapi.transcript.final' });
+    const ran = new Set<string>();
+    for (let i = 0; i < LOOKUPS_AHEAD_MAX && !s.closed; i++) {
+      const spec = s.agent.speculate();
+      if (!spec || ran.has(spec.name)) break;
+      ran.add(spec.name);
+      const { output, controls } = await s.agent.onToolCall(spec.name, spec.args);
+      act(s, controls);
+      withCallerId(s, spec.name, output);
+      s.events.add({ type: `lookahead.${spec.name}` });
+      deps.log.info({ call_id: s.callId, tool: spec.name }, 'vapi: lookup run ahead of the reply');
+      const content = forVapiVoice(`A lookup for the caller's last words has already run: ${spec.name} returned ${JSON.stringify(output)}. Answer from it now, following its say and spoken; do not call ${spec.name} again for the same details.`);
+      controlSoon(s, { type: 'add-message', message: { role: 'system', content }, triggerResponseEnabled: false });
+      if (!output.ok) break;
     }
   }
 
@@ -501,6 +567,14 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
     if (isVapiCreditEnd(m.endedReason)) deps.alerts?.alert('vapi_credit_low', `Vapi would not start a call (${m.endedReason}): the Vapi credit is used up or billing is frozen. Calls to Vapi locations go to Twilio's fallback.`, { clinicId });
     else if (isVapiOpenAiQuotaEnd(m.endedReason)) deps.alerts?.alert('openai_quota', `A Vapi call ended because OpenAI refused it (${m.endedReason}): the credit or quota is used up.`, { clinicId });
 
+    // the caller's words as soon as the transcriber has them, before Vapi's model runs: given to the agent now, and the
+    // lookup they ask for run and added to the conversation, so the model can answer from it (lookup-ahead)
+    if (m.type?.startsWith('transcript') && m.transcriptType === 'final' && m.role === 'user' && vapiId) {
+      const s = sessions.get(vapiId);
+      const words = (m.transcript ?? '').trim();
+      if (s && !s.refused && !s.closed && words) await lookAhead(s, words);
+      return reply.code(200).send({});
+    }
     if (m.type === 'tool-calls') {
       if (vapiId && !sessions.has(vapiId)) await live(vapiId);
       const s = await session(m, clinicId);
