@@ -4,6 +4,13 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (call speed, 2026-11-19)
+
+- **One model round where a lookup is plain (lookup-ahead, now on).** On gpt-realtime the caller's words are looked up before the voice replies wherever the next tool is plain, and the result is handed to the voice with them: a yes to the caller-ID question, a yes to a number's read-back, a pet on the number named after the pick question, an hours question, and a day or time once the pet is found and the visit known (at most two per turn). It never guesses: "new", a no, an emergency or a change waiting for a yes runs nothing, and the first turn still waits for words (a cough is never answered). `ATTENDRA_LOOKUP_AHEAD=off` turns it off.
+- **The household on the caller ID is read as the call starts** on gpt-realtime, while the greeting plays, so the first identity lookup answers from memory. Its pets' names are used only to know a pet the caller names is on the number; nothing is said from it.
+- **A short acknowledgement while a lookup runs.** On gpt-realtime the voice may say one to three words ("Sure.", "One moment.") before a tool call in the same reply, and a turn waiting on a lookup run ahead hears one if its reply has not started within 0.6 s. None for a clinic with acknowledgements off.
+- **`pnpm db:call-speed <clinic id>`**: per call path, the reply's start after the caller stops (median, p90, against the target of 1.5 s and 2.5 s), the answer after a lookup, and how often a lookup ran ahead and an acknowledgement went, from the event log (no words).
+
 ### Fixed (call bugs from two test calls, part 1: the schedule and texts, 2026-11-17)
 
 - **"Move it" or "cancel it" never changes a visit the caller did not pick.** A pet with a visit the team had booked got a second one on the call; "move it to Friday" then moved the team's visit, and "cancel it" (with the new visit's time picked) was later replaced by a move of the team's visit again, so the visit the caller wanted gone stayed and the other was cancelled. Now, when a pet has more than one visit to come, `propose_booking` with `replaces_appointment_id` and `propose_cancellation` are refused (`which_visit`) unless it is the visit the caller picked: the one their words name last (its time, also said run together like "315", or its day when no other visit shares it), else "it" right after a booking, the visit booked or moved on this call, else the one the assistant offered to move. With none of those, the caller hears each visit named and is asked which. A change waiting for a yes that a new proposal replaces is said to be dropped before the new read-back.

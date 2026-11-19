@@ -92,6 +92,7 @@ Twilio's Vapi trunk originates to `sip:<credential id>.sip.vapi.ai` (TLS: `:5061
 | `VAPI_SIP_HOST` | api | Vapi's SIP host for the credential's region: `sip.vapi.ai` (default) or `sip.eu.vapi.ai`. |
 | `VAPI_SERVER_URL` | api | The public https address Vapi reaches the voice service at (its `/webhooks/vapi/v1/events`, which the proxy routes to the voice service). Unset, `PUBLIC_URL`. |
 | `VAPI_MAX_CONCURRENCY` | api, voice | Vapi calls the subscription takes at once (default 4). Set the same on both. |
+| `ATTENDRA_LOOKUP_AHEAD` | voice | `off` stops gpt-realtime running a likely lookup before the reply (on by default). |
 | `VAPI_SERVER_SECRET` | voice | Optional: the test clinics' secret (the bake-off). Not needed for a location. |
 
 ### Vapi quality settings

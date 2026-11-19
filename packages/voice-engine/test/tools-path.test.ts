@@ -5,7 +5,7 @@ import { Writable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import {
   CallRunner, fromDelegatedResponse, GO_WAIT_MS, GptLiveEngine, RealtimeEngine, realtimeTools, type RealtimeSocket, type Sideband, type SidebandEvent,
-  type SidebandSocket, toolsBackendInstructions, toolsLivePrompt, toolsVapiPrompt, toolsVoicePrompt, toolsVoiceStaticPrompt, callFactsNote, compactSchema, TOOLS_TRUNCATION, type VoiceEngine, TURN_NOTE, sayToolQuestion, FIRST_WORDS_WAIT_MS, withoutPromptEcho, toolQuestion, sayToolLine, toolRefusalLine,
+  type SidebandSocket, toolsBackendInstructions, toolsLivePrompt, toolsVapiPrompt, toolsVoicePrompt, toolsVoiceStaticPrompt, callFactsNote, compactSchema, TOOLS_TRUNCATION, type VoiceEngine, TURN_NOTE, TURN_NOTE_NO_ACK, ACK_BEFORE_TOOLS, ACK_LINE, ACK_AFTER_MS, sayToolQuestion, FIRST_WORDS_WAIT_MS, withoutPromptEcho, toolQuestion, sayToolLine, toolRefusalLine,
   PATH_A_CUTS, PATH_A_DROPS, conversationPrompt,
 } from '../src';
 
@@ -92,11 +92,18 @@ describe('warmth, in each language the clinic speaks', () => {
     expect(toolsVoiceStaticPrompt({ ...vet, languages: ['es'], primaryLanguage: 'es' })).not.toContain('Oh no');
   });
 
-  it('the planner path speaks within about a second before a lookup; path A, whose tools answer in well under one, says nothing first', () => {
+  it('the planner path speaks within about a second before a lookup; path A may say one to three words before a tool, never more (call speed)', () => {
     expect(conversationPrompt(bilingual, NOW)).toContain('at once, so the caller never hears more than about a second of silence');
     const pathA = toolsVoiceStaticPrompt(bilingual);
     expect(pathA).not.toContain('about a second of silence');
-    expect(pathA).toContain('Call a tool without saying anything first: results come back in well under a second');
+    expect(pathA).toContain(ACK_BEFORE_TOOLS);
+    expect(pathA).not.toContain('Call a tool without saying anything first');
+    // a clinic that turned acknowledgements off: nothing before a tool, as before
+    const quiet = toolsVoiceStaticPrompt({ ...bilingual, talk: { pace: 'normal', style: 'warm', acknowledgements: false } });
+    expect(quiet).toContain('Call a tool without saying anything first');
+    expect(quiet).not.toContain(ACK_BEFORE_TOOLS);
+    // Vapi's voice says its own short line while a tool runs: its prompt keeps "nothing first"
+    expect(toolsVapiPrompt(bilingual)).toContain('Call a tool without saying anything first');
   });
 
   it('path A\'s cached prefix is the same on every call of a clinic', () => {
@@ -270,7 +277,8 @@ describe('round 2: manual replies on gpt-realtime', () => {
     // the caller's first turn is answered once its words are in (call bugs, 2026-11-17)
     s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 't0', item_id: 'item_0', transcript: 'Hi, I need a check-up for Biscuit.' });
     expect(s.sent.slice(start).map((x) => noteText(x) ?? x.type)).toEqual([TURN_NOTE, 'response.create']);
-    expect(TURN_NOTE).toContain('with no words before it');
+    expect(TURN_NOTE).toContain('one acknowledgement of one to three words');
+    expect(TURN_NOTE_NO_ACK).toContain('with no words before it');
     s.play({ type: 'response.done', event_id: 'r1' });
     const next = s.sent.length;
     s.play({ type: 'input_audio_buffer.committed', event_id: 'c1', item_id: 'item_1' });
@@ -361,6 +369,119 @@ describe('round 2: manual replies on gpt-realtime', () => {
     // a lookup handed over after it already replied by itself is dropped
     sideband.send({ type: 'tool.inject', event_id: 'i2', call_id: 'spec_2', name: 'find_slots', arguments: '{}', output: '{}' });
     expect(s.sent.slice(mid).filter(notNote)).toHaveLength(1);
+    vi.useRealTimers();
+  });
+});
+
+describe('lookup-ahead on gpt-realtime (call speed, 2026-11-19)', () => {
+  const engineFor = async (id: string, clinic = vet) => {
+    const s = realtimeSocket();
+    const e = new RealtimeEngine({ realtime: { calls: { accept: vi.fn(async () => {}) } } } as never, 'gpt-realtime-2.1', () => s.ws);
+    await e.accept(id, clinic, NOW, undefined, { flow: 'tools' });
+    const sideband = e.attach(id);
+    s.play({ type: 'response.done', event_id: `${id}_g` }); // the greeting's reply is over
+    return { s, sideband };
+  };
+  /** A caller turn of `ms` of speech, then its end. */
+  const turn = (s: ReturnType<typeof realtimeSocket>, item: string, ms: number) => {
+    s.play({ type: 'input_audio_buffer.speech_started', event_id: `${item}_a`, item_id: item });
+    vi.advanceTimersByTime(ms);
+    s.play({ type: 'input_audio_buffer.speech_stopped', event_id: `${item}_b`, item_id: item });
+    s.play({ type: 'input_audio_buffer.committed', event_id: `${item}_c`, item_id: item });
+  };
+  const said = (s: ReturnType<typeof realtimeSocket>, item: string, transcript: string) =>
+    s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: `${item}_t`, item_id: item, transcript });
+  const replies = (sent: Record<string, unknown>[]) => sent.filter((x) => x.type === 'response.create');
+  const ackOf = (x: Record<string, unknown>) => (x.response as { instructions?: string } | undefined)?.instructions === ACK_LINE;
+
+  it('the first turn, with replies ours to start, still waits for words: a cough is never answered, real words wait for the go', async () => {
+    vi.useFakeTimers();
+    const { s, sideband } = await engineFor('rtc_la1');
+    sideband.send({ type: 'turns.manual', event_id: 'm', on: true });
+    let mark = s.sent.length;
+    turn(s, 'item_0', 400);
+    said(s, 'item_0', '');
+    vi.advanceTimersByTime(FIRST_WORDS_WAIT_MS + 100);
+    expect(replies(s.sent.slice(mark))).toEqual([]);
+    mark = s.sent.length;
+    turn(s, 'item_1', 1800);
+    said(s, 'item_1', 'Hi, are you open on Saturday?');
+    // no acknowledgement for a turn that had to show its words first
+    vi.advanceTimersByTime(ACK_AFTER_MS + 50);
+    expect(replies(s.sent.slice(mark))).toEqual([]);
+    sideband.send({ type: 'tool.inject', event_id: 'i', call_id: 'spec_h', name: 'clinic_now', arguments: '{}', output: '{"ok":true}' });
+    sideband.send({ type: 'reply.go', event_id: 'g' });
+    expect(s.sent.slice(mark).filter(notNote).map((x) => (x.item as { type?: string } | undefined)?.type ?? x.type)).toEqual(['function_call', 'function_call_output', 'response.create']);
+    vi.useRealTimers();
+  });
+
+  it('while the lookup runs, a short acknowledgement goes after a moment; the answer follows it in one reply', async () => {
+    vi.useFakeTimers();
+    const { s, sideband } = await engineFor('rtc_la2');
+    // the caller has spoken before
+    turn(s, 'item_0', 3000);
+    said(s, 'item_0', 'Hi, I want to book a visit.');
+    s.play({ type: 'response.done', event_id: 'r0' });
+    sideband.send({ type: 'turns.manual', event_id: 'm', on: true });
+    const mark = s.sent.length;
+    turn(s, 'item_1', 2600);
+    vi.advanceTimersByTime(ACK_AFTER_MS);
+    const ack = replies(s.sent.slice(mark));
+    expect(ack).toHaveLength(1);
+    expect(ack[0]).toMatchObject({ response: { tool_choice: 'none', instructions: ACK_LINE } });
+    s.play({ type: 'response.created', event_id: 'ra' });
+    sideband.send({ type: 'tool.inject', event_id: 'i', call_id: 'spec_v', name: 'verify_caller', arguments: '{}', output: '{"ok":true}' });
+    sideband.send({ type: 'reply.go', event_id: 'g' });
+    // the answer waits for the acknowledgement's reply to finish, then goes once
+    expect(replies(s.sent.slice(mark))).toHaveLength(1);
+    s.play({ type: 'response.done', event_id: 'rad' });
+    const after = replies(s.sent.slice(mark));
+    expect(after).toHaveLength(2);
+    expect(ackOf(after[1]!)).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it('no acknowledgement when the go comes first, or for a clinic that turned them off (its turn note says nothing goes before a tool)', async () => {
+    vi.useFakeTimers();
+    const fast = await engineFor('rtc_la3');
+    turn(fast.s, 'item_0', 3000);
+    said(fast.s, 'item_0', 'Hi.');
+    fast.s.play({ type: 'response.done', event_id: 'r0' });
+    fast.sideband.send({ type: 'turns.manual', event_id: 'm', on: true });
+    const mark = fast.s.sent.length;
+    turn(fast.s, 'item_1', 2600);
+    vi.advanceTimersByTime(200);
+    fast.sideband.send({ type: 'reply.go', event_id: 'g' });
+    vi.advanceTimersByTime(ACK_AFTER_MS);
+    expect(replies(fast.s.sent.slice(mark)).filter(ackOf)).toEqual([]);
+
+    const quiet = await engineFor('rtc_la4', { ...vet, talk: { pace: 'normal', style: 'warm', acknowledgements: false } });
+    turn(quiet.s, 'item_0', 3000);
+    said(quiet.s, 'item_0', 'Hi.');
+    quiet.s.play({ type: 'response.done', event_id: 'r0' });
+    quiet.sideband.send({ type: 'turns.manual', event_id: 'm', on: true });
+    const q = quiet.s.sent.length;
+    turn(quiet.s, 'item_1', 2600);
+    vi.advanceTimersByTime(ACK_AFTER_MS + 50);
+    expect(replies(quiet.s.sent.slice(q)).filter(ackOf)).toEqual([]);
+    expect(quiet.s.sent.slice(q).map(noteText).filter(Boolean)).toContain(TURN_NOTE_NO_ACK);
+    vi.useRealTimers();
+  });
+
+  it('a turn whose reply an instruction started (an emergency script) gets no second reply from the go', async () => {
+    vi.useFakeTimers();
+    const { s, sideband } = await engineFor('rtc_la5');
+    turn(s, 'item_0', 3000);
+    said(s, 'item_0', 'Hi.');
+    s.play({ type: 'response.done', event_id: 'r0' });
+    sideband.send({ type: 'turns.manual', event_id: 'm', on: true });
+    const mark = s.sent.length;
+    turn(s, 'item_1', 2600);
+    sideband.send({ type: 'session.instructions.append', event_id: 'x', delegation_id: null, content: 'Say the emergency script now.' });
+    s.play({ type: 'response.created', event_id: 'rx' });
+    s.play({ type: 'response.done', event_id: 'rxd' });
+    vi.advanceTimersByTime(GO_WAIT_MS + ACK_AFTER_MS);
+    expect(replies(s.sent.slice(mark))).toHaveLength(1);
     vi.useRealTimers();
   });
 });
@@ -582,6 +703,41 @@ describe('the runner on the tools path', () => {
     const h = harness();
     await h.runner.handle({ type: 'session.tool_call', event_id: 'e1', call_id: 'fc_9', name: 'find_slots', arguments: '{oops' });
     expect(JSON.parse((h.sent[0] as { output: string }).output)).toMatchObject({ ok: false, outcome: 'invalid_arguments' });
+  });
+
+  it('lookup-ahead from the first turn: the caller\'s first words wait for the go, an hours question runs clinic_now first (call speed)', async () => {
+    const h = harness();
+    h.runner.manualTurns = true;
+    // the greeting is said: the first turn waits for the caller's words
+    await h.runner.handle(say('out', 'g1', 'Thanks for calling. How can I help?', 0));
+    expect(h.sent).toContainEqual(expect.objectContaining({ type: 'turns.manual', on: true }));
+    h.sent.length = 0;
+    await h.runner.handle(say('in', 'e1', 'Hi, are you open on Saturday?', 3000));
+    // the result handed over before the go, and only then are replies the engine's again (never before: it would reply
+    // without the result)
+    expect(h.sent.map((x) => (x as { type: string }).type)).toEqual(['tool.inject', 'reply.go', 'turns.manual']);
+    expect(h.sent[0]).toMatchObject({ name: 'clinic_now' });
+    expect(h.sent[2]).toMatchObject({ on: false });
+  });
+
+  it('runs at most two lookups ahead (the pet found, then its times), and none after a refusal', async () => {
+    const h = harness();
+    h.runner.manualTurns = true;
+    await h.runner.handle(say('out', 'g1', 'Hello.', 0));
+    const spec = vi.spyOn(h.agent, 'speculate')
+      .mockReturnValueOnce({ name: 'verify_caller', args: {} }).mockReturnValueOnce({ name: 'find_slots', args: {} }).mockReturnValue({ name: 'clinic_now', args: {} });
+    const tool = vi.spyOn(h.agent, 'onToolCall').mockResolvedValue({ output: { ok: true, outcome: 'ok', data: {} } as never, controls: [] });
+    vi.spyOn(h.agent, 'repliesAfterWords').mockReturnValue(true);
+    h.sent.length = 0;
+    await h.runner.handle(say('in', 'e1', 'Yes, for Biscuit, is Friday free?', 3000));
+    expect(tool.mock.calls.map((c) => c[0])).toEqual(['verify_caller', 'find_slots']);
+    expect(h.sent.filter((x) => (x as { type: string }).type === 'tool.inject')).toHaveLength(2);
+    expect(h.sent.filter((x) => (x as { type: string }).type === 'reply.go')).toHaveLength(1);
+    // a refusal (a read-back, "is it new?") is the answer: nothing after it
+    spec.mockReset().mockReturnValueOnce({ name: 'verify_caller', args: {} }).mockReturnValue({ name: 'find_slots', args: {} });
+    tool.mockReset().mockResolvedValue({ output: { ok: false, outcome: 'confirm_number', data: {} } as never, controls: [] });
+    await h.runner.handle(say('in', 'e2', 'It is 720 555 0172.', 6000));
+    expect(tool.mock.calls.map((c) => c[0])).toEqual(['verify_caller']);
   });
 
   it('once the pet is found, runs the lookup the caller asks for, hands it over, then says go', async () => {

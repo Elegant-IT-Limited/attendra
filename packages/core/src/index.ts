@@ -52,5 +52,6 @@ export * from './visit-status';
 export * from './call-markers';
 export * from './call-events';
 export * from './call-numbers';
+export * from './call-speed';
 export * from './qa-mask';
 export * from './vapi';
