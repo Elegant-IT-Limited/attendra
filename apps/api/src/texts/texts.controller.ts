@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ClinicConfig, localDateOf, TEXT_GROUPS, type TextGroup, zonedInstant } from '@attendra/core';
+import { addDays, ClinicConfig, TEXT_GROUPS, type TextGroup, zonedInstant } from '@attendra/core';
 import type { FrontDeskRepository } from '@attendra/db';
 import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Query } from '@nestjs/common';
 import { ApiBody, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
@@ -10,6 +10,7 @@ import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
 import { CLOCK, FRONT_DESK } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
+import { textWindow } from './window';
 
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 type Row = Awaited<ReturnType<FrontDeskRepository['texts']>>[number];
@@ -59,14 +60,14 @@ export class TextsController {
 
   @Get('summary')
   @Requires('patients:read')
-  @ApiOperation({ summary: 'Today\'s and the last 7 days\' texts (clinic-local days), sent and not sent, and how many not sent nobody has handled. Counts only; not audited.' })
+  @ApiOperation({ summary: 'Today\'s and the last 7 days\' texts (clinic-local days), sent and not sent, and how many refill texts of the 7 days not sent nobody has handled (the count Today shows). Counts only; not audited.' })
   @ApiOkResponse({ schema: schemaOf(TextSummary) })
   async summary(@Param('clinicId') clinicId: string): Promise<TextSummary> {
     const tz = (await this.clinic(clinicId)).timezone;
-    const todayDate = localDateOf(this.now(), tz);
-    const weekFrom = addDays(todayDate, -6);
-    const counts = await this.desk.textSummary(clinicId, { today: zonedInstant(todayDate, '00:00', tz), week: zonedInstant(weekFrom, '00:00', tz) });
-    return { ...counts, todayDate, weekFrom };
+    // the window Today counts over too (SMALL-2)
+    const window = textWindow(this.now(), tz);
+    const counts = await this.desk.textSummary(clinicId, { today: window.today, week: window.since });
+    return { ...counts, todayDate: window.todayDate, weekFrom: window.from };
   }
 
   /** A text not sent, marked handled (someone called the owner instead), or back to not handled. */

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ChoiceRenames, type CustomField, HOLDS_TIME, normalizeName, withRenamedChoices } from '@attendra/core';
+import { type ChoiceRenames, type CustomField, HOLDS_TIME, normalizeName, TEXT_GROUPS, withRenamedChoices } from '@attendra/core';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL, sql } from 'drizzle-orm';
 import { clinicAccess, clinicMemberships, memberships } from '../auth-schema';
 import { type Database, type Tx, withClinic } from '../client';
@@ -115,6 +115,17 @@ export function textStatusWhere(status: TextStatusFilter | undefined): SQL | und
     and later.template = ${smsMessages.template} and later.id <> ${smsMessages.id}
     and (later.created_at, later.id) > (${smsMessages.createdAt}, ${smsMessages.id})
     and coalesce(later.task_id::text, later.appointment_id::text, later.to_hash) = coalesce(${smsMessages.taskId}::text, ${smsMessages.appointmentId}::text, ${smsMessages.toHash}))`);
+}
+/**
+ * Refill texts (the Texts page's Refills kinds, the texts about requests) not sent since `since` that nobody has handled
+ * (a later text of the same kind to the same request that went clears one): the one count Today's item and the Texts
+ * page's strip both show, and exactly what its Refills, not handled, from that day filter lists (SMALL-2). A visit's
+ * reminder that was not sent is not here: Today has never listed those.
+ */
+async function countNotHandled(tx: Tx, clinicId: string, since: Date): Promise<number> {
+  const [row] = await tx.select({ n: sql<number>`count(*)::int` }).from(smsMessages)
+    .where(and(eq(smsMessages.clinicId, clinicId), inArray(smsMessages.template, [...TEXT_GROUPS.refills]), sql`${smsMessages.createdAt} >= ${since}`, textStatusWhere('needs_handling')));
+  return row!.n;
 }
 export type TextFailure = { status: string; failureReason: string | null; errorCode: string | null; at: Date };
 /** Each request's latest text, when it is one that was not sent: { request id: why }. */
@@ -452,10 +463,14 @@ export class FrontDeskRepository {
    * Filters run in the database, so a task that is not shown is not read or audited.
    * A search (`q`) writes one tasks.searched row with how many matched, never what was typed.
    */
-  /** `viewer` is the staff member reading, or the API key an MCP client reads with; the task.viewed rows are theirs. */
-  async listTasks(clinicId: string, opts: { status: 'open' | 'done'; limit: number; type?: TaskType; assignee?: { userId: string } | 'unassigned'; q?: string; from?: Date; to?: Date }, viewer: string | { apiKeyId: string }) {
+  /**
+   * `viewer` is the staff member reading, or the API key an MCP client reads with; the task.viewed rows are theirs.
+   * status 'all' (a search only: the Cmd-K palette, RPT-batch-11-07-3-2) is open and done requests in one search with one
+   * audit row: the open ones first, as the open queue sorts, then the done ones, newest closed first.
+   */
+  async listTasks(clinicId: string, opts: { status: 'open' | 'done' | 'all'; limit: number; type?: TaskType; assignee?: { userId: string } | 'unassigned'; q?: string; from?: Date; to?: Date }, viewer: string | { apiKeyId: string }) {
     return withClinic(this.db, clinicId, async (tx) => {
-      const filters = and(eq(tasks.clinicId, clinicId), eq(tasks.status, opts.status), opts.type ? eq(tasks.type, opts.type) : undefined,
+      const filters = and(eq(tasks.clinicId, clinicId), opts.status === 'all' ? undefined : eq(tasks.status, opts.status), opts.type ? eq(tasks.type, opts.type) : undefined,
         opts.assignee === 'unassigned' ? isNull(tasks.assigneeUserId) : opts.assignee ? eq(tasks.assigneeUserId, opts.assignee.userId) : undefined,
         opts.from ? sql`${tasks.createdAt} >= ${opts.from}` : undefined, opts.to ? lt(tasks.createdAt, opts.to) : undefined);
       const read = (where: SQL | undefined, limit: number) => tx.select({ task: tasks, firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc, guardianNameEnc: patients.guardianNameEnc, phoneEnc: patients.phoneEnc, summary: callSummaries })
@@ -463,16 +478,19 @@ export class FrontDeskRepository {
         .where(where)
         // the newest first: what just came in is what the front desk looks for
         // urgent ones lead the open queue
-        .orderBy(...(opts.status === 'open' ? [desc(tasks.urgent), desc(tasks.createdAt)] : [desc(tasks.doneAt)]), desc(tasks.id))
+        .orderBy(...(opts.status === 'open' ? [desc(tasks.urgent), desc(tasks.createdAt)] : opts.status === 'done' ? [desc(tasks.doneAt)] : [desc(tasks.createdAt)]), desc(tasks.id))
         .limit(limit);
       if (!opts.q) return this.taskViews(tx, clinicId, await read(filters, opts.limit), viewer);
       // a search reads the newest TASK_SEARCH_SCAN and decrypts them, for words in the details and notes, which have no keys
       // (decision 7); a name, a phone's digits, the type or the number are found past that by their keys
       const keyed = this.taskKeys(tx, clinicId, opts.q);
-      const rows = [...new Map([...await read(filters, Math.max(opts.limit, TASK_SEARCH_SCAN)), ...(keyed ? await read(and(filters, keyed), TASK_SEARCH_SCAN) : [])].map((r) => [r.task.id, r])).values()]
-        .sort(opts.status === 'open'
-          ? (a, b) => Number(b.task.urgent) - Number(a.task.urgent) || b.task.createdAt.getTime() - a.task.createdAt.getTime() || (b.task.id > a.task.id ? 1 : -1)
-          : (a, b) => (b.task.doneAt?.getTime() ?? Infinity) - (a.task.doneAt?.getTime() ?? Infinity) || (b.task.id > a.task.id ? 1 : -1));
+      // open and done together read as many of each as one of them alone would
+      const scan = opts.status === 'all' ? 2 * TASK_SEARCH_SCAN : TASK_SEARCH_SCAN;
+      const openFirst = (a: { task: typeof tasks.$inferSelect }, b: { task: typeof tasks.$inferSelect }) => Number(b.task.urgent) - Number(a.task.urgent) || b.task.createdAt.getTime() - a.task.createdAt.getTime() || (b.task.id > a.task.id ? 1 : -1);
+      const doneFirst = (a: { task: typeof tasks.$inferSelect }, b: { task: typeof tasks.$inferSelect }) => (b.task.doneAt?.getTime() ?? Infinity) - (a.task.doneAt?.getTime() ?? Infinity) || (b.task.id > a.task.id ? 1 : -1);
+      const rows = [...new Map([...await read(filters, Math.max(opts.limit, scan)), ...(keyed ? await read(and(filters, keyed), scan) : [])].map((r) => [r.task.id, r])).values()]
+        .sort(opts.status === 'open' ? openFirst : opts.status === 'done' ? doneFirst
+          : (a, b) => Number(a.task.status === 'done') - Number(b.task.status === 'done') || (a.task.status === 'open' ? openFirst(a, b) : doneFirst(a, b)));
       const ctxOf = (col: string) => phiContext(clinicId, col);
       // a search also reads the notes of the rows it reads: what the team wrote on a request is something they search by
       const scannedNotes = rows.length
@@ -548,17 +566,18 @@ export class FrontDeskRepository {
    * Texts about requests that were not sent since `since`, newest first, each the latest of its kind on its request (a
    * later text of that kind that went clears it): the request's number and type, the text's state and why. No patient
    * data and nothing decrypted, so not audited. For the notice and Today's list that a failed text is never missed.
+   * `total` is textsNotHandled over the same days: the one count Today and the Texts page both show (SMALL-2).
    */
   async textProblems(clinicId: string, since: Date): Promise<{ total: number; problems: { textId: string; taskId: string; number: number; type: string; taskStatus: 'open' | 'done'; status: string; failureReason: string | null; errorCode: string | null; at: Date }[] }> {
     return withClinic(this.db, clinicId, async (tx) => {
       // the latest text of its kind on its request, not sent, and nobody marked it handled (texts polish TX2): the
       // Texts page's "Needs handling" for refills, the same rule
       const where = and(eq(smsMessages.clinicId, clinicId), isNotNull(smsMessages.taskId), sql`${smsMessages.createdAt} >= ${since}`, textStatusWhere('needs_handling'));
-      const [count] = await tx.select({ n: sql<number>`count(*)::int` }).from(smsMessages).where(where);
+      const total = await countNotHandled(tx, clinicId, since);
       const rows = await tx.select({ id: smsMessages.id, taskId: smsMessages.taskId, status: smsMessages.status, failureReason: smsMessages.failureReason, errorCode: smsMessages.errorCode, at: smsMessages.createdAt, number: tasks.number, type: tasks.type, taskStatus: tasks.status })
         .from(smsMessages).innerJoin(tasks, and(eq(tasks.clinicId, smsMessages.clinicId), eq(tasks.id, smsMessages.taskId)))
         .where(where).orderBy(desc(smsMessages.createdAt), desc(smsMessages.id)).limit(20);
-      return { total: count!.n, problems: rows.map((r) => ({ textId: r.id, taskId: r.taskId!, number: r.number, type: r.type, taskStatus: r.taskStatus, status: r.status, failureReason: r.failureReason, errorCode: r.errorCode, at: r.at })) };
+      return { total, problems: rows.map((r) => ({ textId: r.id, taskId: r.taskId!, number: r.number, type: r.type, taskStatus: r.taskStatus, status: r.status, failureReason: r.failureReason, errorCode: r.errorCode, at: r.at })) };
     });
   }
 
@@ -1063,7 +1082,7 @@ export class FrontDeskRepository {
     return and(...each) ?? sql`true`;
   }
 
-  /** Today's and the last 7 days' texts, sent and not sent, and those not sent nobody has handled (the Texts page's strip). */
+  /** Today's and the last 7 days' texts, sent and not sent, and the refill texts of the 7 days not sent that nobody has handled (the Texts page's strip). */
   async textSummary(clinicId: string, since: { today: Date; week: Date }) {
     return withClinic(this.db, clinicId, async (tx) => {
       const failed = sql`${smsMessages.status} in ('not_sent', 'failed', 'undelivered')`;
@@ -1073,8 +1092,8 @@ export class FrontDeskRepository {
         weekSent: sql<number>`count(*) filter (where not (${failed}))::int`,
         weekNotSent: sql<number>`count(*) filter (where ${failed})::int`,
       }).from(smsMessages).where(and(eq(smsMessages.clinicId, clinicId), sql`${smsMessages.createdAt} >= ${since.week}`));
-      const [open] = await tx.select({ n: sql<number>`count(*)::int` }).from(smsMessages).where(and(eq(smsMessages.clinicId, clinicId), textStatusWhere('needs_handling')));
-      return { today: { sent: row!.todaySent, notSent: row!.todayNotSent }, week: { sent: row!.weekSent, notSent: row!.weekNotSent }, needsHandling: open!.n };
+      // the same count Today shows, over the same days (SMALL-2)
+      return { today: { sent: row!.todaySent, notSent: row!.todayNotSent }, week: { sent: row!.weekSent, notSent: row!.weekNotSent }, needsHandling: await countNotHandled(tx, clinicId, since.week) };
     });
   }
 

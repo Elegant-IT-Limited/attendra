@@ -18,7 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
 import { clinicTime, dayTitle, requestKind, requestNumber, requestTextLine, taskType, timeOf, TOOLS, usd, visitTypeName, zoneLabel } from '@/lib/format';
-import { TEXT_PROBLEM_DAYS, textsNotSentHref } from '@/lib/text-problems';
+import { notHandledWords, textsNotSentHref } from '@/lib/text-problems';
 import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 import { SAFETY_POLL_MS, SAFETY_POLL_WORDS } from '@/lib/changes';
@@ -120,7 +120,8 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
     queryFn: () => api<TextProblems>(`/clinics/${clinicId}/tasks/text-problems`),
     enabled: can('tasks:read'), refetchInterval: SAFETY_POLL_MS,
   });
-  const texts = { total: textProblems.data?.total ?? 0, problems: textProblems.data?.problems ?? [] };
+  // the refill texts of the last 7 days not handled: the same count the Texts page shows (SMALL-2)
+  const texts = { total: textProblems.data?.total ?? 0, problems: textProblems.data?.problems ?? [], from: textProblems.data?.from ?? '' };
   const setTaken = (message: string | null) => { if (message) problem({ title: 'Not claimed', message }); };
   const claim = useMutation({
     mutationFn: (id: string) => api<void>(`/clinics/${clinicId}/tasks/${id}/claim`, { method: 'POST' }),
@@ -155,14 +156,15 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
     })),
     // requests nobody has claimed come before texts that were not sent (texts polish TX2)
     ...requests.filter((t) => !t.urgent).map(request),
-    // texts about requests that were not sent: one item, however many, to review on Texts and mark handled (TX2)
+    // refill texts not sent that nobody handled, of the last 7 days: one item, however many, to review on Texts and
+    // mark handled (TX2); the count, the window, the words and the link are the Texts page's own (SMALL-2)
     ...(texts.total ? [{
       key: 'texts-not-sent', icon: <MessageSquareWarning className="size-4 text-danger" />, tone: 'danger' as const,
-      title: `${countOf(texts.total, 'text')} not sent · Review`,
+      title: `${notHandledWords(texts.total)} · Review`,
       detail: texts.total === 1 && texts.problems[0]
-        ? <>{requestNumber(texts.problems[0].number)} · {taskType(texts.problems[0].type, terms.patient)}: {requestTextLine(texts.problems[0])}. <RelativeTime iso={texts.problems[0].at} exact={clinicTime(texts.problems[0].at, tz, 'long')} now={now} />. Call them instead, then mark it handled.</>
-        : <>About requests, in the last {TEXT_PROBLEM_DAYS} days. Call them instead, then mark each one handled.</>,
-      action: <Link href={textsNotSentHref(clinicId, now, tz)} className={LINK} data-testid="texts-not-sent-review">Review</Link>,
+        ? <>Not sent in the last 7 days: {requestNumber(texts.problems[0].number)} · {taskType(texts.problems[0].type, terms.patient)}: {requestTextLine(texts.problems[0])}. <RelativeTime iso={texts.problems[0].at} exact={clinicTime(texts.problems[0].at, tz, 'long')} now={now} />. Call them instead, then mark it handled.</>
+        : <>Not sent in the last 7 days. Call them instead, then mark each one handled.</>,
+      action: <Link href={textsNotSentHref(clinicId, texts.from)} className={LINK} data-testid="texts-not-sent-review">Review</Link>,
     }] : []),
     ...flagged.filter((c) => !followedUp.has(c.id)).map((c) => ({
       key: c.id, icon: <Flag className="size-4 text-warning" />, title: 'A call flagged for review',

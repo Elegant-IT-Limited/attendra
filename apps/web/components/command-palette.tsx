@@ -60,14 +60,11 @@ export function CommandPalette({ clinicId, open, onOpenChange, pages, clinics = 
     retry: false,
     staleTime: 30_000,
   });
-  // open requests and done ones alike: a number is most often looked up for one already closed
+  // open requests and done ones alike: a number is most often looked up for one already closed. One search for both
+  // (open first), so one search is one line in the audit log (RPT-batch-11-07-3-2)
   const requests = useQuery({
     queryKey: ['request-search', clinicId, query],
-    queryFn: async () => {
-      const find = (status: 'open' | 'done') => api<TaskList>(`/clinics/${clinicId}/tasks/search`, { method: 'POST', body: JSON.stringify({ q: query, status }) });
-      const [opened, done] = await Promise.all([find('open'), find('done')]);
-      return [...opened.tasks, ...done.tasks];
-    },
+    queryFn: async () => (await api<TaskList>(`/clinics/${clinicId}/tasks/search`, { method: 'POST', body: JSON.stringify({ q: query, status: 'all' }) })).tasks,
     enabled: open && canSearchRequests && typed,
     retry: false,
     staleTime: 30_000,

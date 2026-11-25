@@ -17,6 +17,7 @@ import { Segmented } from '@/components/ui/tabs';
 import { api, useClinic, useClinicConfig } from '@/lib/api';
 import { SAFETY_POLL_MS } from '@/lib/changes';
 import { TEXT_KINDS } from '@/lib/text-kinds';
+import { notHandledWords } from '@/lib/text-problems';
 import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 
@@ -80,8 +81,9 @@ function Texts() {
               <StripLink onClick={() => pick('not_sent', s.todayDate)} testId="today-not-sent" warn={s.today.notSent > 0}>{s.today.notSent} not sent</StripLink></p>
             <p data-testid="summary-week"><span className="font-medium">Last 7 days:</span>{' '}
               <StripLink onClick={() => pick('sent', s.weekFrom)} testId="week-sent">{s.week.sent} sent</StripLink> ·{' '}
-              <StripLink onClick={() => pick('not_sent', s.weekFrom)} testId="week-not-sent" warn={s.week.notSent > 0}>{s.week.notSent} not sent</StripLink></p>
-            {s.needsHandling > 0 && <p><StripLink onClick={() => pick('needs_handling', '')} testId="needs-handling" warn>{countOf(s.needsHandling, 'text')} to handle</StripLink></p>}
+              <StripLink onClick={() => pick('not_sent', s.weekFrom)} testId="week-not-sent" warn={s.week.notSent > 0}>{s.week.notSent} not sent</StripLink>
+              {/* of those, the ones nobody has handled: the count Today shows, over the same 7 days (SMALL-2) */}
+              {s.needsHandling > 0 && <> · <StripLink onClick={() => { pick('needs_handling', s.weekFrom); setKind('refills'); }} testId="needs-handling" warn>{notHandledWords(s.needsHandling)}</StripLink></>}</p>
           </>
         ) : <Skeleton className="h-5 w-72" />}
       </div>

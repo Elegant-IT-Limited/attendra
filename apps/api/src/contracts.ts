@@ -397,6 +397,8 @@ export const TaskQuery = z.object({
 });
 /** The same filters, and words to find, in a POST body: what is typed can be a name or a phone number, and URLs end up in logs. */
 export const TaskSearch = TaskQuery.extend({
+  /** Open requests, done ones, or both in one search ('all': open first, then done; one audit row, RPT-batch-11-07-3-2). */
+  status: z.enum(['open', 'done', 'all']).default('open'),
   /** Words or digits to find: the request's number (R-1042 or 1042), the pet's or owner's name, a phone number, its details, its notes or its type. Matched as typed, from the first character. */
   q: z.string().trim().max(SEARCH_MAX).default(''),
 });
@@ -467,7 +469,7 @@ export const TextSearch = z.object({
   limit: z.number().int().min(1).max(50).default(10),
 });
 export const TextPage = TextList.extend({ next: z.string().nullable() });
-/** The Texts page's strip: today's and the last 7 days' texts, sent and not sent, and how many not sent nobody has handled. */
+/** The Texts page's strip: today's and the last 7 days' texts, sent and not sent, and how many refill texts of the 7 days not sent nobody has handled (Today's count). */
 export const TextSummary = z.object({
   today: z.object({ sent: z.number().int(), notSent: z.number().int() }),
   week: z.object({ sent: z.number().int(), notSent: z.number().int() }),
@@ -566,8 +568,10 @@ export const TaskHistory = z.object({
 export const TaskCount = z.object({ open: z.number() });
 /** Texts about requests that were not sent, lately: request number and type, the text's state and why. No patient data. */
 export const TextProblems = z.object({
-  /** Every such text, though `problems` lists the newest 20 (Today groups them into one item, texts polish TX2). */
+  /** Every refill text of the 7 days not sent and not handled (Today's one item, texts polish TX2; the Texts page's count, SMALL-2), though `problems` lists the newest 20. */
   total: z.number().int(),
+  /** The window's first clinic-local day: the Texts page's "Last 7 days" and the filter Today's Review link opens. */
+  from: z.string(),
   problems: z.array(z.object({ textId: z.string(), taskId: z.string(), number: z.number().int(), type: z.string(), taskStatus: z.enum(['open', 'done']), status: z.string(), failureReason: z.string().nullable(), errorCode: z.string().nullable(), at: z.iso.datetime() })),
 });
 export type TextProblems = z.infer<typeof TextProblems>;

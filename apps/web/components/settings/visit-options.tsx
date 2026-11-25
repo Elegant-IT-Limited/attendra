@@ -73,7 +73,7 @@ export function VisitMoreOptions({ v, pet, onChange, disabled }: { v: Visit; pet
             No day can be booked: the notice ({v.noticeHours} hours) is longer than the furthest date ({v.maxDaysAhead} days). Shorten the notice or allow more days.
           </p>
         )}
-        <Field label="Break after (minutes)" htmlFor={`${id}-buffer`} hint="Kept free after each visit, for cleaning or notes, on calls and at the desk.">
+        <Field label="Break after (minutes)" htmlFor={`${id}-buffer`} hint="Kept free after each visit, for cleaning or notes, on calls and at the desk. It may run past closing time: the last visit of the day still ends by closing.">
           <Input id={`${id}-buffer`} className="sm:w-40" type="number" inputMode="numeric" min={0} max={120} value={v.bufferMinutes ?? ''} placeholder="0"
             aria-label={`${name}: break after, in minutes`} onChange={(e) => onChange({ bufferMinutes: num(e.target.value) })} />
         </Field>

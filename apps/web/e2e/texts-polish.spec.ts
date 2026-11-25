@@ -74,17 +74,18 @@ test.describe.serial('texts polish', () => {
     expect(heading).toBe(textsNotSent(Number(heading.split(' ')[0])));
     await notice.first().getByRole('button', { name: /OK|Close|Got it/ }).first().click();
     const list = page.getByRole('list', { name: 'Needs attention' });
-    const item = list.getByRole('listitem').filter({ hasText: `${countOf(total, 'text')} not sent · Review` });
+    const item = list.getByRole('listitem').filter({ hasText: `${countOf(total, 'refill text')} not handled · Review` });
     await expect(item).toHaveCount(1);
     // no row per text any more
     await expect(list.getByText(/^Text not sent · R-/)).toHaveCount(0);
     // emergencies and unclaimed requests come first
     const titles = await list.getByRole('listitem').allInnerTexts();
-    const at = titles.findIndex((t) => t.includes('not sent · Review'));
+    const at = titles.findIndex((t) => t.includes('not handled · Review'));
     titles.forEach((t, i) => { if (/Emergency|nobody has it yet/.test(t)) expect(i, t).toBeLessThan(at); });
     await expect(page.getByTestId('attention-count')).toHaveText(countOf(titles.length, 'item'));
     // Review: the Texts page, with exactly those texts
     await item.getByRole('link', { name: 'Review' }).click();
+    // over the Texts page's 7 days (SMALL-2)
     await expect(page).toHaveURL(/\/texts\?status=needs_handling&kind=refills&from=/);
     const from = new URL(page.url()).searchParams.get('from')!;
     const server = await search({ status: 'needs_handling', kind: 'refills', from, limit: 50 });
@@ -102,7 +103,7 @@ test.describe.serial('texts polish', () => {
     await page.locator(`[data-text-id="${handled.id}"]`).getByRole('button').first().click();
     await expect(page.locator(`[data-text-id="${handled.id}"]`).getByTestId('text-handled')).toContainText(`Handled by ${handled.handledBy}`);
     await page.goto(`/c/${C}`);
-    await expect(list.getByRole('listitem').filter({ hasText: `${countOf(total - 1, 'text')} not sent · Review` })).toHaveCount(total - 1 ? 1 : 0);
+    await expect(list.getByRole('listitem').filter({ hasText: `${countOf(total - 1, 'refill text')} not handled · Review` })).toHaveCount(total - 1 ? 1 : 0);
   });
 
   test('TX3: the Texts page: a short intro, the strip, 10 rows by day, more on request', async () => {
