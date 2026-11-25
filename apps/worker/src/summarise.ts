@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { detectLanguage, LANGUAGES, PACKS } from '@attendra/core';
 import { type CallForSummary, type CallSummary, INTENTS, SENTIMENTS } from '@attendra/db';
+import { isOpenAiQuotaError } from '@attendra/observability';
 import type OpenAI from 'openai';
 import { z } from 'zod';
 
@@ -16,6 +17,14 @@ export class JobError extends Error {
  */
 export class SummaryCutOff extends JobError {
   constructor() { super('summary_model_incomplete'); this.name = 'SummaryCutOff'; }
+}
+
+/**
+ * OpenAI refused the summary because the credit or quota is used up (RPT-slack-alerts-2): it pages as openai_quota, like
+ * a call the voice service could not start, and the job is still retried, so it is done once there is credit again.
+ */
+export class SummaryQuotaUsedUp extends JobError {
+  constructor() { super('openai_quota'); this.name = 'SummaryQuotaUsedUp'; }
 }
 
 /** What the model must return. The shape is checked again here, whatever the model says it did. */
@@ -135,6 +144,8 @@ export class ModelSummariser implements Summariser {
         text: { format: { type: 'json_schema', name: 'call_summary', strict: true, schema: JSON_SCHEMA } },
       }, { timeout: this.limits.timeoutMs, maxRetries: 0 });
     } catch (err) {
+      // the credit or quota used up is said as such: it stops every summary and every call until it is topped up
+      if (isOpenAiQuotaError(err)) throw new SummaryQuotaUsedUp();
       // the status only: an API error can echo the request, and the request is a transcript
       const status = (err as { status?: number }).status;
       throw new JobError(status ? `summary_model_http_${status}` : 'summary_model_unreachable');
