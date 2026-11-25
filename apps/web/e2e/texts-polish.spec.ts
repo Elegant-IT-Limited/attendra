@@ -112,7 +112,8 @@ test.describe.serial('texts polish', () => {
     await page.goto(`/c/${C}/texts`);
     await expect(page.getByText(`Texts sent to your clients. Words are kept ${settings.retentionDays} days.`)).toBeVisible();
     await expect(page.getByTestId('summary-today')).toHaveText(`Today: ${summary.today.sent} sent · ${summary.today.notSent} not sent`);
-    await expect(page.getByTestId('summary-week')).toHaveText(`Last 7 days: ${summary.week.sent} sent · ${summary.week.notSent} not sent`);
+    // of those not sent, the refill texts nobody handled: Today's count (SMALL-2)
+    await expect(page.getByTestId('summary-week')).toHaveText(`Last 7 days: ${summary.week.sent} sent · ${summary.week.notSent} not sent${summary.needsHandling ? ` · ${countOf(summary.needsHandling, 'refill text')} not handled` : ''}`);
     const first = await search({ limit: 10 });
     await expect(page.getByTestId('text-row')).toHaveCount(10);
     for (const [i, t] of first.texts.entries()) {
