@@ -36,6 +36,7 @@ import { type ThemeChoice, useTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import { roleLabel } from '@attendra/core';
 import { TextProblemNotice } from '@/components/text-problem-notice';
+import { VersionFooter } from '@/components/version-footer';
 
 
 // A workstation left open at the front desk signs itself out.
@@ -231,6 +232,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
         <PlanBanner clinicId={clinicId} />
         <InvitationsBanner />
         <main id="main" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-6 outline-none md:px-8 md:py-8">{children}</main>
+        <VersionFooter inShell />
       </div>
 
       {/* phone: the bottom bar */}

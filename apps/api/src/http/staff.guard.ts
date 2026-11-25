@@ -50,7 +50,7 @@ const PUBLIC = 'attendra:public';
 export const Requires = (permission: Permission) => SetMetadata(PERMISSION, permission);
 /** For the few routes a signed-in person needs before their account is ready: before changing a temporary password, and before enrolling in two-factor (who am I?). */
 export const BeforeTwoFactor = () => SetMetadata(BEFORE_TWO_FACTOR, true);
-/** No session needed. Only the health check, which carries no data. */
+/** No session needed. Only the health check and the build's version, which carry no data. */
 export const Public = () => SetMetadata(PUBLIC, true);
 const KEY_SCOPE = 'attendra:key-scope';
 /**
