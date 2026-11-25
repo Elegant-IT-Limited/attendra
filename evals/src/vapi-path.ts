@@ -56,6 +56,11 @@ export const VAPI_PATH_SCENARIOS = [
   'vet-any-other-vet', 'vet-es-any-other-vet', 'vet-new-puppy-registered', 'vet-es-new-puppy-registered',
   'vet-name-pet-then-last-four', 'vet-es-name-pet-then-last-four',
   'vet-ya-esta-bien-goodbye', 'vet-es-ya-esta-bien-goodbye', 'vet-found-then-no-request', 'vet-es-found-then-no-request',
+  // a tester's call (2026-11-24): each item as a scripted call, and the whole call, on both paths
+  'vet-T1-species-not-said', 'vet-es-T1-species-not-said', 'vet-T1-age-not-given', 'vet-es-T1-age-not-given',
+  'vet-T1-second-pet-own-details', 'vet-es-T1-second-pet-own-details', 'vet-T2-stale-change-replaced-silently', 'vet-es-T2-stale-change-replaced-silently',
+  'vet-T3-cancel-by-vet-name', 'vet-es-T3-cancel-by-vet-name', 'vet-T5-no-internal-state', 'vet-es-T5-no-internal-state',
+  'vet-T9-said-once', 'vet-es-T9-said-once', 'vet-tester-call-whole', 'vet-es-tester-call-whole',
 ] as const;
 
 export interface VapiPathResult { id: string; passed: boolean; failures: string[]; outcome: string; ms: number }

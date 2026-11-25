@@ -1,0 +1,30 @@
+id: vet-es-T1-second-pet-own-details
+title: "T1 in Spanish: a second pet never gets the first pet's kind, sex or age from the call memory ('Perdón' is no answer); its own are asked for (a tester's call, 2026-11-24)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550163"
+tags: [no-demo, tester-call, identity, es]
+turns:
+  - caller: Hola, soy Corin Vale. Tengo una gata nueva, Tango. Tiene dos años.
+    reply: "Tango quedó registrada."
+    delegate:
+      - register_patient: { pet_name: Tango, owner_name: Corin Vale, species: gato, sex: female, birthday_or_age: dos años, phone: null }
+  - caller: Quiero registrar otra mascota también, Pico.
+    reply: "¿Qué tipo de animal es Pico?"
+    delegate:
+      - register_patient: { pet_name: Pico, owner_name: null, species: null, sex: null, birthday_or_age: null, phone: null }
+  - caller: Perdón.
+    reply: "¿Qué tipo de animal es Pico?"
+    delegate:
+      - register_patient: { pet_name: Pico, owner_name: null, species: gato, sex: female, birthday_or_age: dos años, phone: null }
+  - caller: Es un perro, macho, de cuatro meses.
+    reply: "Pico quedó registrado."
+    delegate:
+      - register_patient: { pet_name: Pico, owner_name: null, species: perro, sex: male, birthday_or_age: cuatro meses, phone: null }
+expect:
+  outcome: abandoned
+  verified: true
+  language: es
+  refusals: [pet_species, ask_species]
+  household: { phone: "+17205550163", names: [Tango, Pico] }
+  pet_on_file: { phone: "+17205550163", name: Pico, species: perro }

@@ -133,7 +133,7 @@ describe('a pet\'s name is never the owner\'s', () => {
 describe('a pet registered on one call is found on the next', () => {
   it('registers a new pet under a spoken number, then a second call opens it by the number and the owner\'s name', async () => {
     const first = await w.call(null, { clinic, channel: 'web' });
-    first.caller('My dog Nimbus is new here. The number is 720 555 0181 and my name is Priya.');
+    first.caller('My dog Nimbus is new here, he is 3 years old. The number is 720 555 0181 and my name is Priya.');
     const reg = { tool: 'register_patient', args: { pet_name: 'Nimbus', owner_name: 'Priya', species: 'dog', sex: 'male', birthday_or_age: '3 years', phone: '720 555 0181' } } as const;
     let out = await first.delegate([reg]);
     for (let i = 0; i < 3 && out.errors[0] !== null; i++) {

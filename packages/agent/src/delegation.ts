@@ -1002,13 +1002,17 @@ export class CallAgent {
       // a text the caller asked for, handed over; a confirmation is only ever "I'll text", and an arrival never backed
       texted: s.textsSent > 0,
       text_arrived: false,
+      // a change read back and ready for the caller's yes is never one to send them elsewhere for
+      sent_elsewhere: !s.pending,
     };
     const out: Outbound[] = [];
     for (const claim of claimsIn(turn.text)) {
       if (backed[claim] || s.guardsSaid.has(`claim:${claim}`)) continue;
       s.guardsSaid.add(`claim:${claim}`);
       this.log.warn({ call_id: this.ctx.callId, claim }, 'claim without a tool: the assistant said a result no tool returned');
-      out.push({ type: 'instructions', delegationId: null, content: claim === 'texted' || claim === 'text_arrived'
+      out.push({ type: 'instructions', delegationId: null, content: claim === 'sent_elsewhere'
+        ? `That was wrong: this time can be booked on this call. Correct it in a few words, never explaining why, and ask for their yes to: ${s.pending!.readback}.`
+        : claim === 'texted' || claim === 'text_arrived'
         ? 'You just said a text was sent or arrived. Correct it now, in a few words: a confirmation goes to the number on file (or the number they are calling from, if that is what you said before), you\'ll text it, and you can\'t see when it arrives. Never say a text was sent or arrived.'
         : `You just said something no tool returned (${claim.replace('_', ' ')}). Correct it now, in a few words: say what is really happening ("Let me look that up now", or what the last tool said), and call the tool if it is still needed. Never state a result a tool did not give you.` });
     }

@@ -18,7 +18,7 @@ describe('a pet registered on one call', () => {
   for (const lang of ['en', 'es'] as const) {
     it(`is found on the next call from the same number, when the caller answers the pick question with a yes and its name (${lang})`, async () => {
       const first = await w.call(PHONE, { clinic });
-      first.caller(lang === 'es' ? 'Hola, acabo de adoptar un cachorro nuevo, se llama Rocky. Soy Johnny.' : 'Hi, I just adopted a new puppy called Rocky. I am Johnny.');
+      first.caller(lang === 'es' ? 'Hola, acabo de adoptar un cachorro nuevo, se llama Rocky, es macho y tiene 3 meses. Soy Johnny.' : 'Hi, I just adopted a new puppy called Rocky, he is 3 months old. I am Johnny.');
       const reg = await first.delegate([{ tool: 'register_patient', args: { pet_name: 'Rocky', owner_name: 'Johnny', species: 'dog', sex: 'male', birthday_or_age: '3 months', phone: null } }]);
       expect(reg.errors).toEqual([null]);
 

@@ -22,19 +22,24 @@ export const STALL_MS = 5_000;
 export interface MarkedTurn { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }
 
 /**
- * The longest the caller waited in silence after speaking: from the end of a caller turn to the start of the assistant's
- * next turn. Null when no caller turn was answered. A reply that started before the caller finished (they talked over
- * it) is no wait.
+ * The longest the caller waited in silence after speaking: from the end of a caller's words to the start of the
+ * assistant's next words, or to the caller's own next words when they broke the silence first ("Can you hear me?").
+ * Given each piece of speech on its own (CallState.speech), a silence the caller broke is counted; given whole turns,
+ * a caller's pieces were joined into one and the silence between them was lost (T4, a tester's call 2026-11-24: 13, 17
+ * and 20 s silences showed as "Longest wait 2.6 s"). Null when no caller turn was answered. A reply that started before
+ * the caller finished (they talked over it) is no wait.
  */
 export function maxGapMs(turns: readonly MarkedTurn[]): number | null {
   let max: number | null = null;
+  let answered = false;
   for (let i = 1; i < turns.length; i++) {
-    const [before, reply] = [turns[i - 1]!, turns[i]!];
-    if (before.speaker !== 'caller' || reply.speaker !== 'agent') continue;
-    const gap = Math.round(reply.startMs - before.endMs);
+    const [before, next] = [turns[i - 1]!, turns[i]!];
+    if (before.speaker !== 'caller') continue;
+    if (next.speaker === 'agent') answered = true;
+    const gap = Math.round(next.startMs - before.endMs);
     if (gap >= 0 && (max === null || gap > max)) max = gap;
   }
-  return max;
+  return answered ? max : null;
 }
 
 /** The questions in a line: each sentence that ends with a question mark. */

@@ -1,0 +1,26 @@
+id: vet-es-T1-species-not-said
+title: "T1 in Spanish: '¿Me escucha?' is never 'un gato'; the kind of animal is asked again in the backend's words, then registered as the caller said it (a tester's call, 2026-11-24)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550161"
+tags: [no-demo, tester-call, identity, es]
+turns:
+  - caller: Hola, soy Corin Vale. Quiero registrar una mascota nueva, se llama Tango. Es hembra y tiene dos años.
+    reply: "Claro. ¿Qué tipo de animal es Tango?"
+    delegate:
+      - register_patient: { pet_name: Tango, owner_name: Corin Vale, species: null, sex: female, birthday_or_age: dos años, phone: null }
+  - caller: ¿Me escucha?
+    reply: "Sí, le escucho. ¿Qué tipo de animal es Tango?"
+    delegate:
+      - register_patient: { pet_name: Tango, owner_name: Corin Vale, species: gato, sex: female, birthday_or_age: dos años, phone: null }
+  - caller: Vale. Es una gata.
+    reply: "Tango quedó registrada."
+    delegate:
+      - register_patient: { pet_name: Tango, owner_name: Corin Vale, species: gato, sex: female, birthday_or_age: dos años, phone: null }
+expect:
+  outcome: abandoned
+  verified: true
+  language: es
+  refusals: [pet_species, ask_species]
+  spoken_contains: ["¿Qué tipo de animal es Tango?"]
+  pet_on_file: { phone: "+17205550161", name: Tango, species: gato }

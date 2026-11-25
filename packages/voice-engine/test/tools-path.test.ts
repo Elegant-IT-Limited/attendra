@@ -5,7 +5,7 @@ import { Writable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import {
   CallRunner, fromDelegatedResponse, GO_WAIT_MS, GptLiveEngine, RealtimeEngine, realtimeTools, type RealtimeSocket, type Sideband, type SidebandEvent,
-  type SidebandSocket, toolsBackendInstructions, toolsLivePrompt, toolsVapiPrompt, toolsVoicePrompt, toolsVoiceStaticPrompt, callFactsNote, compactSchema, TOOLS_TRUNCATION, type VoiceEngine, TURN_NOTE, TURN_NOTE_NO_ACK, ACK_BEFORE_TOOLS, ACK_LINE, ACK_AFTER_MS, sayToolQuestion, FIRST_WORDS_WAIT_MS, withoutPromptEcho, toolQuestion, sayToolLine, toolRefusalLine,
+  type SidebandSocket, toolsBackendInstructions, toolsLivePrompt, toolsVapiPrompt, toolsVoicePrompt, toolsVoiceStaticPrompt, callFactsNote, compactSchema, TOOLS_TRUNCATION, type VoiceEngine, TURN_NOTE, TURN_NOTE_NO_ACK, ACK_BEFORE_TOOLS, ACK_LINE, ACK_SAID_NOTE, ACK_AFTER_MS, sayToolQuestion, FIRST_WORDS_WAIT_MS, withoutPromptEcho, toolQuestion, sayToolLine, toolRefusalLine,
   PATH_A_CUTS, PATH_A_DROPS, conversationPrompt,
 } from '../src';
 
@@ -365,10 +365,11 @@ describe('round 2: manual replies on gpt-realtime', () => {
     const mid = s.sent.length;
     s.play({ type: 'input_audio_buffer.committed', event_id: 'c2', item_id: 'item_2' });
     vi.advanceTimersByTime(GO_WAIT_MS);
-    expect(s.sent.slice(mid).filter(notNote).map((x) => x.type)).toEqual(['response.create']);
+    // (the acknowledgement went first, and its reply waits; the note after it says not to acknowledge again, T9)
+    expect(s.sent.slice(mid).filter(notNote).filter((x) => noteText(x) !== ACK_SAID_NOTE).map((x) => x.type)).toEqual(['response.create']);
     // a lookup handed over after it already replied by itself is dropped
     sideband.send({ type: 'tool.inject', event_id: 'i2', call_id: 'spec_2', name: 'find_slots', arguments: '{}', output: '{}' });
-    expect(s.sent.slice(mid).filter(notNote)).toHaveLength(1);
+    expect(s.sent.slice(mid).filter(notNote).filter((x) => noteText(x) !== ACK_SAID_NOTE)).toHaveLength(1);
     vi.useRealTimers();
   });
 });

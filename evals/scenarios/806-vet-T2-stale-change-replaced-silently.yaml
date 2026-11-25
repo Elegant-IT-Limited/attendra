@@ -1,0 +1,30 @@
+id: vet-T2-stale-change-replaced-silently
+title: "T2: a time read back, then 'actually the second one': the new read-back replaces it with no word about the old one (never 'tentative', never 'contact the clinic'), and only the new time is booked (a tester's call, 2026-11-24)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, tester-call, clear-yes]
+turns:
+  - caller: Hi, Linh Nguyen. Can Biscuit come in tomorrow morning for a sick visit?
+    reply: "{offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: "2026-09-29", part_of_day: morning }
+  - caller: The first one.
+    reply: "{readback}?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Hmm, actually the second one is better.
+    reply: "So I'd {readback}. Shall I book it?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[1]", replaces_appointment_id: null }
+  - caller: Yes, please.
+    reply: "All set, that's booked."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  booked_on: "2026-09-29"
+  sms_sent: 1
+  never_returned: ["This replaces the change", "will not be done", "tentative", "contact the clinic"]

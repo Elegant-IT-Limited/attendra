@@ -42,4 +42,5 @@ expect:
   visits_after:
     - { on: "2026-09-28", at: "14:00", visit: vt_wellness }
     - { on: "2026-10-02", at: "16:00", visit: vt_wellness }
-  returned: ["¿Quiere cambiar esa cita o reservar otra además?", "the visit booked on this call", "cambiar la cita de Biscuit del lunes 28 de septiembre"]
+  returned: ["¿Quiere cambiar esa cita o reservar otra además?", "the caller means", "cambiar la cita de Biscuit del lunes 28 de septiembre"]
+  never_returned: ["booked on this call", "means that one"]

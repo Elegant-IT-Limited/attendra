@@ -1,0 +1,29 @@
+id: vet-T9-said-once
+title: "T9: a question while a read-back waits: the answer and the question to settle it are joined once, one space apart, never a sentence twice (a tester's call, 2026-11-24: 'One moment. One moment.')"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, tester-call, clear-yes]
+turns:
+  - caller: Hi, Linh Nguyen. Can Biscuit come in tomorrow morning for a sick visit?
+    reply: "{offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: "2026-09-29", part_of_day: morning }
+  - caller: The first one.
+    reply: "{readback}?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Where are you located?
+    reply: "We are at 88 Riverbend Road. And do you still want me to book it?"
+    delegate:
+      - get_clinic_info: { question: Where are you located? }
+  - caller: Yes, book it.
+    reply: "All set."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["And do you still want me to book"]

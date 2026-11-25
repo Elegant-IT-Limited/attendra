@@ -109,6 +109,11 @@ export class CallRunner {
    * Thanks for calling", 2026-10-29).
    */
   private audioStartedAt = 0;
+  /**
+   * When the assistant's audio last started. Its words can come seconds later (held until the caller's own are written
+   * down): a nudge in that gap cut the reply off at "One" and had it said again (T9, a tester's call 2026-11-24).
+   */
+  private audioAt = 0;
   /** The call's setup moments, for the one timing line; the server passes the ones it knows. */
   private readonly marks: CallMarks;
   private timed = false;
@@ -260,6 +265,8 @@ export class CallRunner {
   async handle(event: SidebandEvent): Promise<void> {
     // the assistant's audio, many events a second: only the first matters (it is speaking), and none is remembered
     if (event.type === 'session.output_audio.delta') {
+      // every reply's audio, not only the first: a reply already playing is never talked over by a nudge (T9)
+      this.audioAt = Date.now();
       if (!this.audioStartedAt) {
         this.audioStartedAt = Date.now();
         if (!this.heardAt) this.heardAt = this.audioStartedAt;
@@ -661,7 +668,7 @@ export class CallRunner {
     // a caller whose last words were a goodbye is not waiting: a nudge there made the assistant start talking again (a test call, 2026-10-24)
     const leaving = last?.speaker === 'caller' && saidGoodbye(last.text, agentLast?.text ?? '');
     // and no answer began after the caller stopped: a reply already given is never talked over by a nudge
-    if (this.callerSaidAt > this.speakingUntil && this.agentSpokeAt < this.callerSaidAt && !this.pending && !leaving && this.nudged < SILENCE_NUDGE_MS.length && now - this.callerSaidAt >= SILENCE_NUDGE_MS[this.nudged]!) {
+    if (this.callerSaidAt > this.speakingUntil && this.agentSpokeAt < this.callerSaidAt && this.audioAt < this.callerSaidAt && !this.pending && !leaving && this.nudged < SILENCE_NUDGE_MS.length && now - this.callerSaidAt >= SILENCE_NUDGE_MS[this.nudged]!) {
       this.nudged++;
       this.traced(`runner.nudge.${this.nudged}`);
       this.log.info({ session_id: this.sessionId, nudge: this.nudged, waited_ms: now - this.callerSaidAt }, 'the caller is waiting in silence: giving the assistant their words to answer');
@@ -720,7 +727,7 @@ export class CallRunner {
     if (this.silentStartHandled && !note) reason = 'silent_start';
     // with the two markers of how the call went for the caller, from its turns (CALL-3): the longest wait after they
     // spoke, and the questions asked again
-    const quality: CallQuality = { ...this.quality(), maxGapMs: maxGapMs(state.turns), repeatedQuestions: repeatedQuestions(state.turns).length };
+    const quality: CallQuality = { ...this.quality(), maxGapMs: maxGapMs(state.speech), repeatedQuestions: repeatedQuestions(state.turns).length };
     // the caller never heard the assistant: recorded as such, and said when the line was up long enough to matter
     const outcome = recordedOutcome(state.outcome, quality);
     const lasted = Date.now() - this.startedAt;

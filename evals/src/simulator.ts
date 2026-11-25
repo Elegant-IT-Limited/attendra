@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, type PlannerTiming, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
-import { addDays, awayOn, isPetEmergency, bookableWindows, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, normalise, maxGapMs, questionsIn, repeatedQuestions, speakSlot, talksAboutInternals, toMinutes, type ToolName, weekdayOf, zonedInstant } from '@attendra/core';
+import { addDays, awayOn, isPetEmergency, bookableWindows, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, normalise, joinSaid, maxGapMs, questionsIn, repeatedQuestions, speakSlot, talksAboutInternals, toMinutes, type ToolName, weekdayOf, zonedInstant } from '@attendra/core';
 import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, PatientRecords, type PhiCipher, phoneKey, PostgresAuditLog, PostgresPatientDirectory, phiContext, PostgresTaskQueue, RIVERBEND_PETS, schema, seedCedarPark, seedDemo, seedRiverbend, withClinic } from '@attendra/db';
 import { and, eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
@@ -408,7 +408,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     });
     // the two markers as a real call's runner records them, from the turns (the gap is the simulator's own pacing); the
     // other quality numbers stay empty, as before, so the demo's Quality page is unchanged
-    await withClinic(db, clinic.id, (tx) => tx.update(schema.calls).set({ maxGapMs: maxGapMs(state.turns), repeatedQuestions: repeatedQuestions(state.turns).length }).where(eq(schema.calls.id, callId)));
+    await withClinic(db, clinic.id, (tx) => tx.update(schema.calls).set({ maxGapMs: maxGapMs(state.speech), repeatedQuestions: repeatedQuestions(state.turns).length }).where(eq(schema.calls.id, callId)));
   }
 
   const createdRows = await withClinic(db, clinic.id, (tx) => tx.select().from(schema.appointments).where(eq(schema.appointments.createdByCallId, callId)));
@@ -537,6 +537,9 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   // what the voice said
   // (live, the tools' own notes to the voice are not speech: only its transcript)
   for (const line of new Set(livePlanner ? said : spoken)) check(!talksAboutInternals(line), `talked about its own workings: "${line.slice(0, 120)}"`);
+  // each line handed to the voice says each sentence once, one space apart (T9, a tester's call 2026-11-24: "One moment.
+  // One moment." and "smoothly.This demo call ends")
+  for (const line of new Set(spoken)) { const flat = line.replace(/\s+/g, ' ').trim(); check(joinSaid(flat) === flat, `said a sentence twice, or ran two together: "${flat.slice(0, 120)}"`); }
   for (const phrase of scenario.forbid_spoken) {
     check(!said.some((s) => s.toLowerCase().includes(phrase.toLowerCase())), `said the forbidden phrase "${phrase}"`);
   }

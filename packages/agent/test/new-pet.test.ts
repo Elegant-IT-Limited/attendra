@@ -42,7 +42,7 @@ describe('a caller who says the pet is new (2026-11)', () => {
 
   it('never looks the pet up, asks each detail once, and adds it with no lookup first', async () => {
     const c = await w.call('+17205550181', { clinic });
-    c.caller("Hi, I'm Nora Quinn, I want to register my dog Pixel. She's new.");
+    c.caller("Hi, I'm Nora Quinn, I want to register my dog Pixel. She's new, about a year old.");
     const looked = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Nora Quinn', pet_name: 'Pixel', phone: null } }]);
     expect(looked.errors).toEqual(['pet_is_new']);
     expect(c.state.verifyAttempts).toBe(0); // refused before any lookup
@@ -73,7 +73,7 @@ describe('a caller who says the pet is new (2026-11)', () => {
 
   it('finds a pet already on file instead of adding it twice, and tells the caller no more than the lookup would', async () => {
     const c = await w.call('+17205550172', { clinic });
-    c.caller("I'm Linh Nguyen, I want to register my dog Biscuit, he's new.");
+    c.caller("I'm Linh Nguyen, I want to register my dog Biscuit, he's new, about five.");
     const before = await pets();
     const out = await c.delegate([{ tool: 'register_patient', args: { pet_name: 'Biscuit', owner_name: 'Linh Nguyen', species: 'dog', sex: 'male', birthday_or_age: 'about five', phone: null } }]);
     expect(out.results[0]!.data).toMatchObject({ verified: true, already_a_patient: true });
@@ -114,7 +114,7 @@ describe('a time chosen before the pet is found (2026-11)', () => {
     c.caller('Is any vet free tomorrow after one, for a first check-up for my puppy?');
     const times = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_new', provider_id: null, from_date: '2026-09-29', from_time: '13:00', part_of_day: 'any' } }]);
     const slots = times.results[0]!.data.slots as { when: string; provider: string }[];
-    c.caller("The second one. I'm Sam Ortega and he's Bolt, he's new.");
+    c.caller("The second one. I'm Sam Ortega and he's Bolt, he's new, four months old.");
     const second = [...c.state.offered.values()][1]!;
     const early = await c.delegate([{ tool: 'propose_booking', args: { slot_id: second.id, replaces_appointment_id: null } }]);
     expect(early.errors).toEqual(['identity_required']);

@@ -622,8 +622,10 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
       // the record from Vapi's final transcript, each line once (what the agent was fed came in windows, line by line);
       // without one, what the agent was fed
       const record = lines.some(spoken) ? vapiRecordLines(lines) : s.agent.state.turns.map((t) => ({ speaker: t.speaker, text: t.text, startMs: t.startMs, endMs: t.endMs }));
+      // the longest wait from each piece of speech, as on our own engines (T4)
+      const pieces = lines.some(spoken) ? record : s.agent.state.speech;
       for (const line of record) await recorder.appendSegment(line);
-      await recorder.close({ reason: m.endedReason ?? 'ended', voiceSeconds: typeof m.durationSeconds === 'number' ? m.durationSeconds : null, outcome: s.agent.state.outcome, emergency: !!s.agent.state.emergency, emergencyResult: s.agent.state.emergencyResult, language: s.agent.state.language, quality: { firstAudioMs: vapiFirstAudioMs(lines), stalls: 0, answerTimeouts: 0, maxGapMs: maxGapMs(record), repeatedQuestions: repeatedQuestions(record).length }, usage: { models: s.agent.state.modelTokens, ...(typeof m.cost === 'number' && m.cost >= 0 ? { engineUsd: m.cost } : {}) } });
+      await recorder.close({ reason: m.endedReason ?? 'ended', voiceSeconds: typeof m.durationSeconds === 'number' ? m.durationSeconds : null, outcome: s.agent.state.outcome, emergency: !!s.agent.state.emergency, emergencyResult: s.agent.state.emergencyResult, language: s.agent.state.language, quality: { firstAudioMs: vapiFirstAudioMs(lines), stalls: 0, answerTimeouts: 0, maxGapMs: maxGapMs(pieces), repeatedQuestions: repeatedQuestions(record).length }, usage: { models: s.agent.state.modelTokens, ...(typeof m.cost === 'number' && m.cost >= 0 ? { engineUsd: m.cost } : {}) } });
       sessions.delete(vapiId!);
       // the call's turns on Vapi's own clock, then the rest of the log written
       for (const e of vapiTurnEvents(lines)) s.events.add(e);

@@ -1,0 +1,64 @@
+id: vet-es-tester-call-whole
+title: "The tester's whole call (2026-11-24) in Spanish with made-up data: a new cat registered as said, a sick visit with Dr. Ruiz, vaccines with Dr. Bell, the Dr. Ruiz visit cancelled by the vet's name, then two more pets added with their own details"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550165"
+tags: [no-demo, tester-call, call-bugs, es]
+turns:
+  - caller: Hola, soy Corin Vale. Quiero registrar a mi gata nueva, Tango. Tiene dos años.
+    reply: "Tango quedó registrada."
+    delegate:
+      - register_patient: { pet_name: Tango, owner_name: Corin Vale, species: gato, sex: female, birthday_or_age: dos años, phone: null }
+  - caller: Necesita una consulta por enfermedad. ¿Puede ver a la doctora Ruiz mañana?
+    reply: "{offered.0}, o {offered.1}."
+    delegate:
+      - find_slots: { visit_type_id: vt_sick, provider_id: prov_ruiz, from_date: "2026-09-29", part_of_day: any }
+  - caller: La primera.
+    reply: "{readback}?"
+    delegate:
+      - propose_booking: { slot_id: "$found[0]", replaces_appointment_id: null }
+  - caller: "Sí."
+    reply: "Listo."
+    delegate:
+      - commit_pending: {}
+  - caller: ¿Puede hacer otra cita? Sus vacunas, con el doctor Bell el miércoles.
+    reply: "{offered.2}, o {offered.3}."
+    delegate:
+      - find_slots: { visit_type_id: vt_vaccines, provider_id: prov_bell, from_date: "2026-09-30", part_of_day: any }
+  - caller: La primera.
+    reply: "{readback}?"
+    delegate:
+      - propose_booking: { slot_id: "$found[0]", replaces_appointment_id: null }
+  - caller: "Sí."
+    reply: "Listo."
+    delegate:
+      - commit_pending: {}
+  - caller: Tenía otra cita con la doctora Elena, cancele esa cita.
+    reply: "Entonces, quiere {readback}. ¿Es correcto?"
+    delegate:
+      - list_appointments: {}
+      - propose_cancellation: { appointment_id: "$appointments[1]" }
+      - propose_cancellation: { appointment_id: "$appointments[0]" }
+  - caller: Sí, cancélela.
+    reply: "Listo, la cita quedó cancelada."
+    delegate:
+      - commit_pending: {}
+  - caller: Quiero registrar dos mascotas más. Pico es un perro, macho, de un año.
+    reply: "Pico quedó registrado. ¿Y la otra?"
+    delegate:
+      - register_patient: { pet_name: Pico, owner_name: null, species: perro, sex: male, birthday_or_age: un año, phone: null }
+  - caller: Juno, una coneja. Tiene seis meses.
+    reply: "Juno quedó registrada."
+    delegate:
+      - register_patient: { pet_name: Juno, owner_name: null, species: conejo, sex: female, birthday_or_age: seis meses, phone: null }
+expect:
+  outcome: cancelled
+  verified: true
+  language: es
+  refusals: [which_visit]
+  bookings_created: 2
+  sms_sent: 3
+  returned: ["the caller means"]
+  never_returned: ["booked on this call", "This replaces the change", "tentative"]
+  household: { phone: "+17205550165", names: [Tango, Pico, Juno] }
+  pet_on_file: { phone: "+17205550165", name: Juno, species: conejo }

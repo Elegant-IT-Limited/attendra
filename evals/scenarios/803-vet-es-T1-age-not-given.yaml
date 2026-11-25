@@ -1,0 +1,26 @@
+id: vet-es-T1-age-not-given
+title: "T1 in Spanish: 'Sí, eso.' is no age: an age the caller never gave is refused and asked again, never registered (a tester's call, 2026-11-24)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550162"
+tags: [no-demo, tester-call, identity, es]
+turns:
+  - caller: Soy Corin Vale, quiero registrar a mi perro nuevo Pico, es macho.
+    reply: "¿Cuántos años tiene Pico?"
+    delegate:
+      - register_patient: { pet_name: Pico, owner_name: Corin Vale, species: perro, sex: male, birthday_or_age: null, phone: null }
+  - caller: Sí, eso.
+    reply: "¿Cuántos años tiene Pico, más o menos?"
+    delegate:
+      - register_patient: { pet_name: Pico, owner_name: Corin Vale, species: perro, sex: male, birthday_or_age: dos años, phone: null }
+  - caller: Tiene como dos años.
+    reply: "Pico quedó registrado."
+    delegate:
+      - register_patient: { pet_name: Pico, owner_name: Corin Vale, species: perro, sex: male, birthday_or_age: como dos años, phone: null }
+expect:
+  outcome: abandoned
+  verified: true
+  language: es
+  refusals: [unclear_age, ask_age]
+  spoken_contains: ["¿Cuántos años tiene Pico, más o menos?"]
+  pet_on_file: { phone: "+17205550162", name: Pico, species: perro }

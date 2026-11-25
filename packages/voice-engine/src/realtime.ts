@@ -194,6 +194,17 @@ export const ACK_LINE = 'Say only a short acknowledgement of one to three words 
 /** How long after a waiting turn ended the acknowledgement goes, if the reply has not started by then. */
 export const ACK_AFTER_MS = 600;
 /**
+ * The note before a turn's reply once its acknowledgement was said: the reply's own "One moment." after the
+ * acknowledgement's was heard as "One moment. One moment." (T9, a tester's call 2026-11-24).
+ */
+export const ACK_SAID_NOTE = 'You already said a short acknowledgement for this turn. Do not say another one ("One moment.", "Sure.", "Okay."): answer, or call the tool, straight away.';
+/**
+ * Tools whose results are slow: one hold line after this long, and a thank-you after the second (T4, a tester's call
+ * 2026-11-24: 20 s of silence while replies waited for the tools; nothing was said until the 20 s wait ran out).
+ */
+export const TOOLS_HOLD_AFTER_MS = 2500;
+export const TOOLS_HOLD_AGAIN_MS = 10_000;
+/**
  * A tool's own words that end in a question ("Dr. Rahman and Dr. Khan do dental care. Shall I look with them?", a
  * read-back's "Shall I book it?"): the next reply says them as written, and nothing else, then waits for the caller.
  * Left to the model, a live run paraphrased the offer and dropped the question (batch 1c).
@@ -248,8 +259,12 @@ export const NOISE_REDUCTION = { type: 'near_field' as const };
 export const SHORT_TURN_MS = 2500;
 /** The longest such a turn waits for its words before it is answered anyway. */
 export const SHORT_TURN_WAIT_MS = 1500;
-/** The longest a caller's speech, started and not stopped, holds replies back: past it, a lost stop event holds nothing. */
-export const CALLER_TALKING_MAX_MS = 15_000;
+/**
+ * The longest a caller's speech, started and not stopped, holds replies back: past it, a lost stop event (a TV, a dog)
+ * holds nothing, and the reply held meanwhile goes (T4, a tester's call 2026-11-24: at 15 s, with the held reply
+ * dropped, silences of 13 to 20 s; the foundation review asked for 6 to 8 s).
+ */
+export const CALLER_TALKING_MAX_MS = 8_000;
 /** The note for tool results that came while the caller was still talking (R3). */
 export const CALLER_WENT_ON_NOTE = 'The caller went on talking before these results could be said. When they finish, answer what they said, using these results only if they still fit: call the tool again with any detail they just added (a number, the last four digits, a name). Never say a lookup failed if they have since given more.';
 /** The longest a reply waits for the caller's words before it, when transcription is slow. */
@@ -506,6 +521,11 @@ export class RealtimeEngine implements VoiceEngine {
     // the tool calls of a response still waiting for their results: the model goes on once all of them are back
     const outstanding = new Set<string>();
     let toolsTimer: NodeJS.Timeout | null = null;
+    let holdTimer: NodeJS.Timeout | null = null;
+    let holdAgainTimer: NodeJS.Timeout | null = null;
+    /** The hold lines said this turn while tools ran: never the same one twice. */
+    let held_ = 0;
+    const clearHoldTimers = () => { if (holdTimer) clearTimeout(holdTimer); if (holdAgainTimer) clearTimeout(holdAgainTimer); holdTimer = null; holdAgainTimer = null; };
     // each outstanding tool call's name, by its call id
     const toolNames = new Map<string, string>();
     // the last tool question among the results of one response, said once all of them are back
@@ -528,7 +548,7 @@ export class RealtimeEngine implements VoiceEngine {
       clearTimeout(t);
       firstTurns.delete(itemId);
       if (words) respond();
-      else trace({ type: 'gate.no_words' });
+      else { trace({ type: 'gate.no_words' }); releaseDeferred('no_words'); }
     };
     // A short turn waits for its transcript too (call quality Q5, 2026-11-18): one or two words from the room in another
     // language ("Excelente", "Quiero" on an English call) were answered and acted on. Such a fragment is set aside: never
@@ -544,7 +564,9 @@ export class RealtimeEngine implements VoiceEngine {
     let ackTimer: NodeJS.Timeout | null = null;
     const acks = this.acks.get(callId) ?? true;
     const clearTurnTimers = () => { if (goTimer) clearTimeout(goTimer); goTimer = null; if (ackTimer) clearTimeout(ackTimer); ackTimer = null; wordsFor = null; };
-    const go = () => { clearTurnTimers(); if (!goDue) return; goDue = false; respond(); };
+    // the turn's acknowledgement went: its reply is told not to say another (T9)
+    let acked = false;
+    const go = () => { clearTurnTimers(); if (!goDue) return; goDue = false; if (acked && open) note(ACK_SAID_NOTE); respond(); };
     // the turn's own reply was started another way (an emergency script, a staff note): no go after it, never two replies
     const noGo = () => { if (!goDue) return; goDue = false; clearTurnTimers(); trace({ type: 'gate.go_dropped' }); };
     const started = Date.now();
@@ -579,13 +601,51 @@ export class RealtimeEngine implements VoiceEngine {
     // end_call went through: its goodbye is said once, and a caller's "bye" or "muy bien" after it is not answered again
     // (call quality R10, 2026-11-19: "Take care, goodbye!" then "Goodbye, take care.")
     let ending = false;
+    // A reply asked for while the caller seems to be talking waits here, never dropped (T4, a tester's call 2026-11-24):
+    // dropped, it was lost when the "talking" was a noise that ended with no words, or a start with no stop, and the caller
+    // heard nothing until a nudge. It goes when that turn ends with no words, or at the cap; a reply the caller's turn asks
+    // for takes its place (it answers with everything).
+    let deferred: { e: Record<string, unknown>; kind: ReplyKind } | null = null;
+    let talkCap: NodeJS.Timeout | null = null;
+    const clearTalkCap = () => { if (talkCap) clearTimeout(talkCap); talkCap = null; };
+    const releaseDeferred = (why: 'no_words' | 'cap') => {
+      clearTalkCap();
+      const d = deferred;
+      deferred = null;
+      if (!d) return;
+      trace({ type: `gate.released_${why}` });
+      respond(d.e, d.kind);
+    };
     const respond = (e: Record<string, unknown> = { type: 'response.create' }, kind: ReplyKind = 'reply') => {
       if (!open) return; // the greeting on open answers for it
       if (ending) { trace({ type: 'gate.call_ending' }); return; }
-      if (toolsPath && kind !== 'greeting' && kind !== 'hold' && callerTalking()) { trace({ type: 'gate.held_caller_talking' }); return; }
+      if (toolsPath && kind !== 'greeting' && kind !== 'hold' && callerTalking()) {
+        trace({ type: 'gate.held_caller_talking' });
+        if (!deferred || RANK[kind] >= RANK[deferred.kind as Exclude<ReplyKind, 'greeting'>]) deferred = { e, kind };
+        talkCap ??= setTimeout(() => { talkCap = null; releaseDeferred('cap'); }, Math.max(0, CALLER_TALKING_MAX_MS - (Date.now() - (callerTalkingSince ?? Date.now()))));
+        return;
+      }
+      if (deferred && kind !== 'hold' && kind !== 'greeting') {
+        // the held reply and this one are one reply: the one that may call tools wins
+        const d = deferred;
+        deferred = null;
+        clearTalkCap();
+        if (RANK[d.kind as Exclude<ReplyKind, 'greeting'>] > RANK[kind]) { gate.request(d.e, d.kind); return; }
+      }
       gate.request(e, kind);
     };
     const interrupt = () => { if (open && gate.active) ws.send({ type: 'response.cancel' }); };
+    // the words of the reply in progress (or the last one): a hold line never repeats what it just said
+    let replyText = '';
+    const holdForTools = (nth: 1 | 2) => {
+      if (nth === 1) holdTimer = null; else holdAgainTimer = null;
+      if (!outstanding.size || ending || callerTalking() || held_ >= nth) return;
+      // "One moment." once a turn: after the reply's own or the acknowledgement's, a thank-you instead (T9)
+      const said = held_ > 0 || acked || /\b(?:one moment|un momento)\b/i.test(replyText);
+      held_ = nth;
+      trace({ type: 'turn.hold_for_tools' });
+      respond({ type: 'response.create', response: { instructions: said ? HOLD_AGAIN_LINE : HOLD_LINE, tool_choice: 'none' } }, 'hold');
+    };
     // a note for the model at the end of the conversation (never removed: removing one moves everything after it, and
     // the prompt cache misses from there)
     const note = (text: string) => ws.send({ type: 'conversation.item.create', item: { type: 'message', role: 'system', content: [{ type: 'input_text', text }] } });
@@ -668,6 +728,10 @@ export class RealtimeEngine implements VoiceEngine {
           return;
         case 'input_audio_buffer.committed':
           if (typeof e.item_id === 'string') awaiting.add(e.item_id);
+          // a new turn: its own reply (or its lack of words) decides what a reply held meanwhile does, not the cap
+          clearTalkCap();
+          acked = false;
+          held_ = 0;
           // the tools path: the turn's note right after the caller's words, where the model weighs it most (batch 1b:
           // a rule in the session prompt alone still let it say "let me check..." before most tool calls)
           if (toolsPath) turnNote();
@@ -693,6 +757,7 @@ export class RealtimeEngine implements VoiceEngine {
                 ackTimer = null;
                 if (!goDue || callerTalking() || gate.active) return;
                 trace({ type: 'turn.ack' });
+                acked = true;
                 respond({ type: 'response.create', response: { instructions: ACK_LINE, tool_choice: 'none' } }, 'hold');
               }, ACK_AFTER_MS);
             }
@@ -716,9 +781,11 @@ export class RealtimeEngine implements VoiceEngine {
                 trace({ type: 'turn.stray_fragment' });
                 ws.send({ type: 'conversation.item.delete', item_id: e.item_id });
                 spokenAt.delete(e.item_id);
+                releaseDeferred('no_words');
                 return heard(e.item_id);
               }
               trace({ type: 'gate.no_words' });
+              releaseDeferred('no_words');
             } else callerHeard = true;
           }
           if (typeof e.item_id === 'string' && firstTurns.has(e.item_id)) {
@@ -726,6 +793,7 @@ export class RealtimeEngine implements VoiceEngine {
             if (said && strayFragment(said, callLanguage, setAside)) {
               setAside = fragmentKey(said);
               trace({ type: 'turn.stray_fragment' });
+              releaseDeferred('no_words');
               firstTurns.delete(e.item_id);
               ws.send({ type: 'conversation.item.delete', item_id: e.item_id });
               if (typeof e.item_id === 'string') spokenAt.delete(e.item_id);
@@ -753,12 +821,13 @@ export class RealtimeEngine implements VoiceEngine {
           if (typeof e.item_id === 'string' && wordsFor === e.item_id) go();
           return heard(e.item_id);
         case 'response.output_audio_transcript.delta':
-          if (typeof e.delta === 'string' && e.delta) { words += e.delta; spoken(e); }
+          if (typeof e.delta === 'string' && e.delta) { words += e.delta; replyText = `${replyText}${e.delta}`.slice(-200); spoken(e); }
           return;
         case 'response.output_audio_transcript.done':
           return spoken(e, true);
         case 'response.created':
           gate.started();
+          replyText = '';
           return;
         // the caller's line starts playing the assistant's audio (WebRTC and phone calls): the runner's first audio
         case 'output_audio_buffer.started':
@@ -782,6 +851,9 @@ export class RealtimeEngine implements VoiceEngine {
             toolNames.set(e.call_id, e.name);
             gate.waitForTools();
             toolsTimer ??= setTimeout(() => { toolsTimer = null; gate.toolsDone(); }, TOOL_RESULT_WAIT_MS);
+            // slow results are never silence: a hold line, then a thank-you, each once (T4)
+            holdTimer ??= setTimeout(() => holdForTools(1), TOOLS_HOLD_AFTER_MS);
+            holdAgainTimer ??= setTimeout(() => holdForTools(2), TOOLS_HOLD_AGAIN_MS);
             const call: SidebandEvent = { type: 'session.tool_call', event_id: id(e), call_id: e.call_id, name: e.name, arguments: typeof e.arguments === 'string' ? e.arguments : '{}' };
             // a lookup reads nothing the caller just said, so it runs at once; anything that may act on their words (a
             // yes to a read-back, a booking, a text, a transfer) waits for their words to be transcribed, as before
@@ -850,6 +922,7 @@ export class RealtimeEngine implements VoiceEngine {
           else respond();
           if (endsCall) ending = true;
           if (toolsTimer) { clearTimeout(toolsTimer); toolsTimer = null; }
+          clearHoldTimers();
           gate.toolsDone();
         }
         return;
@@ -888,6 +961,8 @@ export class RealtimeEngine implements VoiceEngine {
       onClose: (handler) => {
         ws.socket.on('close', (code: number) => {
           clearTurnTimers();
+          clearHoldTimers();
+          clearTalkCap();
           for (const t of firstTurns.values()) clearTimeout(t);
           firstTurns.clear();
           release();

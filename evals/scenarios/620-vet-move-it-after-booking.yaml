@@ -42,4 +42,5 @@ expect:
   visits_after:
     - { on: "2026-09-28", at: "14:00", visit: vt_wellness }
     - { on: "2026-10-02", at: "16:00", visit: vt_wellness }
-  returned: ["Would you like to move that one, or book another as well?", "the visit booked on this call", "from Monday, September 28, at 4:00 PM to Friday"]
+  returned: ["Would you like to move that one, or book another as well?", "the caller means", "from Monday, September 28, at 4:00 PM to Friday"]
+  never_returned: ["booked on this call", "means that one"]

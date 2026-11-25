@@ -1,0 +1,30 @@
+id: vet-es-T9-said-once
+title: "T9 in Spanish: a question while a read-back waits: the answer and the question to settle it are joined once, one space apart, never a sentence twice (a tester's call, 2026-11-24)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, tester-call, clear-yes, es]
+turns:
+  - caller: Hola, soy Linh Nguyen. ¿Puede venir Biscuit mañana por la mañana a una consulta por enfermedad?
+    reply: "{offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: "2026-09-29", part_of_day: morning }
+  - caller: La primera.
+    reply: "{readback}?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: ¿Dónde están ubicados?
+    reply: "Estamos en 88 Riverbend Road. ¿Y todavía quiere que le reserve la cita?"
+    delegate:
+      - get_clinic_info: { question: ¿Dónde están ubicados? }
+  - caller: Sí, resérvela.
+    reply: "Listo."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["¿Y todavía quiere"]

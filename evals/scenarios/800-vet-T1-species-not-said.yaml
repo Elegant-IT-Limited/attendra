@@ -1,0 +1,25 @@
+id: vet-T1-species-not-said
+title: "T1: a new pet's kind of animal only as the caller said it: 'Can you hear me?' is never 'a cat'; asked again in the backend's words, then registered as said (a tester's call, 2026-11-24)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550161"
+tags: [no-demo, tester-call, identity]
+turns:
+  - caller: Hi, I'm Corin Vale. I want to register a new pet, her name is Tango. She's two years old.
+    reply: "Sure. What kind of animal is Tango?"
+    delegate:
+      - register_patient: { pet_name: Tango, owner_name: Corin Vale, species: null, sex: female, birthday_or_age: two years, phone: null }
+  - caller: Can you hear me?
+    reply: "Yes, I can. What kind of animal is Tango?"
+    delegate:
+      - register_patient: { pet_name: Tango, owner_name: Corin Vale, species: cat, sex: female, birthday_or_age: two years, phone: null }
+  - caller: Okay. She's a cat.
+    reply: "Tango is registered."
+    delegate:
+      - register_patient: { pet_name: Tango, owner_name: Corin Vale, species: cat, sex: female, birthday_or_age: two years, phone: null }
+expect:
+  outcome: abandoned
+  verified: true
+  refusals: [pet_species, ask_species]
+  spoken_contains: ["What kind of animal is Tango?"]
+  pet_on_file: { phone: "+17205550161", name: Tango, species: cat }

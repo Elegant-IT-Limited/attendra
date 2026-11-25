@@ -110,12 +110,14 @@ export class CallMemory {
       if (owner) this.set('saidName', owner, 'tool', atTurn);
       const pet = text('pet_name');
       if (pet) this.set('petName', pet, 'tool', atTurn);
+      // a value the memory filled in is the caller's own still: passed back, it keeps who said it
+      const keep = <K extends 'species' | 'sex' | 'age'>(k: K, v: MemoryFacts[K]) => { if (this.get(k) !== v) this.set(k, v, 'tool', atTurn); };
       const species = text('species');
-      if (species) this.set('species', species.toLowerCase(), 'tool', atTurn);
+      if (species) keep('species', species.toLowerCase());
       const sex = text('sex');
-      if (sex === 'female' || sex === 'male') this.set('sex', sex, 'tool', atTurn);
+      if (sex === 'female' || sex === 'male') keep('sex', sex);
       const age = text('birthday_or_age');
-      if (age) this.set('age', age, 'tool', atTurn);
+      if (age) keep('age', age);
       const phone = text('phone');
       if (phone) {
         const digits = heardNumber(clinic, phone).replace(/\D/g, '');
@@ -179,7 +181,7 @@ function vetNamed(text: string, clinic: ClinicConfig): string | null {
  */
 const QUALIFIED_DAY = /\b(?:january|february|march|april|may|june|july|august|september|october|november|december|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|thanksgiving|christmas|easter|holiday|new year|accion de gracias|navidad|feriado|after next|weeks?|semanas?|month|mes|the \d{1,2}(?:st|nd|rd|th)?(?![:\d])|\d{1,2}(?:st|nd|rd|th)|el \d{1,2}(?![:\d]))\b/;
 
-export function fillFromMemory(name: string, rawArgs: unknown, memory: CallMemory, opts: { industry: string; verifiedPatient: boolean; callerNumber: string | null; ownerOnFile?: string | null; timeZone?: string }): { args: unknown; filled: string[] } {
+export function fillFromMemory(name: string, rawArgs: unknown, memory: CallMemory, opts: { industry: string; verifiedPatient: boolean; callerNumber: string | null; ownerOnFile?: string | null; timeZone?: string; petFactsFrom?: number }): { args: unknown; filled: string[] } {
   if (!rawArgs || typeof rawArgs !== 'object' || Array.isArray(rawArgs)) return { args: rawArgs, filled: [] };
   const args = { ...(rawArgs as Record<string, unknown>) };
   const filled: string[] = [];
@@ -190,9 +192,13 @@ export function fillFromMemory(name: string, rawArgs: unknown, memory: CallMemor
   // a number the caller said (never the caller ID: phone null already means that one)
   const spoken = number && !number.callerId ? `+${number.digits}` : undefined;
   if (name === 'register_patient' && pets) {
-    fill('species', memory.get('species'));
-    fill('sex', memory.get('sex'));
-    fill('birthday_or_age', memory.get('age'));
+    // a new pet's kind, sex and age only as the caller said them since the last pet was found or added: never the pet
+    // before it (its record's kind, or what was passed for it), so a second pet is never registered with the first's
+    // details (T1, a tester's call 2026-11-24: "Perdón" and "Sí, eso" became "a dog" and an age)
+    const said = <K extends 'species' | 'sex' | 'age'>(k: K) => { const f = memory.fact(k); return f?.source === 'caller' && f.atTurn >= (opts.petFactsFrom ?? 0) ? f.value : undefined; };
+    fill('species', said('species'));
+    fill('sex', said('sex'));
+    fill('birthday_or_age', said('age'));
     // the owner on file of a known number, else the name the caller gave
     fill('owner_name', opts.ownerOnFile ?? memory.get('saidName'));
     fill('phone', spoken);

@@ -181,6 +181,9 @@ export const es: LanguagePack = {
   recordsOffer: 'No puedo dar detalles médicos por teléfono, pero puedo pedirle al equipo que le envíe el historial por escrito. ¿Le parece bien?',
   phoneAsGiven: ({ digits }) => `Tengo ${digits}. Lo anoto tal como me lo dio.`,
   petNewQuestion: ({ pet }) => `¿Es la primera vez que ${pet} viene con nosotros?`,
+  askPetSpecies: ({ pet }) => `¿Qué tipo de animal es ${pet}?`,
+  askPetSex: ({ pet }) => `¿${pet} es macho o hembra?`,
+  askPetAge: ({ pet }) => `¿Cuántos años tiene ${pet}, más o menos?`,
   profileNumberQuestion: ({ last4 }) => (last4 ? `Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en ${last4}?` : 'Claro. ¿Con qué número de teléfono está registrada la ficha de su mascota?'),
   phoneReadback: ({ grouped }) => `¿Es el ${grouped}?`,
   foundPet: ({ pet, species }) => {
