@@ -1,0 +1,27 @@
+id: vet-es-YES-ANY-LANG-yes-at-spanish-clinic
+title: "YES-ANY-LANG in Spanish: at a clinic set to Spanish only, a caller who answers the read-back with 'Yes.' is booked (owner decision, 26 Nov)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, clear-yes, es]
+settings: { languages: [es], primaryLanguage: es, greeting: "Gracias por llamar a Riverbend Animal Hospital. Soy Juniper, la asistente de inteligencia artificial de la clínica. ¿En qué le puedo ayudar a usted y a su mascota?" }
+turns:
+  - caller: Hola, soy Linh Nguyen. ¿Puede venir Biscuit mañana por la mañana a una consulta por enfermedad?
+    reply: "{offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: "2026-09-29", part_of_day: morning }
+  - caller: La primera.
+    reply: "{readback}?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Listo."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  bookings_created: 1
+  sms_sent: 1
+  refusals: []

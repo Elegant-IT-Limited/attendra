@@ -327,7 +327,7 @@ export const es: LanguagePack = {
   asksEmergencyService: words('(atienden|reciben|aceptan|ven|tratan|manejan|cubren|hacen) (las |los )?(emergencias|urgencias)|tienen (servicio (de )?)?(emergencias|urgencias)|(como|que hacen con las) (emergencias|urgencias)|(y|que pasa con|que hay de|y que hay de) (las |una |una |la )?(emergencias?|urgencias?)|(servicio|politica|horario) de (emergencias|urgencias)'),
   reportsEmergency: words('(es|tengo|tenemos|hay) (una )?(emergencia|urgencia)'),
   // "si" is also "if" ("si puede el martes"), so it counts only as its own word at the start, before a pause or the end
-  yes: new RegExp(`^si(?=\\s*[,.!]|$)|${words('claro|correcto|esta bien|de acuerdo|perfecto|exacto|adelante|confirmo|reservela|hagalo|asi es|me parece bien|suena bien|me sirve').source}`, 'u'),
+  yes: new RegExp(`^si(?=\\s*[,.!]|$)|${words('claro|correcto|esta bien|de acuerdo|perfecto|exacto|adelante|confirmo|reservela|hagalo|asi es|me parece bien|suena bien|me sirve|por supuesto|eso es').source}`, 'u'),
   yesAlone: /^(vale|por favor|si por favor|ok|okey|okay|dale|claro que si)$/,
   hedge: new RegExp(`${words('no|espere|espera|mejor|tal vez|quizas?|a lo mejor|en realidad|otro|otra|cambiar|momento|pensandolo|pero|prefiero|aunque|repita').source}|[?¿]`, 'u'),
   markers: /\b(el|la|los|las|de|que|por|para|con|una?|quiero|necesito|cita|gracias|hola|senor|senora|manana|hoy|si|esta|usted|puedo)\b/g,

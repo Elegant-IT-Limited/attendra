@@ -8,10 +8,10 @@ import { saysClockTime } from './readback';
  * hedged or mixed ("yes, actually no", "I think so?", "sí, pero espere")
  * is not a yes.
  *
- * A yes counts only in the languages the clinic offers: a word that means yes in
- * another language ("sí", "vale") is ordinary text at an English clinic. Short,
- * ambiguous words count only as the whole answer. A hedge in any language blocks it,
- * because a caller who switches languages to say "wait" still means wait.
+ * A plain yes counts in English or Spanish at every clinic, whatever languages it offers: "Sí." at a clinic set to
+ * English only is a yes (owner decision, 26 Nov, YES-ANY-LANG: the corpus heard it refused as no_clear_yes). Short,
+ * ambiguous words count only as the whole answer. A hedge in any language blocks it, because a caller who switches
+ * languages to say "wait" still means wait.
  */
 export function isClearYes(callerTextSinceReadback: string, languages: readonly Language[]): boolean {
   // "is it booked now?" only checks on the change: neither a yes nor a doubt, so it is taken out first (a test call,
@@ -21,7 +21,7 @@ export function isClearYes(callerTextSinceReadback: string, languages: readonly 
   const whole = t.replace(/[.,!¡?¿]+/g, ' ').replace(/\s+/g, ' ').trim();
   // "can you confirm it?", "¿me lo puede confirmar?": asking for the change itself, said as a question
   if (languages.some((l) => CONFIRM_REQUEST[l].test(whole))) return true;
-  const yes = languages.some((l) => PACKS[l].yes.test(t) || PACKS[l].yesAlone.test(whole.replace(/^(?:so|and|then|entonces|pues|y)\s+/, '')));
+  const yes = LANGUAGES.some((l) => PACKS[l].yes.test(t) || PACKS[l].yesAlone.test(whole.replace(/^(?:so|and|then|entonces|pues|y)\s+/, '')));
   const hedge = LANGUAGES.some((l) => PACKS[l].hedge.test(t));
   return yes && !hedge;
 }

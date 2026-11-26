@@ -213,9 +213,10 @@ describe('a clear yes in every language', () => {
     for (const [t, langs] of cases) expect(isClearYes(t, langs), `${t} (${langs.join(',')})`).toBe(false);
   });
 
-  it('takes a yes word only in a language the clinic offers', () => {
-    expect(isClearYes('claro', ['en'])).toBe(false);
-    expect(isClearYes('yes', ['es'])).toBe(false);
+  // owner decision, 26 Nov (YES-ANY-LANG): a plain yes in either language counts at every clinic
+  it('takes a plain yes in English or Spanish whatever languages the clinic offers', () => {
+    expect(isClearYes('claro', ['en'])).toBe(true);
+    expect(isClearYes('yes', ['es'])).toBe(true);
   });
 
   it('still takes a plain yes in each language, and a short word said alone', () => {

@@ -66,6 +66,8 @@ export const VAPI_PATH_SCENARIOS = [
   'vet-T11-fragment-confirmed', 'vet-es-T11-fragment-confirmed', 'vet-T12-slot-args-shapes', 'vet-es-T12-slot-args-shapes',
   'vet-T13-verified-on-calling-number', 'vet-es-T13-verified-on-calling-number',
   'vet-T8-swap-wrong-vet', 'vet-es-T8-swap-wrong-vet',
+  // a plain yes in either language at every clinic (owner decision, 26 Nov)
+  'vet-YES-ANY-LANG-si-at-english-clinic', 'vet-es-YES-ANY-LANG-yes-at-spanish-clinic',
   // "move it" / "cancel it" right after a booking, and "move that one": played since the Vapi script reads $booked and
   // $put_forward from the call itself (CQ2-VAPI8)
   'vet-move-it-after-booking', 'vet-es-move-it-after-booking', 'vet-cancel-it-after-booking', 'vet-es-cancel-it-after-booking',
