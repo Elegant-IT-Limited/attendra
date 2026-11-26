@@ -18,8 +18,8 @@ export const LONG_WAIT_MS = 3_000;
  */
 export const STALL_MS = 5_000;
 
-/** One turn of a call, on the call's own timeline. */
-export interface MarkedTurn { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }
+/** One turn of a call, on the call's own timeline; a caller's piece may carry how many words it had (no words kept). */
+export interface MarkedTurn { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number; words?: number }
 
 /**
  * The longest the caller waited in silence after speaking: from the end of a caller's words to the start of the
@@ -43,6 +43,41 @@ export function maxGapMs(turns: readonly MarkedTurn[]): number | null {
     if (gap >= 0 && (max === null || gap > max)) max = gap;
   }
   return answered ? max : null;
+}
+
+/** How long a caller's words take, at most, before the turn detector should have ended the turn: 0.5 s a word, plus 0.5 s. */
+export const WORD_MS = 500;
+export const TURN_END_GRACE_MS = 500;
+/** A turn kept open past its words by at least this much is counted as a late turn end. */
+export const LATE_TURN_END_MS = 2000;
+
+/**
+ * The longest a caller turn stayed open after its words, as the turn detector kept it (T4, 2026-11-26: a test call's
+ * event log showed "can you hear me?" held open 11 s, and two turns of a few words 16 and 18 s; every reply went within
+ * a millisecond of the turn's end, so the call page's wait from the turn's end showed none of it). For each caller
+ * piece with a word count: its length less 0.5 s a word and 0.5 s. Null when no piece ran over.
+ */
+export function lateTurnEndMs(pieces: readonly MarkedTurn[]): number | null {
+  let max: number | null = null;
+  for (const p of pieces) {
+    if (p.speaker !== 'caller' || !p.words) continue;
+    const excess = Math.round(p.endMs - p.startMs - p.words * WORD_MS - TURN_END_GRACE_MS);
+    if (excess > 0 && (max === null || excess > max)) max = excess;
+  }
+  return max;
+}
+
+/** The caller turns kept open past their words by LATE_TURN_END_MS or more. */
+export const lateTurnEnds = (pieces: readonly MarkedTurn[]) => pieces.filter((p) => p.speaker === 'caller' && !!p.words && p.endMs - p.startMs - p.words * WORD_MS - TURN_END_GRACE_MS >= LATE_TURN_END_MS).length;
+
+/**
+ * The call's longest wait, the one number the call page shows: the longest silence after the caller's words (maxGapMs)
+ * or the longest a turn was kept open after them (lateTurnEndMs), whichever is longer. Null when there is neither.
+ */
+export function longestWaitMs(pieces: readonly MarkedTurn[]): number | null {
+  const gap = maxGapMs(pieces);
+  const late = lateTurnEndMs(pieces);
+  return gap === null && late === null ? null : Math.max(gap ?? 0, late ?? 0);
 }
 
 /** The questions in a line: each sentence that ends with a question mark. */
