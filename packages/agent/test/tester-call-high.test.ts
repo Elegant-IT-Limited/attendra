@@ -136,7 +136,8 @@ describe('T12: find_slots takes the argument shapes voice models send', () => {
   const provider = [undefined, null, 'any', 'none', '', 'prov_ruiz', 'Dr. Ruiz', 'Elena Ruiz', 'ruiz'];
   const date = [undefined, null, 'any', '', '2026-10-01', '2026-10-01T09:00:00', 'tomorrow', 'today', 'Thursday', 'next Thursday', 'October 1', '10/01/2026', 'mañana', 'el jueves',
     // a day with a part of day or a time in the same words (the owner's live rerun, 2026-11-26: "tomorrow morning")
-    'tomorrow morning', 'tomorrow afternoon', 'Friday morning', 'next Tuesday at 3', 'this evening', 'mañana por la mañana', 'el viernes por la tarde', 'pasado mañana'];
+    'tomorrow morning', 'tomorrow afternoon', 'Friday morning', 'next Tuesday at 3', 'this evening', 'mañana por la mañana', 'el viernes por la tarde', 'pasado mañana',
+    'tomorrow at noon', 'Friday midday', 'tomorrow noon', 'tomorrow around lunchtime', 'mañana al mediodía', 'el viernes a mediodía'];
   const part = [undefined, null, 'any', 'morning', 'Afternoon', 'evening', ''];
   const time = [undefined, null, '', '15:00', '3pm', '3:30 PM', '15:00:00', 'noon', 'after 3'];
   // every value of each argument at least once, with the others varied, as a property check
@@ -183,6 +184,18 @@ describe('T12-live: a day said with a part of day or a time is read as both', ()
     expect(meant('tomorrow morning', 'any')).toMatchObject({ from_date: '2026-09-29', part_of_day: 'morning' });
     // a part of day the model gave is kept
     expect(meant('tomorrow morning', 'afternoon')).toMatchObject({ from_date: '2026-09-29', part_of_day: 'afternoon' });
+  });
+
+  it('T12-noon: noon, midday or lunchtime with the day is 12:00, and the afternoon only when part_of_day was left out (EN/ES)', () => {
+    expect(meant('tomorrow at noon')).toMatchObject({ from_date: '2026-09-29', from_time: '12:00', time_mode: 'at', part_of_day: 'afternoon' });
+    expect(meant('tomorrow noon')).toMatchObject({ from_date: '2026-09-29', from_time: '12:00', time_mode: 'at', part_of_day: 'afternoon' });
+    expect(meant('Friday midday')).toMatchObject({ from_date: day('Friday'), from_time: '12:00', part_of_day: 'afternoon' });
+    expect(meant('tomorrow around lunchtime')).toMatchObject({ from_date: '2026-09-29', from_time: '12:00', time_mode: 'around', part_of_day: 'afternoon' });
+    expect(meant('mañana al mediodía')).toMatchObject({ from_date: '2026-09-29', from_time: '12:00', time_mode: 'at', part_of_day: 'afternoon' });
+    expect(meant('el viernes a mediodía')).toMatchObject({ from_date: day('el viernes'), from_time: '12:00', part_of_day: 'afternoon' });
+    // the model's own part of day, "any" included, is kept
+    expect(meant('tomorrow at noon', 'any')).toMatchObject({ from_date: '2026-09-29', from_time: '12:00', part_of_day: 'any' });
+    expect(meant('tomorrow at noon', 'morning')).toMatchObject({ from_date: '2026-09-29', from_time: '12:00', part_of_day: 'morning' });
   });
 
   it('T12-live: from_date "tomorrow morning" with part_of_day "morning" (the live call) finds tomorrow morning, never invalid_arguments', async () => {
