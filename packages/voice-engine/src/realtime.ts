@@ -246,12 +246,14 @@ export const GO_WAIT_MS = 1200;
 /** How long a turn before the caller's first words waits for its transcript before it is answered anyway. */
 export const FIRST_WORDS_WAIT_MS = 2500;
 /**
- * Turn detection on the tools path: the turn ends once the caller has clearly finished, and the engine starts each reply
- * itself (at once, or after our go once replies are manual), so nothing about the session changes mid-call. The caller
- * talking over a reply still stops it. Low eagerness (call quality Q4, 2026-11-18): at high, a caller pausing mid-sentence
- * was answered ("No, but let me finish..."); low waits for a turn that sounds finished.
+ * Turn detection on the tools path: the engine starts each reply itself (at once, or after our go once replies are
+ * manual), so nothing about the session changes mid-call. The caller talking over a reply still stops it. Auto
+ * eagerness, the server's default (T4, 2026-11-26): at low, a test call's event log showed the server keeping caller
+ * turns of a few words open 11 to 18 s after the words ended, and every reply went within a millisecond of the turn's
+ * end, so those silences were the turn detector's, not ours; the Q4 report also measured that low eagerness did not cut
+ * early answers (the caller-talking hold did). Semantic VAD's longest wait at auto is about half of low's.
  */
-export const TOOLS_TURNS = { type: 'semantic_vad' as const, eagerness: 'low' as const, create_response: false, interrupt_response: true };
+export const TOOLS_TURNS = { type: 'semantic_vad' as const, eagerness: 'auto' as const, create_response: false, interrupt_response: true };
 /** Phone audio is a handset close to the mouth: near-field noise reduction takes out the room before turn detection (Q5). */
 export const NOISE_REDUCTION = { type: 'near_field' as const };
 

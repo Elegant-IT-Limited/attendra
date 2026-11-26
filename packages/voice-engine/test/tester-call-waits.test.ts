@@ -216,3 +216,23 @@ describe('T4 review: a held reply never starts over a caller still talking; the 
     expect(h.closes.at(-1)!.quality.maxGapMs).toBe(800);
   });
 });
+
+describe('T4-vad: a caller turn the VAD kept open long after the words is a wait', () => {
+  it('T4-vad: 3 words over 11.1 s (speech_started 102995 → speech_stopped 114085) counts as a wait of 9 s or more; the reply within 1 ms adds none', async () => {
+    const h = harness();
+    await h.runner.handle(said('out', 'o1', 'Thanks for calling. How can I help?', 0, 1500));
+    await h.runner.handle(said('in', 'i1', 'Are you there?', 102_995, 114_085 - 102_995));
+    await h.runner.handle(said('out', 'o2', 'Yes, I can hear you.', 114_086));
+    await h.runner.handle({ type: 'session.closed', event_id: 'c1', reason: 'remote_hangup', usage: { seconds: 120 } });
+    expect(h.closes.at(-1)!.quality.maxGapMs).toBeGreaterThanOrEqual(9000);
+  });
+
+  it('T4-vad: a normal 3-word turn of 1.5 s answered at once adds no wait', async () => {
+    const h = harness();
+    await h.runner.handle(said('out', 'o1', 'Thanks for calling. How can I help?', 0, 1500));
+    await h.runner.handle(said('in', 'i1', 'Are you there?', 2000, 1500));
+    await h.runner.handle(said('out', 'o2', 'Yes, I can hear you.', 3700));
+    await h.runner.handle({ type: 'session.closed', event_id: 'c1', reason: 'remote_hangup', usage: { seconds: 5 } });
+    expect(h.closes.at(-1)!.quality.maxGapMs).toBe(200);
+  });
+});
