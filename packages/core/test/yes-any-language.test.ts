@@ -17,4 +17,14 @@ describe('YES-ANY-LANG: a plain yes in either language counts at every clinic', 
       expect(isClearYes(s, ['es']), s).toBe(false);
     }
   });
+
+  it('YES-ANY-LANG-review: "Eso es todo, gracias", "that\'s all", "that\'s it, thanks" are a goodbye, never a yes', () => {
+    for (const s of ['Eso es todo, gracias.', 'Eso es todo.', 'Es todo.', 'Eso sería todo.', "That's all.", "That's it, thanks.", "That's all, thank you."]) {
+      expect(isClearYes(s, ['en']), s).toBe(false);
+      expect(isClearYes(s, ['es']), s).toBe(false);
+    }
+    // "eso es" said as the whole answer is still a yes
+    expect(isClearYes('Eso es.', ['en'])).toBe(true);
+    expect(isClearYes('Eso es.', ['es'])).toBe(true);
+  });
 });
