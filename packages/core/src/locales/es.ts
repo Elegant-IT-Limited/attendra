@@ -65,6 +65,12 @@ const NUMEROS = ['cero', 'un', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete'
 const sinEl = (w: string | undefined) => (w ?? '').replace(/^el\s+/i, '');
 
 /** A pet's kind as owners say it in Spanish, with its article: "su perro". Anything else is left unsaid. */
+const SPECIALTIES_ES: Record<string, string> = {
+  'general practice': 'medicina general', 'family medicine': 'medicina familiar', 'internal medicine': 'medicina interna', 'exotic pets': 'animales exóticos',
+  exotics: 'animales exóticos', dentistry: 'odontología', dental: 'odontología', surgery: 'cirugía', dermatology: 'dermatología', cardiology: 'cardiología',
+  oncology: 'oncología', ophthalmology: 'oftalmología', behavior: 'comportamiento', behaviour: 'comportamiento', 'senior pets': 'mascotas mayores',
+  emergency: 'urgencias', 'emergency and critical care': 'urgencias y cuidados intensivos', pediatrics: 'pediatría', orthopedics: 'ortopedia', radiology: 'radiología',
+};
 const SPECIES_ES: Record<string, string> = { dog: 'su perro', perro: 'su perro', cat: 'su gato', gato: 'su gato', rabbit: 'su conejo', conejo: 'su conejo', bird: 'su pájaro', parrot: 'su loro', 'guinea pig': 'su cuyo', ferret: 'su hurón', hamster: 'su hámster' };
 /** A note written to follow a comma, said as a sentence of its own. */
 const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -183,7 +189,9 @@ export const es: LanguagePack = {
   petNewQuestion: ({ pet }) => `¿Es la primera vez que ${pet} viene con nosotros?`,
   askPetSpecies: ({ pet }) => `¿Qué tipo de animal es ${pet}?`,
   vetsAnswer: ({ vets, credentialsAsked, pets }) => {
-    const one = (v: { name: string; specialty: string | null; credentials: string[] }) => [v.name, v.specialty?.toLowerCase(), v.credentials.length ? v.credentials.join(' y ') : null].filter(Boolean).join(', ');
+    // a specialty in Spanish when the clinic's English name for it has one here; otherwise as the clinic wrote it (T6)
+    const esp = (s: string | null) => (s ? SPECIALTIES_ES[s.trim().toLowerCase()] ?? s : null);
+    const one = (v: { name: string; specialty: string | null; credentials: string[] }) => [v.name, esp(v.specialty), v.credentials.length ? v.credentials.join(' y ') : null].filter(Boolean).join(', ');
     const list = vets.length < 2 ? vets.map(one).join('') : `${vets.slice(0, -1).map(one).join('; ')}; y ${one(vets.at(-1)!)}`;
     const missing = credentialsAsked && vets.some((v) => !v.credentials.length) ? ' El equipo le puede dar más detalles sobre su formación.' : '';
     return `${vets.length === 1 ? (pets ? 'Nuestro veterinario es' : 'Nuestro médico es') : (pets ? 'Nuestros veterinarios son' : 'Nuestros médicos son')} ${list}.${missing}`;
@@ -192,6 +200,7 @@ export const es: LanguagePack = {
   confirmPetName: ({ name }) => `${name} es el nombre de la mascota, ¿verdad?`,
   readbackSwap: ({ when: w, provider, visit, from, to }) => `pasar la cita de ${visit.toLowerCase()} del ${sinEl(w)} con ${provider} de ${from} a ${to}`,
   askOwnerName: '¿Cuál es su nombre?',
+  invalidDate: ({ said }) => `${said} no es una fecha del calendario. ¿Qué día le viene bien?`,
   swapWrongVet: ({ vet, animals, pet, others }) => `${vet} ${animals ? `solo atiende ${animals}` : `no atiende ese tipo de animal`}, así que no puedo pasarle esa cita a ${pet}. ${others.length ? `${others.length === 1 ? others[0] : `${others.slice(0, -1).join(', ')} o ${others.at(-1)}`} puede atender a ${pet}: ¿le busco una hora?` : `¿Quiere que el equipo le llame para darle una cita a ${pet}?`}`,
   askPetSex: ({ pet }) => `¿${pet} es macho o hembra?`,
   askPetAge: ({ pet }) => `¿Cuántos años tiene ${pet}, más o menos?`,

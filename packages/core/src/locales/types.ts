@@ -183,12 +183,14 @@ export interface LanguagePack {
   vetsAnswer: (v: { vets: { name: string; specialty: string | null; credentials: string[] }[]; credentialsAsked: boolean; pets: boolean }) => string;
   /** "For Tango or another pet?": a second visit on the call, with the household already known (T7). */
   forWhichPet: (v: { names: string[] }) => string;
-  /** "Kelly is the pet's name, right?": a name heard in a fragment or another language, confirmed before it is used (T11). */
+  /** "Sunny is the pet's name, right?": a name heard in a fragment or another language, confirmed before it is used (T11). */
   confirmPetName: (v: { name: string }) => string;
   /** The read-back of a visit moved from one pet to another (T8). */
   readbackSwap: (v: { when: string; provider: string; visit: string; from: string; to: string }) => string;
   /** A visit not moved to a pet its vet does not see (K1), with the vets who do offered. */
   swapWrongVet: (v: { vet: string; animals: string | null; pet: string; others: string[] }) => string;
+  /** A day no calendar has ("February 30"), never moved to another (T12 review). */
+  invalidDate: (v: { said: string }) => string;
   /** The owner's first name, asked on its own (T10). */
   askOwnerName: string;
   askPetSex: (v: { pet: string }) => string;

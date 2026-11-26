@@ -9,6 +9,6 @@ it('T5: flags a change explained as internal state, EN and ES, and nothing a fro
     'One moment, I\'ll cancel the one booked on this call instead.', 'That pending change is dropped.',
     'El cambio pendiente no se usará.', 'El cambio provisional ya no se va a hacer.',
   ]) expect(talksAboutInternals(s), s).toBe(true);
-  for (const s of ['So I\'d cancel Saturday at 9:20 AM with Dr. Patel. Is that right?', 'Shall I book it?', 'Your visit is booked.', '¿Le reservo esa cita?', 'Is that the visit you want to cancel?'])
+  for (const s of ['So I\'d cancel Saturday at 9:20 AM with Dr. Bell. Is that right?', 'Shall I book it?', 'Your visit is booked.', '¿Le reservo esa cita?', 'Is that the visit you want to cancel?'])
     expect(talksAboutInternals(s), s).toBe(false);
 });

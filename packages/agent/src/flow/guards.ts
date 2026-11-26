@@ -110,9 +110,13 @@ export const asksWhichVet = (question: string) => WHICH_VET.test(normalise(quest
  * (T6, a tester's call 2026-11-24). Answered once, from the clinic's own list, never "I don't have that".
  */
 const VETS_WORD = /\b(?:vets?|veterinarians?|doctors?|drs?|doctoras?|doctores|veterinari[oa]s?|medic[oa]s?)\b/;
-const ABOUT_VETS = /\b(?:who|which|what|names?|how many|other|others|additional|more|else|list|tell me|qualif\w*|credentials?|specialt\w*|speciali[sz]\w*|experience|trained|training|certified|degrees?|quien(?:es)?|cual(?:es)?|que|nombres?|cuantos|otros?|mas|titulos?|cualificaciones|formacion|especialidad(?:es)?|experiencia)\b/;
+// who the vets are: their names, how many, the others, their qualifications or specialties; never where they are, when
+// they open or what they charge (reviewer, T6: "What is the vet's address?" got the list of vets)
+const ABOUT_VETS = /\b(?:who|which|names?|how many|other|others|additional|list|qualif\w*|credentials?|specialt\w*|speciali[sz]\w*|trained|training|certified|degrees?|background|quien(?:es)?|cual(?:es)?|nombres?|cuantos|cuantas|otros?|otras?|titulos?|cualificaciones|formacion|especialidad(?:es)?)\b/;
+const NOT_ABOUT_WHO = /\b(?:address|where|located|location|hours?|open|opens|close|closes|charge|charges|cost|costs|price|prices|fee|fees|pay|insurance|parking|direccion|donde|hora|horas|horario|abre|abren|cierra|cierran|precio|precios|cuesta|cuestan|cobra|cobran|pagar|seguro)\b/;
 export const asksAboutVets = (question: string) => {
   const t = normalise(question);
+  if (NOT_ABOUT_WHO.test(t)) return false;
   return (VETS_WORD.test(t) && ABOUT_VETS.test(t)) || /\b(?:qualifications?|credentials?|cualificaciones)\b/.test(t);
 };
 /**

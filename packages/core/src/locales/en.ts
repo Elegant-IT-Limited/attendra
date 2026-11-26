@@ -174,6 +174,7 @@ export const en: LanguagePack = {
   confirmPetName: ({ name }) => `${name} is the pet's name, right?`,
   readbackSwap: ({ when: w, provider, visit, from, to }) => `move the ${visit.toLowerCase()} on ${w} with ${provider} from ${from} to ${to}`,
   askOwnerName: "What's your first name?",
+  invalidDate: ({ said }) => `${said} isn't a date on the calendar. Which day would you like?`,
   swapWrongVet: ({ vet, animals, pet, others }) => `${vet} ${animals ? `sees ${animals} only` : `isn't listed for ${pet}'s kind of animal`}, so I can't move that visit to ${pet}. ${others.length ? `${others.length === 1 ? others[0] : `${others.slice(0, -1).join(', ')} or ${others.at(-1)}`} can see ${pet}: shall I look for a time?` : `Shall I take a request so the team can book ${pet}?`}`,
   askPetSex: ({ pet }) => `Is ${pet} a boy or a girl?`,
   askPetAge: ({ pet }) => `How old is ${pet}, roughly?`,

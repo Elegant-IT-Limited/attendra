@@ -11,5 +11,5 @@ turns:
 expect:
   outcome: info
   language: es
-  returned: ["Nuestros veterinarios son Dra. Elena Ruiz, general practice", "Dra. Hana Sato, exotic pets"]
+  returned: ["Nuestros veterinarios son Dra. Elena Ruiz, medicina general", "Dra. Hana Sato, animales exóticos"]
   never_returned: ["I don't have that information"]

@@ -92,7 +92,7 @@ export function petFactNotSaid(state: CallState, args: { species?: unknown; sex?
   return null;
 }
 
-/** Words that mark a short answer as one language or the other ("Es Kelly", "It's Kelly"). */
+/** Words that mark a short answer as one language or the other ("Es Sunny", "It's Sunny"). */
 const MARKS: Record<Language, Set<string>> = {
   en: new Set(['is', "it's", 'its', 'name', 'named', 'called', 'my', 'the', 'yes', 'sorry', 'that', 'her', 'his', 'she', 'he']),
   es: new Set(['es', 'se', 'llama', 'llamo', 'nombre', 'perdon', 'si', 'eso', 'su', 'mi', 'la', 'el', 'ella', 'el']),
@@ -100,8 +100,8 @@ const MARKS: Record<Language, Set<string>> = {
 
 /**
  * Whether a pet's name was heard only in a short answer in another language than the one the assistant was speaking
- * ("Es Kelly." on an English call): confirmed with the caller before it is used (T11, a tester's call 2026-11-24: "Es
- * Kelly", "Perdón" and "Sí, eso" were all taken as answers). A name said in a sentence of the call's own language is not.
+ * ("Es Sunny." on an English call): confirmed with the caller before it is used (T11, a tester's call 2026-11-24: "Es
+ * Sunny", "Perdón" and "Sí, eso" were all taken as answers). A name said in a sentence of the call's own language is not.
  */
 export function nameHeardInFragment(state: CallState, name: string): boolean {
   const want = normalise(name).trim();

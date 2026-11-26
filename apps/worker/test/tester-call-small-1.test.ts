@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { handlers } from '../src/runtime';
 import { LocalSummariser } from '../src/summarise';
 
-// SMALL-1, a tester's call (2026-11-24): the reminder said "with Maya Chen", no "Dr.", for a vet whose title is kept apart
+// SMALL-1, a tester's call (2026-11-24): the reminder named the vet with no "Dr.", for a vet whose title is kept apart
 // from the name (db:vet-titles). Made-up clinic and people.
 const cipher = createPhiCipher(TEST_DATA_KEY);
 const log = createLogger({ name: 'test', destination: new Writable({ write: (_c, _e, done) => done() }) });

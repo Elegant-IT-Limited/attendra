@@ -336,7 +336,7 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
             vars: {
               clinic: config.name, when: speakSlot(a.startsAt, config.timezone, lang), clinicPhone: callUsNumber(config),
               ...(pets ? { pet: firstName, ...(owner ? { name: owner } : {}) } : { name: firstName }),
-              // a vet as "Dr. Maya Chen": the title kept apart from the name (db:vet-titles) is said, as on the call (SMALL-1)
+              // a vet as "Dr. Wren Abara": the title kept apart from the name (db:vet-titles) is said, as on the call (SMALL-1)
               ...(provider && provider.kind !== 'room' ? { provider: providerName(provider, lang) } : {}),
               ...(visit ? { visit: localName(visit, lang).toLowerCase() } : {}),
             },

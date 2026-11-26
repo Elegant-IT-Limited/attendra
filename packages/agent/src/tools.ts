@@ -262,7 +262,7 @@ export function slotArgsAsMeant(args: unknown, clinic?: Pick<ClinicConfig, 'prov
     if (named) a.provider_id = named.id;
   }
   // a day in words ("tomorrow", "next Thursday", "October 1", "10/01/2026", "el jueves"): its date on the clinic's clock
-  if (clinic && typeof a.from_date === 'string' && !/^\d{4}-\d{2}-\d{2}/.test(a.from_date.trim())) a.from_date = dateSaid(a.from_date, clinic, now) ?? a.from_date;
+  if (clinic && typeof a.from_date === 'string' && !/^\d{4}-\d{2}-\d{2}/.test(a.from_date.trim())) { const d = dateSaid(a.from_date, clinic, now); if (d && d !== INVALID_DATE) a.from_date = d; }
   // "noon", "after 3", "before 5", "around 4": the time, and how it was said
   if (typeof a.from_time === 'string') {
     const t = normalise(a.from_time).trim();
@@ -294,6 +294,15 @@ const MONTH_WORDS: Record<string, number> = Object.fromEntries([
   ...['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'].map((m, i) => [m, i + 1]),
   ...['jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec'].map((m) => [m, MONTH_LIST.findIndex((x) => x.startsWith(m.slice(0, 3))) + 1]),
 ]);
+const INVALID_DATE = 'invalid';
+const daysIn = (month: number, year: number) => new Date(Date.UTC(year, month, 0)).getUTCDate();
+/** Whether a find_slots from_date names a day no calendar has: "February 30", "02/30/2027", "2027-06-31". */
+export function impossibleDate(said: unknown, clinic: Pick<ClinicConfig, 'timezone' | 'phoneNumbers'>, now: Date): boolean {
+  if (typeof said !== 'string' || !said.trim()) return false;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(said.trim());
+  if (iso) return Number(iso[2]) < 1 || Number(iso[2]) > 12 || Number(iso[3]) < 1 || Number(iso[3]) > daysIn(Number(iso[2]), Number(iso[1]));
+  return dateSaid(said, clinic, now) === INVALID_DATE;
+}
 /** A day said in words, as find_slots' from_date: today, tomorrow, a weekday, a month and day, or a numeric date. Null when it is none. */
 function dateSaid(said: string, clinic: Pick<ClinicConfig, 'timezone' | 'phoneNumbers'>, now: Date): string | null {
   const today = localDateOf(now, clinic.timezone);
@@ -307,8 +316,9 @@ function dateSaid(said: string, clinic: Pick<ClinicConfig, 'timezone' | 'phoneNu
     return 'date' in day ? day.date : day.either[0];
   }
   const year = Number(today.slice(0, 4));
-  const ahead = (m: number, d: number, y?: number) => {
-    if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  const ahead = (m: number, d: number, y?: number): string | null => {
+    // a day the month does not have ("February 30", "June 31") is no date: never moved to the next month (reviewer, T12)
+    if (m < 1 || m > 12 || d < 1 || d > daysIn(m, y ?? year)) return INVALID_DATE;
     const iso = (yy: number) => `${yy}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     return y ? iso(y) : iso(year) >= today ? iso(year) : iso(year + 1);
   };
@@ -580,6 +590,10 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
   const schema = toolArgsFor(ctx.clinic.industry)[name];
   // an empty string for a detail the caller did not give is that detail left out: null, where the tool takes null
   // (a voice model sent "" for "none" and a move's slot search came back invalid_arguments, 2026-11-16)
+  // a day no calendar has is said so, never moved to another day (reviewer, T12)
+  if (name === 'find_slots' && rawArgs && typeof rawArgs === 'object' && impossibleDate((rawArgs as { from_date?: unknown }).from_date, ctx.clinic, ctx.now())) {
+    return refuse('invalid_date', `Say, in these words: "${PACKS[state.language].invalidDate({ said: String((rawArgs as { from_date: unknown }).from_date) })}"`);
+  }
   // a vet's name or a day in words for find_slots passes the schema as a string: read as meant first (T12)
   const first = schema.safeParse(name === 'find_slots' ? slotArgsAsMeant(rawArgs, ctx.clinic, ctx.now()) : rawArgs);
   const parsed = first.success ? first : schema.safeParse(name === 'find_slots' ? slotArgsAsMeant(blanksAsNull(rawArgs), ctx.clinic, ctx.now()) : blanksAsNull(rawArgs));
@@ -775,15 +789,14 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
   const commitSwap = async (pending: Extract<NonNullable<CallState['pending']>, { kind: 'book' }> & { swap: NonNullable<Extract<NonNullable<CallState['pending']>, { kind: 'book' }>['swap']> }, noText: boolean): Promise<ToolResult> => {
     const { swap, slot } = pending;
     state.pending = null;
-    const cancelled = await backend.scheduler.cancel(clinic.id, { patientId: swap.fromPatient.id, appointmentId: swap.fromAppointmentId, callId: ctx.callId, idempotencyKey: key(ctx.callId, 'swap-cancel', swap.fromAppointmentId, pending.seq) });
-    if (cancelled.status === 'not_found') return refuse('unknown_appointment', 'Say you could not find that visit any more and offer a callback.');
-    const booked = await backend.scheduler.book(clinic.id, { patientId: swap.toPatient.id, slot, callId: ctx.callId, idempotencyKey: key(ctx.callId, 'swap-book', swap.fromAppointmentId, pending.seq) });
-    if (booked.status !== 'booked' && booked.status !== 'already_done') {
-      // the first pet keeps its visit: nothing is lost
-      await backend.scheduler.book(clinic.id, { patientId: swap.fromPatient.id, slot, callId: ctx.callId, idempotencyKey: key(ctx.callId, 'swap-restore', swap.fromAppointmentId, pending.seq) }).catch(() => undefined);
-      return refuse('swap_failed', `Say, in a few words, that it could not be moved and ${swap.fromPatient.firstName} keeps the visit; offer another time for ${swap.toPatient.firstName}.`);
-    }
-    await emit({ type: 'appointment.cancelled', key: swap.fromAppointmentId, data: { appointmentId: swap.fromAppointmentId, patientId: swap.fromPatient.id, by: 'assistant', callId: ctx.callId, reason: 'patient_asked' } });
+    // one step, in one transaction: the other pet's visit is booked and this one cancelled together, or nothing changes
+    // (reviewer, T8: a cancel, then a booking, then an unchecked re-booking if it failed)
+    const booked = await backend.scheduler.book(clinic.id, { patientId: swap.toPatient.id, slot, callId: ctx.callId, idempotencyKey: key(ctx.callId, 'swap', swap.fromAppointmentId, pending.seq), replacesAppointmentId: swap.fromAppointmentId, replacesPatientId: swap.fromPatient.id });
+    if (booked.status === 'patient_busy') return refuse('patient_busy', `Say, in a few words, that ${swap.toPatient.firstName} already has a visit at that time, so nothing was changed and ${swap.fromPatient.firstName} keeps it. Offer another time for ${swap.toPatient.firstName}.`);
+    if (booked.status !== 'booked' && booked.status !== 'already_done') return refuse('swap_failed', `Say, in a few words, that it could not be moved and nothing was changed: ${swap.fromPatient.firstName} keeps the visit. Offer another time for ${swap.toPatient.firstName}.`);
+    // the first pet's visit was no longer there to give: the other pet has the time, and the caller is told so
+    const oldGone = booked.status === 'booked' && !booked.replaced;
+    if (!oldGone) await emit({ type: 'appointment.cancelled', key: swap.fromAppointmentId, data: { appointmentId: swap.fromAppointmentId, patientId: swap.fromPatient.id, by: 'assistant', callId: ctx.callId, reason: 'patient_asked' } });
     const a = booked.appointment;
     if (booked.status === 'booked') await emit({ type: 'appointment.booked', key: a.id, data: { appointmentId: a.id, patientId: swap.toPatient.id, providerId: a.providerId, visitTypeId: a.visitTypeId, startsAt: a.start.toISOString(), endsAt: a.end.toISOString(), by: 'assistant', callId: ctx.callId } });
     // the call is now about the pet that has the visit
@@ -794,7 +807,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
     state.outcome = 'booked';
     const textTo = booked.status === 'booked' ? await confirmByText('booking_confirmed', a.start, a.id, { providerId: a.providerId, visitTypeId: a.visitTypeId }, noText) : null;
     state.done.push(`moved to another pet: ${pending.readback}`);
-    return { ok: true, data: { booked: true, when: pending.readback, confirmation_text: textNote(textTo), spoken: pack.spoken.done({ kind: 'rescheduled', textTo, then: pack.spoken.anythingElse }) } };
+    return { ok: true, data: { booked: true, when: pending.readback, confirmation_text: textNote(textTo), spoken: pack.spoken.done({ kind: 'rescheduled', textTo, then: pack.spoken.anythingElse }), ...(oldGone ? { say: `${swap.toPatient.firstName} now has the visit; ${swap.fromPatient.firstName}'s was no longer booked. Say both in a few words.` } : {}) } };
   };
 
   switch (name) {
@@ -914,8 +927,8 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const asked = `${question} ${state.lastTurn('caller')}`;
       const offer = asksWhere(asked) ? textOfferAfter('directions', state, clinic, ctx.callerNumber) : asksHours(asked) ? textOfferAfter('hours', state, clinic, ctx.callerNumber) : null;
       // who the vets are, with their specialty and qualifications: one line of the clinic's own, said once (T6)
-      // (a clinic answer that only shares a word with it, "tienen", never wins over the vets themselves)
-      const vetsAsked = !vetDayAsked(clinic, asked) && asksAboutVets(asked) && !(answer && asksAboutVets(answer.question));
+      // the clinic's own answer, when one fits, is never dropped for the list (reviewer, T6)
+      const vetsAsked = !answer && !vetDayAsked(clinic, asked) && asksAboutVets(asked);
       const people = bookableProviders(clinic.providers).filter((p) => p.kind !== 'room');
       const vetsLine = vetsAsked && people.length
         ? PACKS[lang].vetsAnswer({ vets: people.map((p) => ({ name: providerName(p, lang), specialty: p.specialty ?? null, credentials: p.credentials ?? [] })), credentialsAsked: /qualif|credential|certif|degree|trained|training|titulo|cualificacion|formacion/.test(normalise(asked)), pets: trade.identity === 'pet' })
@@ -938,7 +951,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
           closed_days_ahead: closedDaysAhead(clinic, today),
           // and its shorter days after this week, for "are you open on Christmas Eve?"
           ...(specialHoursAhead(clinic, today).length ? { special_hours_ahead: specialHoursAhead(clinic, today) } : {}),
-          answer: vetsLine ? null : answer?.answer ?? null, source: vetsLine ? null : answer?.id ?? null,
+          answer: answer?.answer ?? null, source: answer?.id ?? null,
           // the clinic's own answer, said by the clinic: "we ...", never "they ..." (a test call, 2026-11-16)
           ...(answer ? { answer_voice: 'This is the clinic\'s own answer and you speak for the clinic: say it as "we" and "our" ("Yes, we offer ..."), never "they" or "the clinic".' } : {}),
           ...(offer ? { text_offer: offer.note } : {}),
