@@ -92,7 +92,7 @@ describe('T4: what can hold a reply, each with a cap', () => {
     vi.useRealTimers();
   });
 
-  it('T4: a start of speech with no end holds a reply (and a nudge) for at most 8 s, then it goes', async () => {
+  it('T4: a start of speech with no end holds a reply (and a nudge) until the lost-stop cap (15 s), then it goes', async () => {
     vi.useFakeTimers();
     const { s, sideband } = await engineFor('rtc_t4b');
     turn(s, 'i1', 'Is Tuesday free?');
@@ -101,7 +101,7 @@ describe('T4: what can hold a reply, each with a cap', () => {
     s.play({ type: 'input_audio_buffer.speech_started', event_id: 'n1', item_id: 'i2' }); // a TV, and no stop ever comes
     sideband.send({ type: 'tool.result', event_id: 't1', call_id: 'call_1', output: JSON.stringify({ ok: true, outcome: 'ok', spoken: 'Tuesday at 9 is free.' }) });
     sideband.send({ type: 'session.commentary.append', event_id: 'nudge', delegation_id: null, content: 'The caller is waiting. Answer them now.' } as never);
-    vi.advanceTimersByTime(7000);
+    vi.advanceTimersByTime(14_000);
     expect(creates(s, start)).toHaveLength(0);
     vi.advanceTimersByTime(1100);
     expect(creates(s, start)).toHaveLength(1);
@@ -168,28 +168,29 @@ describe('T9: nothing said twice', () => {
 });
 
 describe('T4 review: a held reply never starts over a caller still talking; the wait counts only what the assistant owed', () => {
-  it('T4-review: a caller talking 12 s (no stop for 12 s, words still coming) holds the reply the whole time; their turn\'s end answers once', async () => {
+  it('T4-review2: a caller talking 12 s (speech started, no stop for 12 s) holds the reply the whole time; their turn\'s end answers once', async () => {
     vi.useFakeTimers();
     const { s, sideband } = await engineFor('rtc_t4r1');
     turn(s, 'i1', 'Is Tuesday free?');
     toolCalled(s, 'call_1');
     const start = s.sent.length;
+    // the real event order: speech started ... (no transcript while they talk) ... stopped, committed, then the words
     s.play({ type: 'input_audio_buffer.speech_started', event_id: 'n1', item_id: 'i2' });
     sideband.send({ type: 'tool.result', event_id: 't1', call_id: 'call_1', output: JSON.stringify({ ok: true, outcome: 'ok', spoken: 'Tuesday at 9 is free.' }) });
     for (let sec = 1; sec <= 12; sec++) {
       vi.advanceTimersByTime(1000);
-      s.play({ type: 'conversation.item.input_audio_transcription.delta', event_id: `d${sec}`, item_id: 'i2', delta: 'and ' });
       expect(creates(s, start), `${sec} s`).toHaveLength(0);
     }
     s.play({ type: 'input_audio_buffer.speech_stopped', event_id: 'n2', item_id: 'i2' });
     s.play({ type: 'input_audio_buffer.committed', event_id: 'n3', item_id: 'i2' });
+    s.play({ type: 'conversation.item.input_audio_transcription.delta', event_id: 'd1', item_id: 'i2', delta: 'and actually, ' });
     s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 'n4', item_id: 'i2', transcript: 'and actually, could it be Wednesday instead, in the afternoon, with Dr. Bell if she is in that day?' });
     vi.advanceTimersByTime(2000);
     expect(creates(s, start)).toHaveLength(1);
     vi.useRealTimers();
   });
 
-  it('T4-review: a lost stop event with nothing heard since: after the cap the stale line is dropped and the caller\'s latest words are answered', async () => {
+  it('T4-review2: a lost stop event (15 s, no stop, no new start): the stale line is dropped and the caller\'s latest words are answered', async () => {
     vi.useFakeTimers();
     const { s, sideband } = await engineFor('rtc_t4r2');
     turn(s, 'i1', 'Is Tuesday free?');
@@ -197,7 +198,9 @@ describe('T4 review: a held reply never starts over a caller still talking; the 
     const start = s.sent.length;
     s.play({ type: 'input_audio_buffer.speech_started', event_id: 'n1', item_id: 'i2' });
     sideband.send({ type: 'tool.result', event_id: 't1', call_id: 'call_1', output: JSON.stringify({ ok: false, outcome: 'refused', say: 'Say, in these words: "Tuesday is fully booked."' }) });
-    vi.advanceTimersByTime(9000);
+    vi.advanceTimersByTime(14_500);
+    expect(creates(s, start)).toHaveLength(0);
+    vi.advanceTimersByTime(1000);
     const sent = creates(s, start);
     expect(sent).toHaveLength(1);
     expect((sent[0]!.response as { tool_choice?: string } | undefined)?.tool_choice).toBeUndefined();
