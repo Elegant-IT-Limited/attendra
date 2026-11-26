@@ -82,6 +82,10 @@ export function recordingLine(clinic: Pick<ClinicConfig, 'recording'>, language:
 /** "Are you a real person?", "am I talking to a robot?": the honest answer, always (callers must know it is software). */
 const HUMAN_ASKED = /\b(?:are you (?:a )?(?:real|human|person|robot|bot|machine|computer|an? ai|ai)|is this (?:a )?(?:real person|human|robot|bot|recording)|am i (?:talking|speaking) to (?:a )?(?:real person|human|person|robot|bot|machine|computer)|eres (?:un |una )?(?:persona|humano|humana|robot|maquina)|es usted (?:una )?(?:persona|humano|robot)|estoy hablando con (?:una )?(?:persona|maquina|robot))\b/;
 export const askedIfHuman = (said: string) => HUMAN_ASKED.test(normalise(said));
+/** "Can you hear me?", "are you there?", "¿me escucha?": answered at once, in a few words (master prompt, step 4). */
+const HEAR_ASKED = /\b(?:(?:can|could|do) you hear me|are you (?:still )?there|me (?:escucha|escuchas|oye|oyes)|(?:esta|estas) (?:ahi|ahí)|sigue ahi)\b/;
+export const asksIfHeard = (said: string) => HEAR_ASKED.test(normalise(said));
+export const heardLine = (language: Language) => (language === 'es' ? 'Sí, le escucho.' : 'Yes, I can hear you.');
 export const humanLine = (language: Language) => (language === 'es' ? 'Soy el asistente de inteligencia artificial de la clínica. Si lo prefiere, le paso un mensaje al equipo para que le llamen.' : 'I\'m the clinic\'s AI assistant. If you\'d rather talk to someone, I can have the team call you back.');
 
 /**

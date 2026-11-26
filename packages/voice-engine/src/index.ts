@@ -7,6 +7,7 @@ export * from './prompt';
 export * from './realtime';
 export * from './router';
 export * from './simulated';
+export * from './master-prompt';
 export * from './tools-prompt';
 export * from './voices';
 export * from './vapi';

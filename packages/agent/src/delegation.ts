@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addTokens, emergencyHandlingSummary, isSmallTalk, bySubject, callFacts, claimsAuthority, type DemoLimitCode, demoEmergency, EMERGENCY_LINES, type EmergencyMatch, emergencyRoute, clinicDays, clinicNow, clinicNowLine, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, languageAfterTurn, emergencyNumberFor, hospitalNow, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, TRANSFER_KINDS, type ExcerptLine, type HandoffKind, type HandoffReason, type HandoffStep, type ToolName } from '@attendra/core';
+import { addTokens, emergencyHandlingSummary, isSmallTalk, bySubject, callFacts, claimsAuthority, type DemoLimitCode, demoEmergency, EMERGENCY_LINES, type EmergencyMatch, emergencyRoute, clinicDays, clinicNow, clinicNowLine, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, talksAboutInternals, redactSensitive, languageAfterTurn, emergencyNumberFor, hospitalNow, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, TRANSFER_KINDS, type ExcerptLine, type HandoffKind, type HandoffReason, type HandoffStep, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
 import { coachingInstruction, DOING, type LiveEvent, shortName } from './live';
@@ -8,7 +8,7 @@ import { afterTool, type FlowMemory, flowStage, nextStep } from './flow/booking'
 import { lookupLikelyNext, speculativeLookup, type Speculation } from './flow/speculate';
 import { excerptFor, handoffFor, type HandoffEvent, lastSteps, noteNames, reasonFromSteps, seenNames, stepResult } from './handoff';
 import { answerTo, BORDERLINE, confirmsCleared, doneAfterEmergency, justAsking, type EmergencyCase, lastQuestionIsOurs, MILD, pastAndFineNow, SEVERE, saysSevere, staffNote } from './flow/emergency';
-import { asksEmergencyHandling, askedAboutRecording, askedIfHuman, askedWhy, claimsIn, DISPUTE_NOTE, disputes, humanLine, notInTheClinicsLanguages, recordingLine, saysTextsNotArriving, sideTalkLine, textsNotArrivingNote, WHY } from './flow/guards';
+import { asksEmergencyHandling, askedAboutRecording, askedIfHuman, asksIfHeard, askedWhy, heardLine, claimsIn, DISPUTE_NOTE, disputes, humanLine, notInTheClinicsLanguages, recordingLine, saysTextsNotArriving, sideTalkLine, textsNotArrivingNote, WHY } from './flow/guards';
 import { outOfScopeLine } from '@attendra/knowledge/scope';
 import { isVoiceTool, shapeForVoice, type VoiceToolOutput } from './flow/voice-tools';
 import { asksHours, type Backend, type CallContext, runTool, textOfferAfter, type ToolResult } from './tools';
@@ -967,6 +967,9 @@ export class CallAgent {
         : 'That was not said to you, or not in a language you speak here. Do not translate it or answer it: say nothing and wait for the caller.')];
     }
     const out: Outbound[] = [];
+    // "can you hear me?" first, at once and short, each time it is asked (master prompt, step 4: the tester asked it
+    // after 13 s of silence and waited on)
+    if (asksIfHeard(said) && once(`hear:${i}`)) out.push(say(`Answer at once, word for word: "${heardLine(lang)}" Then carry on from where you were.`));
     const human = askedIfHuman(said);
     if (human && once(`human:${i}`)) out.push(say(`Answer honestly, word for word: "${humanLine(lang)}" Then carry on.`));
     if (askedAboutRecording(said) && once(`recording:${i}`)) out.push(say(`Answer truthfully, from the clinic's setting, word for word: "${recordingLine(clinic, lang)}" Then carry on.`));
@@ -1010,6 +1013,12 @@ export class CallAgent {
       sent_elsewhere: !s.pending,
     };
     const out: Outbound[] = [];
+    // internal state said out loud ("the tentative change won't be used"): corrected once a call (master prompt, step 4)
+    if (talksAboutInternals(turn.text) && !s.guardsSaid.has('internal_talk')) {
+      s.guardsSaid.add('internal_talk');
+      this.log.warn({ call_id: this.ctx.callId }, 'the assistant talked about how it works or its internal state');
+      out.push({ type: 'instructions', delegationId: null, content: 'You just described how you work or a change as internal state. Never do that: in a few words, say only what you will do or what is done, then carry on.' });
+    }
     for (const claim of claimsIn(turn.text)) {
       if (backed[claim] || s.guardsSaid.has(`claim:${claim}`)) continue;
       s.guardsSaid.add(`claim:${claim}`);
