@@ -41,8 +41,6 @@ const SPEECH_WAIT_MS = { hangup: 4000, transfer: HANGUP_MAX_WAIT_MS } as const;
  * assistant to answer after this long, and again after the second. 6 s left callers asking "are you with me?" (2026-10-26).
  */
 export const SILENCE_NUDGE_MS = [STALL_MS, 12_000] as const;
-/** The caller has said nothing this long after the assistant's question: asked once whether they are still there. */
-export const CALLER_SILENCE_MS = 10_000;
 /** How often the runner checks the line: often enough that a nudge comes within half a second of its time. */
 const CHECK_MS = 500;
 /** Lookups run ahead of one reply, at most: the pet found, then the times the same words ask for. */
@@ -116,8 +114,6 @@ export class CallRunner {
    * down): a nudge in that gap cut the reply off at "One" and had it said again (T9, a tester's call 2026-11-24).
    */
   private audioAt = 0;
-  /** The assistant's turn after which the caller was asked whether they are still there: once per question. */
-  private stillThereAt = -1;
   /** The call's setup moments, for the one timing line; the server passes the ones it knows. */
   private readonly marks: CallMarks;
   private timed = false;
@@ -682,15 +678,6 @@ export class CallRunner {
         this.alerts?.alert('stalled_turn', `A caller waited ${Math.round((now - this.callerSaidAt) / 1000)} s in silence after speaking, with nothing being looked up.${this.alerts.where ? '' : ` Session ${this.sessionId}.`}`);
       }
       return this.dispatch(this.agent.onSilence(this.nudged));
-    }
-    // the assistant asked something and the caller has said nothing since: asked once whether they are still there, in
-    // their language (master rules, step 4: "Silence: ask once if they are still there")
-    const asked = last?.speaker === 'agent' && /[?？]\s*$/.test(last.text.trim());
-    if (asked && this.stillThereAt !== turns.length - 1 && !this.pending && now >= this.speakingUntil && this.callerSaidAt < this.agentSpokeAt && now - this.agentSpokeAt >= CALLER_SILENCE_MS) {
-      this.stillThereAt = turns.length - 1;
-      this.traced('runner.still_there');
-      const line = this.agent.state.language === 'es' ? '¿Sigue ahí?' : 'Are you still there?';
-      return this.dispatch([{ type: 'instructions', delegationId: null, content: `The caller has said nothing since your question. Ask once, word for word: "${line}" Then wait for them.` }]);
     }
   }
 

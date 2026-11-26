@@ -62,7 +62,9 @@ const WHICH_MEDICINE = [
   words('what (medicine|medicines|medication|medications|meds|drug|drugs|pill|pills|remedy|remedies|treatment) (can|could|should|do|would) (i|we) give'),
   words('que (medicina|medicinas|medicamento|medicamentos|remedio|remedios|pastilla|pastillas|tratamiento) (le |les )?((puedo|podemos|debo|deberia) dar(le|les)?|doy|damos)'),
 ];
-const ABOUT_THEIR_OWN = words('refills?|repeat prescription|renew|(forgot|forget|don\'?t remember|can\'?t remember) (the|its|her|his) name|(every|each) (day|morning|night)|receta|recetas|resurtir|reponer|olvide (el|su) nombre|no (me )?acuerdo (del|de su) nombre|todos los dias|cada dia');
+// only the pet's own, current medicine: "a refill of it", "the one she's on", "her heart pill refill", a forgotten name,
+// "la receta de nuevo"; never "every day" or a bare "refill", which still ask for advice (final review)
+const ABOUT_THEIR_OWN = words('refill (of|for) (it|her|his|its|that|them|the same)|(her|his|its) (current |usual |regular |own )?(medicine|medication|meds|pills?|tablets?|heart pill|prescription) refill|the one (she|he|it)\'?s (on|taking)|(forgot|forget|don\'?t remember|can\'?t remember) (the|its|her|his) name|(la|su) receta (de nuevo|otra vez)|renovar (la|su) receta|resurtir|olvide (el|su) nombre|no (me )?acuerdo (del|de su) nombre|la que (ya )?toma');
 
 export function isMedicalQuestion(text: string, opts: { quantities?: boolean } = {}): boolean {
   const t = normalise(text);
