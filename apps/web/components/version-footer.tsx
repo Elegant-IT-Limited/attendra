@@ -13,10 +13,11 @@ export const versionLine = (v: BuildInfo) => `v${v.version} · build ${v.build ?
 /**
  * Which build this is, small, at the foot of every page, so nobody tests an old one without knowing (VERSION,
  * 2026-11-26). The API's answer, read once per page load; nothing is shown until it arrives, and a failure says so.
- * `inShell`: the clinic pages' own copy, in their content column above the phone's bottom bar; the root layout's copy
- * stands aside on those pages.
+ * Exactly one copy per page, by `place`: 'root' (the root layout) stands aside under /c/, where the clinic pages show
+ * theirs in their content column above the phone's bottom bar ('shell'), and where an address that does not exist
+ * (/c/x/y/no-such-page) shows the "Page not found" card's own ('not-found', only under /c/: elsewhere the root's shows).
  */
-export function VersionFooter({ inShell = false }: { inShell?: boolean }) {
+export function VersionFooter({ place = 'root' }: { place?: 'root' | 'shell' | 'not-found' }) {
   const path = usePathname();
   const version = useQuery({
     queryKey: ['version'],
@@ -28,9 +29,10 @@ export function VersionFooter({ inShell = false }: { inShell?: boolean }) {
     },
     staleTime: Infinity, retry: 1, refetchOnWindowFocus: false,
   });
-  if (!inShell && path.startsWith('/c/')) return null;
+  const underClinic = path.startsWith('/c/');
+  if ((place === 'root' && underClinic) || (place === 'not-found' && !underClinic)) return null;
   return (
-    <footer className={cn('px-4 py-2 text-center text-xs text-text-muted', inShell && 'md:px-8')}>
+    <footer className={cn('px-4 py-2 text-center text-xs text-text-muted', place === 'shell' && 'md:px-8')}>
       {version.data
         ? <span data-testid="app-version" title={`Attendra ${versionLine(version.data)}`}>{versionLine(version.data)}</span>
         : version.isError ? <span data-testid="app-version">Version unknown: the server did not say.</span> : <span className="invisible" aria-hidden>v</span>}

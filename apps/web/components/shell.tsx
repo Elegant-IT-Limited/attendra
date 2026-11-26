@@ -232,7 +232,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
         <PlanBanner clinicId={clinicId} />
         <InvitationsBanner />
         <main id="main" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-6 outline-none md:px-8 md:py-8">{children}</main>
-        <VersionFooter inShell />
+        <VersionFooter place="shell" />
       </div>
 
       {/* phone: the bottom bar */}

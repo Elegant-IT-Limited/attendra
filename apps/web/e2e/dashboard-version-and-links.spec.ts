@@ -62,11 +62,25 @@ test.describe('QA-1107-1', () => {
     const res = await page.goto('/c/x/y/no-such-page');
     expect(res?.status()).toBe(404);
     await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible();
+    // the build line here too, once, though the address is under /c/ (VERSION, review 2026-11-26)
+    await expect(page.getByTestId('app-version')).toHaveText(footerText(await versionOf(page)));
+    await expect(page.getByTestId('app-version')).toHaveCount(1);
     const signIn = page.getByRole('link', { name: 'Sign in' });
     await expect(signIn).toBeVisible();
     await shots(page, 'not-found-signed-out');
     await signIn.click();
     await expect(page).toHaveURL(/\/sign-in$/);
+  });
+
+  test('QA-1107-1: the addresses from the report, /sign-up and /setup, are the branded page with status 404', async ({ browser }) => {
+    const page = await (await newContext(browser)).newPage();
+    for (const path of ['/sign-up', '/setup']) {
+      const res = await page.goto(path);
+      expect(res?.status(), path).toBe(404);
+      await expect(page.getByRole('heading', { name: 'Page not found' }), path).toBeVisible();
+      await expect(page.getByText('This page could not be found.'), path).toHaveCount(0);
+      await expect(page.getByTestId('app-version'), path).toHaveCount(1);
+    }
   });
 });
 

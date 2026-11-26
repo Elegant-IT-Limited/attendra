@@ -35,6 +35,9 @@ describe('VERSION: the build says what it is', () => {
     const sha = 'a70b58d5c0ffee00112233445566778899aabbcc';
     expect(buildInfo({ ATTENDRA_COMMIT: sha, ATTENDRA_BUILD: '1110', ATTENDRA_DIRTY: 'false' })).toMatchObject({ commit: 'a70b58d5', build: 1110, dirty: false });
     expect(buildInfo({ ATTENDRA_COMMIT: 'a70b58d5', ATTENDRA_BUILD: '7', ATTENDRA_DIRTY: 'true' })).toMatchObject({ commit: 'a70b58d5', build: 7, dirty: true });
+    // whichever way a deploy writes it
+    for (const yes of ['TRUE', 'True', '1', 'yes']) expect(buildInfo({ ATTENDRA_COMMIT: 'a70b58d5', ATTENDRA_DIRTY: yes }).dirty, yes).toBe(true);
+    for (const no of ['FALSE', 'False', '0', 'no']) expect(buildInfo({ ATTENDRA_COMMIT: 'a70b58d5', ATTENDRA_DIRTY: no }).dirty, no).toBe(false);
   });
 
   it('VERSION: with no environment and no git (a git archive), it says unknown rather than guessing', () => {

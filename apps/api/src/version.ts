@@ -41,6 +41,6 @@ export function buildInfo(env: Record<string, string | undefined> = process.env,
   const count = buildEnv ?? (fromGit ? git(root, 'rev-list', '--count', 'HEAD') : null);
   const build = count && /^\d+$/.test(count) ? Number(count) : null;
   const status = dirtyEnv === undefined && fromGit ? git(root, 'status', '--porcelain') : null;
-  const dirty = dirtyEnv !== undefined ? dirtyEnv === 'true' || dirtyEnv === '1' : status === null ? null : status.length > 0;
+  const dirty = dirtyEnv !== undefined ? /^(true|1|yes)$/i.test(dirtyEnv) : status === null ? null : status.length > 0;
   return { version: rootVersion(root), build, commit, dirty };
 }

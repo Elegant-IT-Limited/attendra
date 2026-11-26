@@ -4,13 +4,13 @@ import type { Me } from '@attendra/api/contracts';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Empty, Skeleton } from '@/components/ui/feedback';
-import { clinicToOpen } from '@/lib/last-clinic';
-import { clinicPathOf } from '@/lib/short-links';
+import { lastClinic } from '@/lib/last-clinic';
+import { rememberNext } from '@/lib/next';
+import { shortLinkStep } from '@/lib/short-links';
 
 /**
- * A short address on its way: signed in, the page in the clinic last opened here (else the first); signed out, the
- * sign-in page, which comes back here after (its `next`), so the same rule picks the clinic then. A plain request to
- * /me, so someone who was never signed in is not told their session ended. No clinic yet: the dashboard's home says why.
+ * A short address on its way (QA-1109-2), by shortLinkStep: a plain request to /me, so someone who was never signed in
+ * is not told their session ended. A password to change first keeps the page for after it.
  */
 export function ShortLink({ short }: { short: string }) {
   const [failed, setFailed] = useState(false);
@@ -20,12 +20,11 @@ export function ShortLink({ short }: { short: string }) {
     setFailed(false);
     void fetch('/api/v1/me', { credentials: 'same-origin', cache: 'no-store' }).then(async (res) => {
       if (gone) return;
-      if (res.status === 401) return window.location.replace(`/sign-in?next=${encodeURIComponent(`/${short}`)}`);
-      // a password to change or two-step sign-in to set up: the home page takes them through it first
-      if (!res.ok) return res.status < 500 ? window.location.replace('/') : setFailed(true);
-      const me = await res.json() as Me;
-      const clinic = clinicToOpen(me.clinics);
-      window.location.replace(clinic ? clinicPathOf(clinic.id, short) : '/');
+      const me = res.ok ? await res.json() as Me : null;
+      const step = shortLinkStep(short, res.status, me?.clinics ?? [], lastClinic());
+      if ('failed' in step) return setFailed(true);
+      if (step.next) rememberNext(step.next);
+      window.location.replace(step.go);
     }).catch(() => { if (!gone) setFailed(true); });
     return () => { gone = true; };
   }, [short, attempt]);
