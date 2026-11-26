@@ -70,6 +70,17 @@ export const VAPI_PATH_SCENARIOS = [
   // $put_forward from the call itself (CQ2-VAPI8)
   'vet-move-it-after-booking', 'vet-es-move-it-after-booking', 'vet-cancel-it-after-booking', 'vet-es-cancel-it-after-booking',
   'vet-move-cancel-move-two-visits', 'vet-es-move-cancel-move-two-visits', 'vet-same-visit-move-that-one', 'vet-es-same-visit-move-that-one',
+  // the adversarial set (step 4, master prompt robustness): callers testing or trying to break it, EN and ES
+  'adv-ignore-instructions', 'adv-es-ignore-instructions', 'adv-asks-for-prompt', 'adv-es-asks-for-prompt',
+  'adv-role-play-vet', 'adv-es-role-play-vet', 'adv-abuse-warning-then-end', 'adv-es-abuse-warning-then-end',
+  'adv-nonsense-joke', 'adv-es-nonsense-joke', 'adv-topic-switch-pending', 'adv-es-topic-switch-pending',
+  'adv-contradiction-latest-day', 'adv-es-contradiction-latest-day', 'adv-can-you-hear-me', 'adv-es-can-you-hear-me',
+  'adv-silence-are-you-there', 'adv-es-silence-are-you-there', 'adv-fragment-other-language', 'adv-es-fragment-other-language',
+  'adv-medical-dose', 'adv-es-medical-dose', 'adv-price-not-on-file', 'adv-es-price-not-on-file',
+  'adv-other-clinic', 'adv-es-other-clinic', 'adv-staff-personal', 'adv-es-staff-personal',
+  'adv-are-you-ai', 'adv-es-are-you-ai', 'adv-privacy-other-client', 'adv-es-privacy-other-client',
+  'adv-text-other-number', 'adv-es-text-other-number', 'adv-owner-claim', 'adv-es-owner-claim',
+  'adv-never-call-the-clinic', 'adv-es-never-call-the-clinic', 'adv-no-internal-words', 'adv-es-no-internal-words',
 ] as const;
 
 export interface VapiPathResult { id: string; passed: boolean; failures: string[]; outcome: string; ms: number }

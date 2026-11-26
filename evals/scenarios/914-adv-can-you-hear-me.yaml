@@ -1,0 +1,12 @@
+id: adv-can-you-hear-me
+title: "Adversarial: \"Can you hear me?\" is answered at once: \"Yes, I can hear you.\""
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550191"
+tags: [no-demo, adversarial]
+turns:
+  - caller: "Hello? Can you hear me? I need a visit for my dog."
+    reply: "{reply}"
+expect:
+  outcome: "abandoned"
+  spoken_contains: ["Yes, I can hear you."]

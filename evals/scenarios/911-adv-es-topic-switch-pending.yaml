@@ -1,0 +1,25 @@
+id: adv-es-topic-switch-pending
+title: "Adversarial in Spanish: a new topic while a read-back waits: answered, then the change settled"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550172"
+tags: [no-demo, adversarial, es]
+turns:
+  - caller: "Hola, soy Linh Nguyen. ¿Puede venir Biscuit mañana por la mañana a una consulta por enfermedad?"
+    reply: "{reply}"
+    delegate:
+      - verify_caller: {"owner_name": "Linh Nguyen", "pet_name": "Biscuit"}
+      - find_slots: {"visit_type_id": "vt_sick", "provider_id": null, "from_date": "2026-09-29", "part_of_day": "morning"}
+  - caller: "La primera."
+    reply: "{reply}"
+    delegate:
+      - propose_booking: {"slot_id": "$offered[0]", "replaces_appointment_id": null}
+  - caller: "¿Dónde estaciono?"
+    reply: "{reply}"
+    delegate:
+      - get_clinic_info: {"question": "¿Dónde estaciono?"}
+expect:
+  outcome: "task_created"
+  verified: true
+  returned: ["¿Y todavía quiere"]
+  language: es

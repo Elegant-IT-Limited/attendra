@@ -1,0 +1,17 @@
+id: adv-contradiction-latest-day
+title: "Adversarial: \"Friday. No wait, Thursday\": the latest day is the one searched"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550172"
+tags: [no-demo, adversarial]
+turns:
+  - caller: "Hi, Linh Nguyen. Can Biscuit come in on Friday? No wait, Thursday."
+    reply: "{reply}"
+    delegate:
+      - verify_caller: {"owner_name": "Linh Nguyen", "pet_name": "Biscuit"}
+      - find_slots: {"visit_type_id": "vt_sick", "provider_id": null, "from_date": null, "part_of_day": "any"}
+expect:
+  outcome: "abandoned"
+  verified: true
+  not_offered_on: ["2026-10-02"]
+  booked_on: "2026-10-01"

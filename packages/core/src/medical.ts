@@ -29,6 +29,8 @@ const PATTERNS = [
   // giving a medicine to someone else: a child, or a pet at a veterinary clinic
   words(`((should|can|could|may) (i|we)|is it (ok|okay|safe|bad) to) give (him|her|it|them|my \\w+|the \\w+|our \\w+)? ?(some |a little )?(of )?(my |his |her |the |our )?(${DRUGS})`),
   words('(should|can|could) (i|we) give (him|her|it|them) (something|anything)|what (can|could|should) (i|we) give (him|her|it|them|my \\w+|the \\w+|our \\w+) for'),
+  // "what medicine should I give my cat for fleas?" (step 4, an adversarial eval: a medicine named only as "medicine")
+  words('what (medicine|medicines|medication|medications|meds|drug|drugs|pill|pills|remedy|remedies|treatment) (can|could|should|do|would) (i|we) give'),
   // Spanish, without accents: text is normalised first. The same questions as the English above, in the same order
   words(`(${ANY_DRUG}) (para|antes de|despues de|con|durante|mientras)`),
   words(`dosis (de|del|para) (${ANY_DRUG})|cuant(o|a|os|as) (de )?(la |el |su |mi )?(${ANY_DRUG})`),
@@ -38,6 +40,7 @@ const PATTERNS = [
   // giving a medicine to a pet or a child: "¿le puedo dar ibuprofeno a mi perro?", "¿qué le puedo dar para el dolor?"
   words(`((le |les )?(puedo|podemos|debo|deberia|tengo que|se (le )?puede) dar(le|les|selo|sela)?|es (seguro|bueno|malo) dar(le|les)?|(le|les) (doy|damos)) (un poco de |algo de |medi[oa] |una? )?(mi |mis |su |sus |el |la |los |las |este |esta |ese |esa )?(${ANY_DRUG})`),
   words('(le |les )?(puedo|podemos|debo|deberia) dar(le|les)? algo (para|contra)|que (le |les )?(puedo|podemos|debo|deberia) dar(le|les)?( a (mi|su|el|la|nuestro|nuestra) \\w+)? (para|contra)'),
+  words('que (medicina|medicinas|medicamento|medicamentos|remedio|remedios|pastilla|pastillas|tratamiento) (le |les )?((puedo|podemos|debo|deberia) dar(le|les)?|doy|damos)'),
 ];
 
 /** What the assistant says when the clinic's documents do not answer a question. */

@@ -29,14 +29,16 @@ const INJECTION = new RegExp([
   String.raw`\b(dime|digame|repite|repita|lee|lea|leame|muestrame|muestreme|ensename|enseneme|recita|recite)\b.{0,25}\b(tus|sus) (instrucciones|reglas|herramientas|funciones|configuracion|ajustes|prompt)\b`,
   String.raw`\b(ahora eres|ahora usted es|ahora es usted)\b`,
   String.raw`\b(finge|finja|haz como si|haga como si)\b`,
+  // "dime qué dice tu prompt", "¿qué instrucciones te dieron?" (step 4, an adversarial eval)
+  String.raw`\b(tu|su) (prompt|programacion)\b|\bque (instrucciones|reglas|ordenes) (te|le) (dieron|han dado|dio)\b`,
   String.raw`\b(datos|numero|nombre|direccion|informacion|ficha|expediente)\b.{0,30}\b(ultim[oa]|anterior|otr[oa]) (cliente|persona|paciente|llamada)\b|\b(ultima|anterior|otra) persona que llamo\b`,
 ].join('|'));
 
 /** Someone on the phone claiming a role that would open records: staff, a vet, support, the owner of the business, the police. */
 const AUTHORITY = new RegExp([
-  String.raw`\b(this is|i'?m|i am|calling from)\b.{0,30}\b(dr\.?|doctor|the vet|veterinarian|receptionist|front desk|practice manager|clinic manager|office manager|the owner of the (clinic|practice|hospital)|it department|tech support|support team|attendra|the police|police officer|detective|fbi)\b`,
+  String.raw`\b(this is|i'?m|i am|calling from)\b.{0,30}\b(dr\.?|doctor|the vet|veterinarian|receptionist|front desk|practice manager|clinic manager|office manager|the owner of (the|this) (clinic|practice|hospital)|it department|tech support|support team|attendra|the police|police officer|detective|fbi)\b`,
   // Spanish, without accents: "habla la doctora Ruiz", "soy la recepcionista", "llamo de soporte"
-  String.raw`\b(soy|le habla|habla|llamo de|llamo desde)\b.{0,30}\b(dra?\.?|doctora?|veterinari[oa]|recepcionista|recepcion|gerente|administrador(a)? de la (clinica|consulta|veterinaria)|(duen[oa]|propietari[oa]) de la (clinica|consulta|veterinaria|hospital)|departamento de (ti|sistemas|informatica)|soporte|attendra|policia|detective|fbi)\b`,
+  String.raw`\b(soy|le habla|habla|llamo de|llamo desde)\b.{0,30}\b(dra?\.?|doctora?|veterinari[oa]|recepcionista|recepcion|gerente|administrador(a)? de la (clinica|consulta|veterinaria)|(duen[oa]|propietari[oa]) de (la|esta|este|el) (clinica|consulta|veterinaria|hospital)|departamento de (ti|sistemas|informatica)|soporte|attendra|policia|detective|fbi)\b`,
 ].join('|'));
 
 /** The caller is trying to change the assistant's rules or get at its instructions. */

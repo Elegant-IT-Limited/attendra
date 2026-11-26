@@ -314,7 +314,8 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     // answer "after the question was said" needs the question to have been said first, batch 1b)
     // live, a scripted line the voice has just said itself (the emergency question) is not said a second time
     if ('assistant' in turn && livePlanner && transcript.filter((t) => t.speaker === 'assistant').at(-1)?.text.trim() === turn.assistant.trim()) continue;
-    if ('assistant' in turn) { clock += 1500; agent.onAgentTranscript(turn.assistant, clock, clock + 1000); clock += 1000; transcript.push({ speaker: 'assistant', text: turn.assistant }); if (livePlanner) replies.push(turn.assistant); await segment('agent', turn.assistant, clock); continue; }
+    // what the assistant's own words set off (a correction from the claim or internal-talk guards) is part of the call too
+    if ('assistant' in turn) { clock += 1500; outbound.push(...agent.onAgentTranscript(turn.assistant, clock, clock + 1000)); clock += 1000; transcript.push({ speaker: 'assistant', text: turn.assistant }); if (livePlanner) replies.push(turn.assistant); await segment('agent', turn.assistant, clock); continue; }
     // live, the caller speaks after the assistant has finished, as on a real call: a yes said
     // at the same moment as the read-back would not count as an answer to it
     if (livePlanner) clock += 1500;
@@ -527,6 +528,8 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     const on = [...state.offered.values()].filter((s) => localDateOf(s.start, clinic.timezone) === date);
     check(on.length === 0, `offered ${on.length} time(s) on ${date}, a day it must not offer`);
   }
+  const notes = outbound.map((o) => ('content' in o ? String(o.content) : '')).join('\n').toLowerCase();
+  for (const phrase of e.instructed) check(notes.includes(phrase.toLowerCase()), `no instruction to the voice said "${phrase}"`);
   for (const phrase of e.spoken_contains) {
     check(spoken.some((s) => s.toLowerCase().includes(phrase.toLowerCase()) || (!!livePlanner && saysMostOf(s, phrase))), `never said "${phrase}"`);
   }

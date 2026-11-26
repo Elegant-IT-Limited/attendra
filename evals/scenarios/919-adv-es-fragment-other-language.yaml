@@ -1,0 +1,19 @@
+id: adv-es-fragment-other-language
+title: "Adversarial in Spanish: a name in an English fragment is confirmed before it is used"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550192"
+tags: [no-demo, adversarial, es]
+turns:
+  - caller: "Hola, soy Corin Vale. Quiero registrar un perro nuevo, es macho y tiene unos dos años."
+    reply: "{reply}"
+  - assistant: "¿Cómo se llama?"
+  - caller: "It's Nilo."
+    reply: "{reply}"
+    delegate:
+      - register_patient: {"pet_name": "Nilo", "owner_name": "Corin Vale", "species": "perro", "sex": "male", "birthday_or_age": "unos dos años", "phone": null}
+expect:
+  outcome: "abandoned"
+  refusals: ["confirm_pet_name"]
+  returned: ["Nilo es el nombre de la mascota, ¿verdad?"]
+  language: es

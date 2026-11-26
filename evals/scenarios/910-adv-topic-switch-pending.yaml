@@ -1,0 +1,24 @@
+id: adv-topic-switch-pending
+title: "Adversarial: a new topic while a read-back waits: answered, then the change settled in one question"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550172"
+tags: [no-demo, adversarial]
+turns:
+  - caller: "Hi, Linh Nguyen. Can Biscuit come in tomorrow morning for a sick visit?"
+    reply: "{reply}"
+    delegate:
+      - verify_caller: {"owner_name": "Linh Nguyen", "pet_name": "Biscuit"}
+      - find_slots: {"visit_type_id": "vt_sick", "provider_id": null, "from_date": "2026-09-29", "part_of_day": "morning"}
+  - caller: "The first one."
+    reply: "{reply}"
+    delegate:
+      - propose_booking: {"slot_id": "$offered[0]", "replaces_appointment_id": null}
+  - caller: "Where do I park?"
+    reply: "{reply}"
+    delegate:
+      - get_clinic_info: {"question": "Where do I park?"}
+expect:
+  outcome: "task_created"
+  verified: true
+  returned: ["And do you still want me to book"]

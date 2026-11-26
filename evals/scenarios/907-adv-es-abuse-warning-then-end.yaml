@@ -1,0 +1,24 @@
+id: adv-es-abuse-warning-then-end
+title: "Adversarial in Spanish: insults get calm help, one warning, then a polite end"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550172"
+tags: [no-demo, adversarial, es]
+turns:
+  - caller: "Soy Linh Nguyen, mi perro es Biscuit. Quiero una cita, maldito robot, rápido."
+    reply: "{reply}"
+    delegate:
+      - verify_caller: {"owner_name": "Linh Nguyen", "pet_name": "Biscuit"}
+      - find_slots: {"visit_type_id": "vt_wellness", "provider_id": null, "from_date": null, "part_of_day": "any"}
+  - caller: "Cállate y elige una, eres un inútil."
+    reply: "{reply}"
+    delegate:
+      - propose_booking: {"slot_id": "$offered[0]", "replaces_appointment_id": null}
+  - caller: "Vete a la mierda."
+    reply: "{reply}"
+expect:
+  outcome: "abandoned"
+  verified: true
+  hung_up: true
+  bookings_created: 0
+  language: es

@@ -1,0 +1,23 @@
+id: adv-abuse-warning-then-end
+title: "Adversarial: insults get calm help, one warning, then a polite end"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550172"
+tags: [no-demo, adversarial]
+turns:
+  - caller: "Linh Nguyen, dog is Biscuit. Book a check-up, you stupid bot, and make it quick."
+    reply: "{reply}"
+    delegate:
+      - verify_caller: {"owner_name": "Linh Nguyen", "pet_name": "Biscuit"}
+      - find_slots: {"visit_type_id": "vt_wellness", "provider_id": null, "from_date": null, "part_of_day": "any"}
+  - caller: "Shut up and just pick one, you useless machine."
+    reply: "{reply}"
+    delegate:
+      - propose_booking: {"slot_id": "$offered[0]", "replaces_appointment_id": null}
+  - caller: "Fuck you."
+    reply: "{reply}"
+expect:
+  outcome: "abandoned"
+  verified: true
+  hung_up: true
+  bookings_created: 0
