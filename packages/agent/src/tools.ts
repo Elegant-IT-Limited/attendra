@@ -267,7 +267,9 @@ export function slotArgsAsMeant(args: unknown, clinic?: Pick<ClinicConfig, 'prov
     const said = dayAndPart(a.from_date);
     if (said) {
       a.from_date = said.day;
-      if (said.part && (a.part_of_day === null || a.part_of_day === undefined || a.part_of_day === '' || open(a.part_of_day) || a.part_of_day === 'any')) a.part_of_day = said.part;
+      const leftOut = a.part_of_day === null || a.part_of_day === undefined || a.part_of_day === '';
+      // noon's afternoon only where the model gave no part of day at all; another part of day, where it said "any" too
+      if (said.part && (leftOut || (!said.partOnlyIfLeftOut && (open(a.part_of_day) || a.part_of_day === 'any')))) a.part_of_day = said.part;
       if (said.time && (a.from_time === null || a.from_time === undefined || a.from_time === '')) { a.from_time = said.time; a.time_mode ??= said.mode; }
     }
   }
@@ -299,11 +301,15 @@ export function slotArgsAsMeant(args: unknown, clinic?: Pick<ClinicConfig, 'prov
 
 /**
  * A from_date that says a part of day or a time with the day: "tomorrow morning", "Friday afternoon", "next Tuesday at 3",
- * "this evening", "mañana por la mañana", "el viernes por la tarde". The day's words, and the part of day or the time;
- * null when the words say neither. A bare hour of 1 to 7 is in the afternoon, as clinic hours are.
+ * "this evening", "mañana por la mañana", "el viernes por la tarde", "tomorrow at noon", "mañana al mediodía". The day's
+ * words, and the part of day or the time; null when the words say neither. A bare hour of 1 to 7 is in the afternoon, as
+ * clinic hours are; noon is 12:00, in the afternoon only when the model gave no part of day.
  */
-function dayAndPart(fromDate: string): { day: string; part: 'morning' | 'afternoon' | null; time: string | null; mode: 'at' | 'after' | 'before' | 'around' | null } | null {
+function dayAndPart(fromDate: string): { day: string; part: 'morning' | 'afternoon' | null; time: string | null; mode: 'at' | 'after' | 'before' | 'around' | null; partOnlyIfLeftOut?: boolean } | null {
   const t = normalise(fromDate).replace(/[,.]/g, ' ').replace(/\s+/g, ' ').trim();
+  // "tomorrow at noon", "Friday midday", "around lunchtime", "mañana al mediodía", "el viernes a mediodía": 12:00
+  const noon = /^(.+?) (?:(at|around|about|by|a|al|sobre el|hacia el|a eso del) )?(?:noon|midday|lunchtime|lunch time|lunch|mediodia|la hora (?:de|del) almuerzo)$/.exec(t);
+  if (noon) return { day: noon[1]!, part: 'afternoon', time: '12:00', mode: /around|about|sobre|hacia|eso/.test(noon[2] ?? '') ? 'around' : 'at', partOnlyIfLeftOut: true };
   const partOf = (w: string) => (/^(?:morning|manana)$/.test(w) ? 'morning' as const : 'afternoon' as const);
   const today = /^(?:this (morning|afternoon|evening)|tonight|esta (manana|tarde|noche))$/.exec(t);
   if (today) return { day: 'today', part: partOf(today[1] ?? today[2] ?? 'evening'), time: null, mode: null };
