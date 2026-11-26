@@ -316,3 +316,22 @@ describe('PR2 review 3', () => {
     }
   });
 });
+
+describe('PR2 review 4', () => {
+  it('T6-review4: "Who is the vet on 10/02?" names only the vets in that day', async () => {
+    const day = { ...clinic, providers: clinic.providers.map((p) => (p.id === 'prov_bell' ? { ...p, timeOff: [{ from: '2026-10-02', to: '2026-10-02' }] } : p)) };
+    const c = await w.call('+13035550171', { clinic: day });
+    c.caller('Who is the vet on 10/02?');
+    const out = await c.delegate([{ tool: 'get_clinic_info', args: { question: 'Who is the vet on 10/02?' } }]);
+    const spoken = String(out.results[0]!.data.spoken ?? '');
+    expect(spoken).toContain('Dr. Elena Ruiz');
+    expect(spoken).not.toContain('Dr. Marcus Bell');
+  });
+
+  it('T6-review4: "Do your vets do training classes for puppies?" is no question about their qualifications', async () => {
+    const c = await w.call('+13035550171', { clinic });
+    c.caller('Do your vets do training classes for puppies?');
+    const out = await c.delegate([{ tool: 'get_clinic_info', args: { question: 'Do your vets do training classes for puppies?' } }]);
+    expect(String(out.results[0]!.data.spoken ?? '')).not.toContain('Our vets are');
+  });
+});
