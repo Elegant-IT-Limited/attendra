@@ -49,9 +49,9 @@ function saidSpecies(said: string[], species: string): boolean {
   return normalise(species).split(/\s+/).filter((w) => w.length > 2).every((w) => plural(w).some((x) => has(text, x)));
 }
 
-// in Spanish a pet's sex is also in the word said of it: "es nueva", "está chiquita" (a female), "es nuevo" (a male)
-const FEMALE = /\b(?:female|girl|she|her|hers|she's|spayed|hembra|nina|ella|perra|perrita|gata|gatita|coneja|cachorra|esterilizada|(?:es|esta) (?:nueva|chiquita|pequena|viejita|una nina))\b/;
-const MALE = /\b(?:male|boy|he|him|his|he's|neutered|macho|nino|castrado|perrito|gatito|(?:es|esta) (?:nuevo|chiquito|pequeno|viejito|un nino))\b/;
+// the pronouns; in Spanish a pet's sex is also in the word said of it ("es nueva", "es nuevo"): FEMALE_WORD, MALE_WORD
+const FEMALE = /\b(?:she|her|hers|she's|ella)\b/;
+const MALE = /\b(?:he|him|his|he's)\b/;
 /** Words for the sex that say it whoever they are about ("a girl", "macho"); "she" and "he" only about the pet. */
 const FEMALE_WORD = /\b(?:female|girl|spayed|hembra|nina|perra|perrita|gata|gatita|coneja|cachorra|esterilizada|(?:es|esta) (?:nueva|chiquita|pequena|viejita|una nina))\b/;
 const MALE_WORD = /\b(?:male|boy|neutered|macho|nino|castrado|perrito|gatito|(?:es|esta) (?:nuevo|chiquito|pequeno|viejito|un nino))\b/;
