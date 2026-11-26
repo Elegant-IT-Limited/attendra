@@ -137,7 +137,8 @@ describe('T12: find_slots takes the argument shapes voice models send', () => {
   const date = [undefined, null, 'any', '', '2026-10-01', '2026-10-01T09:00:00', 'tomorrow', 'today', 'Thursday', 'next Thursday', 'October 1', '10/01/2026', 'mañana', 'el jueves',
     // a day with a part of day or a time in the same words (the owner's live rerun, 2026-11-26: "tomorrow morning")
     'tomorrow morning', 'tomorrow afternoon', 'Friday morning', 'next Tuesday at 3', 'this evening', 'mañana por la mañana', 'el viernes por la tarde', 'pasado mañana',
-    'tomorrow at noon', 'Friday midday', 'tomorrow noon', 'tomorrow around lunchtime', 'mañana al mediodía', 'el viernes a mediodía'];
+    'tomorrow at noon', 'Friday midday', 'tomorrow noon', 'tomorrow around lunchtime', 'mañana al mediodía', 'el viernes a mediodía',
+    'next week', 'next week in the afternoon', 'la semana que viene', 'la semana que viene por la tarde', 'la próxima semana', 'tomorrow at 7', 'Saturday at 10'];
   const part = [undefined, null, 'any', 'morning', 'Afternoon', 'evening', ''];
   const time = [undefined, null, '', '15:00', '3pm', '3:30 PM', '15:00:00', 'noon', 'after 3'];
   // every value of each argument at least once, with the others varied, as a property check
@@ -196,6 +197,31 @@ describe('T12-live: a day said with a part of day or a time is read as both', ()
     // the model's own part of day, "any" included, is kept
     expect(meant('tomorrow at noon', 'any')).toMatchObject({ from_date: '2026-09-29', from_time: '12:00', part_of_day: 'any' });
     expect(meant('tomorrow at noon', 'morning')).toMatchObject({ from_date: '2026-09-29', from_time: '12:00', part_of_day: 'morning' });
+  });
+
+  it('T12-hours: a bare hour is read against the clinic\'s hours that day; both or neither keeps the default (1 to 7 pm)', () => {
+    const at = (words: string, hours?: Record<string, { open: string; close: string }[]>) =>
+      slotArgsAsMeant({ visit_type_id: 'vt_sick', provider_id: null, from_date: words, part_of_day: null }, hours ? { ...clinic, hours: { ...clinic.hours, ...hours } } : clinic, now) as Record<string, unknown>;
+    // Riverbend: 8 to 6 on weekdays, 9 to 1 on Saturday
+    expect(at('tomorrow at 3')).toMatchObject({ from_date: '2026-09-29', from_time: '15:00' });
+    expect(at('Saturday at 10')).toMatchObject({ from_date: '2026-10-03', from_time: '10:00' });
+    expect(at('tomorrow at 7', { 2: [{ open: '07:00', close: '15:00' }] })).toMatchObject({ from_date: '2026-09-29', from_time: '07:00' });
+    expect(at('tomorrow at 8', { 2: [{ open: '12:00', close: '21:00' }] })).toMatchObject({ from_date: '2026-09-29', from_time: '20:00' });
+    // both readings inside, or neither: the default
+    expect(at('tomorrow at 7', { 2: [{ open: '07:00', close: '21:00' }] })).toMatchObject({ from_time: '19:00' });
+    expect(at('tomorrow at 7')).toMatchObject({ from_time: '19:00' });
+    expect(at('tomorrow at 9', { 2: [{ open: '07:00', close: '22:00' }] })).toMatchObject({ from_time: '09:00' });
+    // said with am or pm: as said
+    expect(at('tomorrow at 7 am')).toMatchObject({ from_time: '07:00' });
+  });
+
+  it('T12-week: "next week" is the first day of next week, with the part of day (EN/ES)', () => {
+    expect(meant('next week')).toMatchObject({ from_date: '2026-10-05', part_of_day: 'any' });
+    expect(meant('next week in the afternoon')).toMatchObject({ from_date: '2026-10-05', part_of_day: 'afternoon' });
+    expect(meant('la semana que viene')).toMatchObject({ from_date: '2026-10-05' });
+    expect(meant('la semana que viene por la tarde')).toMatchObject({ from_date: '2026-10-05', part_of_day: 'afternoon' });
+    expect(meant('la próxima semana')).toMatchObject({ from_date: '2026-10-05' });
+    expect((slotArgsAsMeant({ visit_type_id: 'vt_sick', from_date: 'next week' }, clinic, new Date('2026-10-04T16:00:00Z')) as Record<string, unknown>).from_date).toBe('2026-10-05');
   });
 
   it('T12-live: from_date "tomorrow morning" with part_of_day "morning" (the live call) finds tomorrow morning, never invalid_arguments', async () => {

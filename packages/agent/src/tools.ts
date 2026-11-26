@@ -251,7 +251,7 @@ const blanksAsNull = (args: unknown): unknown => (args && typeof args === 'objec
  * time as "9:00", "9" or "09:00:00", a date with a time after it, "evening", "true" as a string. Anything else is left as
  * written, and still checked.
  */
-export function slotArgsAsMeant(args: unknown, clinic?: Pick<ClinicConfig, 'providers' | 'timezone' | 'phoneNumbers'>, now: Date = new Date()): unknown {
+export function slotArgsAsMeant(args: unknown, clinic?: Pick<ClinicConfig, 'providers' | 'timezone' | 'phoneNumbers'> & Partial<Pick<ClinicConfig, 'hours' | 'holidays' | 'specialDays'>>, now: Date = new Date()): unknown {
   if (!args || typeof args !== 'object' || Array.isArray(args)) return args;
   const a: Record<string, unknown> = { ...(args as Record<string, unknown>) };
   const open = (v: unknown) => typeof v === 'string' && /^(?:none|any|null|no|either|n\/a|unknown|no preference|anyone|any vet|any doctor|cualquiera|ninguno)$/i.test(v.trim());
@@ -264,10 +264,12 @@ export function slotArgsAsMeant(args: unknown, clinic?: Pick<ClinicConfig, 'prov
     const named = providerNamed(clinic.providers, a.provider_id);
     if (named) a.provider_id = named.id;
   }
+  let bareHour: { hour: number; minutes: number; time: string } | null = null;
   // a day said with a part of day or a time ("tomorrow morning", "next Tuesday at 3", "mañana por la mañana"): the day
   // here, and the part of day or time where they go when the model left them out (the owner's live rerun, 2026-11-26)
   if (typeof a.from_date === 'string' && !/^\d{4}-\d{2}-\d{2}/.test(a.from_date.trim())) {
     const said = dayAndPart(a.from_date);
+    if (said?.bare) bareHour = { ...said.bare, time: said.time! };
     if (said) {
       a.from_date = said.day;
       const leftOut = a.part_of_day === null || a.part_of_day === undefined || a.part_of_day === '';
@@ -278,6 +280,14 @@ export function slotArgsAsMeant(args: unknown, clinic?: Pick<ClinicConfig, 'prov
   }
   // a day in words ("tomorrow", "next Thursday", "October 1", "10/01/2026", "el jueves"): its date on the clinic's clock
   if (clinic && typeof a.from_date === 'string' && !/^\d{4}-\d{2}-\d{2}/.test(a.from_date.trim())) { const d = dateSaid(a.from_date, clinic, now); if (d && d !== INVALID_DATE) a.from_date = d; }
+  // a bare hour ("tomorrow at 7"): the a.m. or p.m. reading inside the clinic's hours that day; both or neither keeps
+  // the default (1 to 7 in the afternoon), and find_slots says what is free (review, T12)
+  if (bareHour !== null && clinic?.hours && typeof a.from_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(a.from_date) && a.from_time === bareHour.time) {
+    const windows = windowsOnDate({ hours: clinic.hours, holidays: clinic.holidays ?? [], timezone: clinic.timezone, specialDays: clinic.specialDays }, a.from_date);
+    const inside = (h: number) => windows.some((w) => toMinutes(w.open) <= h * 60 + bareHour.minutes && h * 60 + bareHour.minutes < toMinutes(w.close));
+    const [am, pm] = [bareHour.hour, bareHour.hour + 12];
+    if (inside(am) !== inside(pm)) a.from_time = `${String(inside(am) ? am : pm).padStart(2, '0')}:${String(bareHour.minutes).padStart(2, '0')}`;
+  }
   // "noon", "after 3", "before 5", "around 4": the time, and how it was said
   if (typeof a.from_time === 'string') {
     const t = normalise(a.from_time).trim();
@@ -308,7 +318,7 @@ export function slotArgsAsMeant(args: unknown, clinic?: Pick<ClinicConfig, 'prov
  * words, and the part of day or the time; null when the words say neither. A bare hour of 1 to 7 is in the afternoon, as
  * clinic hours are; noon is 12:00, in the afternoon only when the model gave no part of day.
  */
-function dayAndPart(fromDate: string): { day: string; part: 'morning' | 'afternoon' | null; time: string | null; mode: 'at' | 'after' | 'before' | 'around' | null; partOnlyIfLeftOut?: boolean } | null {
+function dayAndPart(fromDate: string): { day: string; part: 'morning' | 'afternoon' | null; time: string | null; mode: 'at' | 'after' | 'before' | 'around' | null; partOnlyIfLeftOut?: boolean; bare?: { hour: number; minutes: number } } | null {
   const t = normalise(fromDate).replace(/[,.]/g, ' ').replace(/\s+/g, ' ').trim();
   // "tomorrow at noon", "Friday midday", "around lunchtime", "mañana al mediodía", "el viernes a mediodía": 12:00
   const noon = /^(.+?) (?:(at|around|about|by|a|al|sobre el|hacia el|a eso del) )?(?:noon|midday|lunchtime|lunch time|lunch|mediodia|la hora (?:de|del) almuerzo)$/.exec(t);
@@ -328,7 +338,8 @@ function dayAndPart(fromDate: string): { day: string; part: 'morning' | 'afterno
   if (h > 23) return null;
   const how = time[2]!;
   const mode = /after|despues/.test(how) ? 'after' as const : /before|antes/.test(how) ? 'before' as const : /around|about|sobre/.test(how) ? 'around' as const : 'at' as const;
-  return { day: time[1]!, part: null, time: `${String(h).padStart(2, '0')}:${time[4] ?? '00'}`, mode };
+  const said = Number(time[3]);
+  return { day: time[1]!, part: null, time: `${String(h).padStart(2, '0')}:${time[4] ?? '00'}`, mode, ...(!ampm && said >= 1 && said <= 11 ? { bare: { hour: said, minutes: Number(time[4] ?? 0) } } : {}) };
 }
 
 const WEEKDAYS: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6, domingo: 0, lunes: 1, martes: 2, miercoles: 3, jueves: 4, viernes: 5, sabado: 6 };
@@ -363,6 +374,8 @@ function dateSaid(said: string, clinic: Pick<ClinicConfig, 'timezone' | 'phoneNu
   const t = normalise(said).replace(/[,.]/g, ' ').replace(/\s+/g, ' ').trim();
   if (/^(?:today|hoy)$/.test(t)) return today;
   if (/^(?:tomorrow|manana|pasado manana)$/.test(t)) return addDays(today, t.startsWith('pasado') ? 2 : 1);
+  // "next week", "la semana que viene": the first day of next week, a Monday (the clinic keeps no week start of its own)
+  if (/^(?:next week|(?:la )?semana que viene|(?:la )?proxima semana|(?:la )?semana proxima)$/.test(t)) return addDays(today, ((8 - weekdayOf(today)) % 7) || 7);
   const wd = /^(?:(this|next|this coming|el|este|el proximo|proximo)\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday|domingo|lunes|martes|miercoles|jueves|viernes|sabado)(?:\s+(que viene|next))?$/.exec(t);
   if (wd) {
     const which = /next|proximo/.test(wd[1] ?? '') || wd[3] ? 'next' : /this|este/.test(wd[1] ?? '') ? 'this' : 'bare';
