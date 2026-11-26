@@ -147,7 +147,10 @@ describe('ES-CALLERID: the profile said to be on the number they call from, up f
   it.each([...ES, ...EN])('ES-CALLERID: "%s" is the number they are calling from', (phrase) => {
     expect(saysCallingNumber(phrase)).toBe(true);
   });
-  it.each(['no es este número', 'es otro número', "it's not this number", 'a different number', 'Can Biscuit come in tomorrow?', 'Llámeme a otro número'])('ES-CALLERID: "%s" is not', (phrase) => {
+  it.each(['no es este número', 'es otro número', "it's not this number", 'a different number', 'Can Biscuit come in tomorrow?', 'Llámeme a otro número',
+    // review: a "no" or "not" a few words before the phrase
+    'No, no con este número.', 'Not the number I am calling from.', 'No, not on this number.', "It isn't the number I'm calling from.", 'No es el número del que llamo.', 'No está con este número.', 'Nope, not under this same number.',
+  ])('ES-CALLERID: "%s" is not', (phrase) => {
     expect(saysCallingNumber(phrase)).toBe(false);
   });
 
@@ -176,5 +179,24 @@ describe('ES-CALLERID: the profile said to be on the number they call from, up f
     d.caller("Hi, on the number I'm calling from, I want to book for my new puppy.");
     expect(d.agent.speculate()?.name).not.toBe('verify_caller');
   });
+
+  // review: the phrase counts only in a turn about the pet, its profile or a visit
+  for (const line of ['Can you text me the hours on this number?', 'Call me back on this number.', '¿Me puede mandar el horario a este mismo número?', 'Llámeme al mismo número, por favor.']) {
+    it(`ES-CALLERID-review: "${line}" asks for no profile, so no caller-ID lookup runs`, async () => {
+      const c = await w.call(PHONE, { clinic });
+      await c.agent.preloadHousehold();
+      if (/[¿áéíóúñ]|llámeme/i.test(line)) c.state.language = 'es';
+      c.caller(line);
+      expect(c.agent.speculate()?.name).not.toBe('verify_caller');
+    });
+  }
+  for (const [line, pet] of [['I want to book a visit, on this number.', null], ["My dog's profile is under this number.", null], ['Mi mascota está con este número.', null], ['Quiero una cita, con el mismo número.', null], ['Biscuit, on the number I am calling from.', 'Biscuit']] as const) {
+    it(`ES-CALLERID-review: "${line}" is about the pet or a visit, so the caller ID's number is looked up`, async () => {
+      const c = await w.call(PHONE, { clinic });
+      await c.agent.preloadHousehold();
+      c.caller(line);
+      expect(c.agent.speculate()).toEqual({ name: 'verify_caller', args: { phone: null, pet_name: pet, owner_name: null, phone_last4: null } });
+    });
+  }
 });
 
