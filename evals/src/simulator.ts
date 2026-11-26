@@ -105,7 +105,8 @@ function resolve(args: Record<string, unknown>, state: CallState, results: ToolR
       return [k, (latest?.data.slots as { slot_id: string }[] | undefined)?.[Number(found[1])]?.slot_id ?? v];
     }
     // the visit booked (or moved to) on this call, and the one the assistant put forward to move (call bugs, 2026-11-17)
-    if (v === '$booked') return [k, state.memory.visit?.appointmentId ?? v];
+    // the visit booked (or moved to) on this call: the id the last booking's own result gave, as the model saw it (CQ2-VAPI8)
+    if (v === '$booked') return [k, [...results].reverse().find((r) => r.data.booked === true && typeof r.data.appointment_id === 'string')?.data.appointment_id as string ?? v];
     if (v === '$put_forward') return [k, state.visitPutForward ?? v];
     if (v === '$next_week') {
       const today = localDateOf(now, clinic.timezone);

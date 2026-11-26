@@ -68,6 +68,7 @@ export interface LanguagePack {
     directions: (v: Record<string, string>) => string;
     hours: (v: Record<string, string>) => string;
     emergency_hospital: (v: Record<string, string>) => string;
+    emergency_line: (v: Record<string, string>) => string;
     provider: (v: Record<string, string>) => string;
     answer: (v: Record<string, string>) => string;
     link: (v: Record<string, string>) => string;

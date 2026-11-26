@@ -120,7 +120,10 @@ describe('the texts table, row by row, in English and Spanish (batch 1e)', () =>
         for (const kind of [ASKS.address, ASKS.hospital]) {
           const t = await ask('transfer_failed', language, kind);
           expect(t.refused).toBeNull();
-          expect(t.text).toMatchObject({ template: 'emergency_hospital', vars: { hospitalPhone: TEAM } });
+          // review 3: the phone number alone, in its own words: never the clinic's address (it may be closed) or "emergency vet:"
+          expect(t.text).toMatchObject({ template: 'emergency_line', vars: { emergencyLine: TEAM } });
+          expect(t.text!.body).not.toMatch(/88 Riverbend Road|emergency vet|urgencias veterinarias|, ,/);
+          expect(t.text!.body).toContain(language === 'es' ? 'línea de emergencias' : 'emergency line');
         }
         expect((await ask('transfer_failed', language, ASKS.hours)).refused).toBe('emergency_in_progress');
       });

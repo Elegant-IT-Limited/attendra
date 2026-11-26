@@ -22,4 +22,10 @@ describe('CQ2-R7: the filler preambles are banned on both paths', () => {
     for (const s of ['Sure.', 'One moment.', 'Dr. Ruiz is free at 9.', "No problem, I haven't booked anything. Let me see what Thursday looks like.", 'Claro.', 'Un momento.'])
       expect(opensWithFillerPreamble(s), s).toBe(false);
   });
+
+  it('CQ2-R7-review3: "Let me know if…" is no preamble; informal "Déjame…" and an acknowledgement before one ("One moment, let me check") are', () => {
+    for (const s of ['Let me know if you need anything else.', 'Okay, let me know which time suits you.', 'Avíseme si necesita algo más.']) expect(opensWithFillerPreamble(s), s).toBe(false);
+    for (const s of ['Déjame revisar.', 'Bueno, déjame ver.', 'One moment, let me check.', 'Sure, one moment, let me look.', 'Un momento, déjeme revisar.', 'Got it, let me see what Thursday looks like.'])
+      expect(opensWithFillerPreamble(s), s).toBe(true);
+  });
 });
