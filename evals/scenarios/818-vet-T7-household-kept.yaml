@@ -1,0 +1,20 @@
+id: vet-T7-household-kept
+title: "T7: after a pet is added, 'Can you make another appointment?' is 'For Tango or another pet?', never the number question again (a tester's call, 2026-11-24)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550166"
+tags: [no-demo, tester-call, identity]
+turns:
+  - caller: Hi, I'm Corin Vale. I want to register my new cat Tango, she's two years old.
+    reply: "Tango is registered."
+    delegate:
+      - register_patient: { pet_name: Tango, owner_name: Corin Vale, species: cat, sex: female, birthday_or_age: two years, phone: null }
+  - caller: Can you make another appointment?
+    reply: "For Tango or another pet?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: null }
+expect:
+  outcome: abandoned
+  verified: true
+  returned: ["For Tango or another pet?"]
+  never_returned: ["profile under", "What phone number"]

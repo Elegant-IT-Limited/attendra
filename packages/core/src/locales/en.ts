@@ -164,6 +164,16 @@ export const en: LanguagePack = {
   phoneAsGiven: ({ digits }) => `I have ${digits}. I'll keep it just as you gave it.`,
   petNewQuestion: ({ pet }) => `Is ${pet} new to us?`,
   askPetSpecies: ({ pet }) => `What kind of animal is ${pet}?`,
+  vetsAnswer: ({ vets, credentialsAsked, pets }) => {
+    const one = (v: { name: string; specialty: string | null; credentials: string[] }) => [v.name, v.specialty?.toLowerCase(), v.credentials.length ? v.credentials.join(' and ') : null].filter(Boolean).join(', ');
+    const list = vets.length < 2 ? vets.map(one).join('') : `${vets.slice(0, -1).map(one).join('; ')}; and ${one(vets.at(-1)!)}`;
+    const missing = credentialsAsked && vets.some((v) => !v.credentials.length) ? ' The team can tell you more about their training.' : '';
+    return `Our ${pets ? 'vets' : 'doctors'} ${vets.length === 1 ? 'is' : 'are'} ${list}.${missing}`;
+  },
+  forWhichPet: ({ names }) => `For ${names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} or ${names.at(-1)}`} or another pet?`,
+  confirmPetName: ({ name }) => `${name} is the pet's name, right?`,
+  readbackSwap: ({ when: w, provider, visit, from, to }) => `move the ${visit.toLowerCase()} on ${w} with ${provider} from ${from} to ${to}`,
+  askOwnerName: "What's your first name?",
   askPetSex: ({ pet }) => `Is ${pet} a boy or a girl?`,
   askPetAge: ({ pet }) => `How old is ${pet}, roughly?`,
   profileNumberQuestion: ({ last4 }) => (last4 ? `Sure. Is your pet's profile under the number you're calling from, ending ${last4}?` : "Sure. What phone number is your pet's profile under?"),

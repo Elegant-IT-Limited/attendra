@@ -44,6 +44,9 @@ export const ToolArgs = {
   // sentence; commit_pending performs it only if the caller has said yes since.
   propose_booking: z.object({ slot_id: z.string(), replaces_appointment_id: z.string().nullable() }),
   propose_cancellation: z.object({ appointment_id: z.string() }),
+  // a pet's visit given to another pet of the same household, at the same time with the same vet: one read-back, one yes,
+  // one text (T8, a tester's call 2026-11-24). Veterinary clinics only
+  move_visit_to_pet: z.object({ appointment_id: z.string(), pet_name: z.string().min(1) }),
   commit_pending: z.object({}),
   // callback_number null: the number they are calling from, when the caller says that one is fine
   // text_updates: the caller's answer to the text offer (true yes, false no); null when it was not asked

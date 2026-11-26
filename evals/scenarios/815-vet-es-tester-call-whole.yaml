@@ -1,5 +1,5 @@
 id: vet-es-tester-call-whole
-title: "The tester's whole call (2026-11-24) in Spanish with made-up data: a new cat registered as said, a sick visit with Dr. Ruiz, vaccines with Dr. Bell, the Dr. Ruiz visit cancelled by the vet's name, then two more pets added with their own details"
+title: "The tester's whole call (2026-11-24) in Spanish with made-up data: a new cat registered as said, a sick visit with Dr. Ruiz, vaccines with Dr. Bell, the Dr. Ruiz visit cancelled by the vet's name, then two more pets added with their own details, and the vaccines visit given to one of them (T8)"
 clinic: riverbend
 local_time: "10:00"
 caller_number: "+17205550165"
@@ -51,14 +51,26 @@ turns:
     reply: "Juno quedó registrada."
     delegate:
       - register_patient: { pet_name: Juno, owner_name: null, species: conejo, sex: female, birthday_or_age: seis meses, phone: null }
+  - caller: ¿Y puede pasarle la cita de vacunas de Tango a Pico?
+    reply: "Entonces, quiere {readback}. ¿Hago el cambio?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Tango, phone: null }
+      - list_appointments: {}
+      - move_visit_to_pet: { appointment_id: "$appointments[2]", pet_name: Pico }
+  - caller: Sí, hágalo.
+    reply: "Listo."
+    delegate:
+      - commit_pending: {}
 expect:
-  outcome: cancelled
+  outcome: booked
   verified: true
   language: es
   refusals: [which_visit]
-  bookings_created: 2
-  sms_sent: 3
+  bookings_created: 3
+  sms_sent: 4
   returned: ["the caller means"]
   never_returned: ["booked on this call", "This replaces the change", "tentative"]
   household: { phone: "+17205550165", names: [Tango, Pico, Juno] }
   pet_on_file: { phone: "+17205550165", name: Juno, species: conejo }
+  visits_after:
+    - { on: "2026-09-30", at: "08:00", visit: vt_vaccines }

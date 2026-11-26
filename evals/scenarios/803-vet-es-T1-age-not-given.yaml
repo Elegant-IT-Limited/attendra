@@ -22,5 +22,5 @@ expect:
   verified: true
   language: es
   refusals: [unclear_age, ask_age]
-  spoken_contains: ["¿Cuántos años tiene Pico, más o menos?"]
+  returned: ["¿Cuántos años tiene Pico, más o menos?"]
   pet_on_file: { phone: "+17205550162", name: Pico, species: perro }

@@ -1,0 +1,23 @@
+id: vet-T11-fragment-confirmed
+title: "T11: 'Es Kelly.' on an English call is asked back ('Kelly is the pet's name, right?') before the pet is added; a yes adds it (a tester's call, 2026-11-24)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550168"
+tags: [no-demo, tester-call, identity]
+turns:
+  - caller: Hi, I'm Corin Vale. I'd like to add a new dog, a girl, about one year old.
+  - assistant: "What's her name?"
+  - caller: Es Kelly.
+    reply: "Kelly is the pet's name, right?"
+    delegate:
+      - register_patient: { pet_name: Kelly, owner_name: Corin Vale, species: dog, sex: female, birthday_or_age: about one year, phone: null }
+  - caller: Yes.
+    reply: "Kelly is registered."
+    delegate:
+      - register_patient: { pet_name: Kelly, owner_name: Corin Vale, species: dog, sex: female, birthday_or_age: about one year, phone: null }
+expect:
+  outcome: abandoned
+  verified: true
+  refusals: [confirm_pet_name]
+  returned: ["Kelly is the pet's name, right?"]
+  pet_on_file: { phone: "+17205550168", name: Kelly, species: dog }

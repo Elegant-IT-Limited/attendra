@@ -31,9 +31,10 @@ describe('find_slots on a call', () => {
   it('records which argument did not fit and how, never its value', async () => {
     const c = await w.call('+17205550172', { clinic });
     await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: 'Biscuit' } }]);
-    const out = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: 'next tuesday', part_of_day: 'any' } }]);
+    const out = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: 'whenever the rash clears', part_of_day: 'any' } }]);
+    // (a day in words is read as meant since T12: only a date that names no day is refused)
     expect(out.errors).toEqual(['invalid_arguments']);
     expect(out.results[0]!.data.invalid_fields).toEqual(['from_date:invalid_format:string']);
-    expect(JSON.stringify(out.results[0]!.data.invalid_fields)).not.toContain('tuesday');
+    expect(JSON.stringify(out.results[0]!.data.invalid_fields)).not.toContain('rash');
   });
 });

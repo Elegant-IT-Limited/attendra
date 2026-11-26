@@ -1,0 +1,16 @@
+id: vet-es-T13-verified-on-calling-number
+title: "T13 in Spanish: a pet added on the number calling makes the call verified, as the calls list reads the call's actions (a tester's call, 2026-11-24)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550169"
+tags: [no-demo, tester-call, identity, es]
+turns:
+  - caller: Hola, soy Corin Vale. Quiero registrar a mi gata nueva Tango, tiene dos años.
+    reply: "Tango quedó registrada."
+    delegate:
+      - register_patient: { pet_name: Tango, owner_name: Corin Vale, species: gato, sex: female, birthday_or_age: dos años, phone: null }
+expect:
+  outcome: abandoned
+  verified: true
+  language: es
+  returned: ['"registered":true,"verified":true']

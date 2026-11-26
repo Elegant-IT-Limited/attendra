@@ -57,7 +57,8 @@ describe('a booking on the tools path', () => {
     const found = await tool('verify_caller', { owner_name: 'Linh', pet_name: 'Biscuit', phone: '720 555 0172' });
     expect(found).toMatchObject({ ok: true, outcome: 'found', stage: 'pet_chosen' });
     // the call's state in a line for the voice (batch 1d): it outlasts the oldest turns being cut
-    expect(callStateNote(c.state)).toBe('Call state. found: Biscuit.');
+    // with the household, so a second visit never asks for the number again (T7)
+    expect(callStateNote(c.state)).toBe('Call state. found: Biscuit. Number confirmed; pets on it: Biscuit. For another visit ask only "For Biscuit or another pet?", never the number again.');
 
     // no time named: the earliest times (an exact time asked for is staged straight away, as on the planner path)
     const times = await tool('find_slots', { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2026-09-29', from_time: null, part_of_day: 'any' });
@@ -79,7 +80,7 @@ describe('a booking on the tools path', () => {
     expect(booked).toMatchObject({ ok: true, outcome: 'booked', stage: 'done' });
     expect(booked.spoken).toMatch(/That's booked|All set/);
     expect(c.state.outcome).toBe('booked');
-    expect(callStateNote(c.state)).toMatch(/^Call state\. found: Biscuit\. done: /);
+    expect(callStateNote(c.state)).toMatch(/^Call state\. found: Biscuit\. Number confirmed; pets on it: Biscuit\. .*\. done: /);
     expect(callStateNote(new CallState())).toBeNull();
   });
 

@@ -1,0 +1,25 @@
+id: vet-T10-one-question
+title: "T10: a new pet's registration asks one thing at a time, in the backend's words, never the whole list (a tester's call, 2026-11-24)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550167"
+tags: [no-demo, tester-call, identity]
+turns:
+  - caller: Hi, I'm Corin Vale. I want to register my new dog Pixel.
+    reply: "{the next question}"
+    delegate:
+      - verify_caller: { owner_name: Corin Vale, pet_name: Pixel, phone: null }
+  - caller: He's a boy.
+    reply: "{the next question}"
+    delegate:
+      - register_patient: { pet_name: Pixel, owner_name: Corin Vale, species: dog, sex: male, birthday_or_age: null, phone: null }
+  - caller: He's three years old.
+    reply: "Pixel is registered."
+    delegate:
+      - register_patient: { pet_name: Pixel, owner_name: Corin Vale, species: dog, sex: male, birthday_or_age: three years, phone: null }
+expect:
+  outcome: abandoned
+  verified: true
+  refusals: [pet_is_new, unclear_age]
+  returned: ["Is Pixel a boy or a girl?", "How old is Pixel, roughly?"]
+  never_returned: ["the kind of animal, its sex"]

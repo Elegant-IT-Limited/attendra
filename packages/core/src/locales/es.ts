@@ -182,6 +182,16 @@ export const es: LanguagePack = {
   phoneAsGiven: ({ digits }) => `Tengo ${digits}. Lo anoto tal como me lo dio.`,
   petNewQuestion: ({ pet }) => `¿Es la primera vez que ${pet} viene con nosotros?`,
   askPetSpecies: ({ pet }) => `¿Qué tipo de animal es ${pet}?`,
+  vetsAnswer: ({ vets, credentialsAsked, pets }) => {
+    const one = (v: { name: string; specialty: string | null; credentials: string[] }) => [v.name, v.specialty?.toLowerCase(), v.credentials.length ? v.credentials.join(' y ') : null].filter(Boolean).join(', ');
+    const list = vets.length < 2 ? vets.map(one).join('') : `${vets.slice(0, -1).map(one).join('; ')}; y ${one(vets.at(-1)!)}`;
+    const missing = credentialsAsked && vets.some((v) => !v.credentials.length) ? ' El equipo le puede dar más detalles sobre su formación.' : '';
+    return `${vets.length === 1 ? (pets ? 'Nuestro veterinario es' : 'Nuestro médico es') : (pets ? 'Nuestros veterinarios son' : 'Nuestros médicos son')} ${list}.${missing}`;
+  },
+  forWhichPet: ({ names }) => `¿Para ${names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} o ${names.at(-1)}`} o para otra mascota?`,
+  confirmPetName: ({ name }) => `${name} es el nombre de la mascota, ¿verdad?`,
+  readbackSwap: ({ when: w, provider, visit, from, to }) => `pasar la cita de ${visit.toLowerCase()} del ${sinEl(w)} con ${provider} de ${from} a ${to}`,
+  askOwnerName: '¿Cuál es su nombre?',
   askPetSex: ({ pet }) => `¿${pet} es macho o hembra?`,
   askPetAge: ({ pet }) => `¿Cuántos años tiene ${pet}, más o menos?`,
   profileNumberQuestion: ({ last4 }) => (last4 ? `Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en ${last4}?` : 'Claro. ¿Con qué número de teléfono está registrada la ficha de su mascota?'),

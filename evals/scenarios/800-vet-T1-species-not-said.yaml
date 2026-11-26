@@ -21,5 +21,5 @@ expect:
   outcome: abandoned
   verified: true
   refusals: [pet_species, ask_species]
-  spoken_contains: ["What kind of animal is Tango?"]
+  returned: ["What kind of animal is Tango?"]
   pet_on_file: { phone: "+17205550161", name: Tango, species: cat }

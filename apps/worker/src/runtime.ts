@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { CALL_EVENTS_RETENTION_DAYS, inQuietHours, reminderDecision, type ReminderSkip, callUsNumber, ClinicConfig, dailyDigest, demoResetDue, isRefillDecision, localName, localParts, refillText, speakSlot, textingOf } from '@attendra/core';
+import { CALL_EVENTS_RETENTION_DAYS, inQuietHours, reminderDecision, type ReminderSkip, callUsNumber, ClinicConfig, dailyDigest, demoResetDue, isRefillDecision, localName, localParts, providerName, refillText, speakSlot, textingOf } from '@attendra/core';
 import type { EventSink } from '@attendra/core';
 import { activeNumbers, allClinics, CallSummaryRepository, callFacts, callsForDigest, configName, DEMO_NIGHTLY_ACTOR, demoClinics, type Database, ensureWorkerJobsView, KnowledgeRepository, lapseInvitations, type PhiCipher, phiContext, PostgresTaskQueue, purgeCallEvents, purgeCallRecords, purgeTextBodies, purgeWebhookRecords, demoResetLine, resetDemoClinic, schema, WebhookRepository, withClinic } from '@attendra/db';
 import { type Embedder, indexDocument, LocalEmbedder, OpenAIEmbedder } from '@attendra/knowledge';
@@ -336,7 +336,8 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
             vars: {
               clinic: config.name, when: speakSlot(a.startsAt, config.timezone, lang), clinicPhone: callUsNumber(config),
               ...(pets ? { pet: firstName, ...(owner ? { name: owner } : {}) } : { name: firstName }),
-              ...(provider && provider.kind !== 'room' ? { provider: localName(provider, lang) } : {}),
+              // a vet as "Dr. Maya Chen": the title kept apart from the name (db:vet-titles) is said, as on the call (SMALL-1)
+              ...(provider && provider.kind !== 'room' ? { provider: providerName(provider, lang) } : {}),
               ...(visit ? { visit: localName(visit, lang).toLowerCase() } : {}),
             },
             idempotencyKey: `reminder:${a.id}:${a.startsAt.toISOString()}`, about: { patientId: p.id, appointmentId: a.id },
@@ -483,7 +484,7 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
       const result = await messenger.sendTemplate(clinicId, {
         to: d.cipher.decrypt(p.phoneEnc, ctx('phone')), template: 'vet_changed', language: lang, kind: 'auto',
         vars: {
-          clinic: config.name, when: speakSlot(a.startsAt, config.timezone, lang), clinicPhone: callUsNumber(config), provider: localName(provider, lang),
+          clinic: config.name, when: speakSlot(a.startsAt, config.timezone, lang), clinicPhone: callUsNumber(config), provider: providerName(provider, lang),
           ...(pets ? { pet: firstName, ...(owner ? { name: owner } : {}) } : { name: firstName }),
           ...(visit ? { visit: localName(visit, lang).toLowerCase() } : {}),
         },
