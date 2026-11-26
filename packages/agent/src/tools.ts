@@ -300,7 +300,7 @@ function dayWordIn(text: string, clinic: Pick<ClinicConfig, 'timezone' | 'phoneN
   // a weekday or today/tomorrow, else a date ("October 2", "2 de octubre", "10/02/2026"): read by dateSaid (reviewer, T6)
   const months = Object.keys(MONTH_WORDS).join('|');
   const m = /\b(today|tomorrow|hoy|manana|(?:(?:this|next|el|este|el proximo)\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|lunes|martes|miercoles|jueves|viernes|sabado|domingo))\b/.exec(t)
-    ?? new RegExp(`\\b((?:${months})\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?|\\d{1,2}(?:st|nd|rd|th)?\\s+(?:de\\s+|of\\s+)?(?:${months})(?:\\s+(?:de\\s+)?\\d{4})?|\\d{1,4}[/-]\\d{1,2}[/-]\\d{1,4})\\b`).exec(t);
+    ?? new RegExp(`\\b((?:${months})\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?|\\d{1,2}(?:st|nd|rd|th)?\\s+(?:de\\s+|of\\s+)?(?:${months})(?:\\s+(?:de\\s+)?\\d{4})?|\\d{1,4}[/-]\\d{1,2}(?:[/-]\\d{1,4})?)\\b`).exec(t);
   const d = m ? dateSaid(m[1]!.replace(/(\d)(?:st|nd|rd|th)\b/, '$1'), clinic, now) : null;
   return d && d !== INVALID_DATE ? d : null;
 }
@@ -336,6 +336,9 @@ function dateSaid(said: string, clinic: Pick<ClinicConfig, 'timezone' | 'phoneNu
   if (md && MONTH_WORDS[md[1]!]) return ahead(MONTH_WORDS[md[1]!]!, Number(md[2]), md[3] ? Number(md[3]) : undefined);
   const dm = /^(?:el\s+|the\s+)?(\d{1,2})(?:st|nd|rd|th)?\s+(?:de\s+|of\s+)?(\p{L}+)(?:\s+(?:de\s+)?(\d{4}))?$/u.exec(t);
   if (dm && MONTH_WORDS[dm[2]!]) return ahead(MONTH_WORDS[dm[2]!]!, Number(dm[1]), dm[3] ? Number(dm[3]) : undefined);
+  // a month and a day with no year ("10/02"): month first in North America, as the clinic's dates are read
+  const short = /^(\d{1,2})[/-](\d{1,2})$/.exec(t);
+  if (short) return clinic.phoneNumbers[0]?.startsWith('+1') ? ahead(Number(short[1]), Number(short[2])) : ahead(Number(short[2]), Number(short[1]));
   const num = /^(\d{1,4})[/-](\d{1,2})[/-](\d{1,4})$/.exec(t);
   if (num) {
     const [x, y, z] = [Number(num[1]), Number(num[2]), Number(num[3])];
