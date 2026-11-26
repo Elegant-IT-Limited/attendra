@@ -16,6 +16,8 @@ turns:
       - propose_booking: {"slot_id": "$offered[0]", "replaces_appointment_id": null}
   - caller: "Sí."
     reply: "{reply}"
+    wait_for: ["lo reservo", "la reservo", "le reservo", "quiere que lo reserve", "quiere que la reserve", "desea que lo reserve"]
+    meanwhile: "La primera, por favor."
     delegate:
       - commit_pending: {}
 expect:

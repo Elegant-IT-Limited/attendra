@@ -20,7 +20,9 @@ const Turn = z.union([
   // {booked} are filled in from the call as it happened.
   // dropped: the voice let this turn go, with no reply and no hand-off (a test call, 2026-10-26); the call's watchdog
   // gives the voice the caller's words back after 5 s, and the hand-off follows. Never answered with "say that again".
-  z.object({ caller: z.string(), reply: z.string().optional(), delegate: z.array(Step).optional(), dropped: z.boolean().optional() }),
+  // wait_for (live only): the caller says this line only once the assistant's last reply contains one of these words (a
+  // read-back's "Shall I book"); until then, at most twice, `meanwhile` (a model voice may ask something else first)
+  z.object({ caller: z.string(), reply: z.string().optional(), delegate: z.array(Step).optional(), dropped: z.boolean().optional(), wait_for: z.array(z.string()).optional(), meanwhile: z.string().optional() }),
   z.object({ assistant: z.string() }),
 ]);
 

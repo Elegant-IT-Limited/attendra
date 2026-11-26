@@ -310,8 +310,20 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   let callerSilent = false;
   // the call was ended by a rule of the code (the abusive caller), not by end_call after a goodbye
   let endedByRule = false;
+  let held = 0;
   for (let i = 0; i < lines.length; i++) {
     const turn = lines[i]!;
+    // live, a line that answers a question the assistant has not asked yet waits for it (a read-back's yes), at most twice
+    if (livePlanner && 'caller' in turn && turn.wait_for?.length && held < 2) {
+      const last = transcript.filter((t) => t.speaker === 'assistant').at(-1)?.text.toLowerCase() ?? '';
+      if (!turn.wait_for.some((w) => last.includes(w.toLowerCase()))) {
+        held++;
+        lines.splice(i, 0, { caller: turn.meanwhile ?? 'Okay.' });
+        i--;
+        continue;
+      }
+    }
+    if ('caller' in turn && turn.wait_for?.length) held = 0;
     // a line the scenario gives the voice (the exact question a tool handed it) is said on the call: live, it counts as spoken (scripted, the reply before it says it)
     // the line is said after what came before it, and the caller answers after it: the clock moves, as on a call (an
     // answer "after the question was said" needs the question to have been said first, batch 1b)
