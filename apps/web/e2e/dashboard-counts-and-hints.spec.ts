@@ -42,6 +42,9 @@ test.describe.serial('SMALL-2', () => {
     // two refills closed as ready to pick up: the demo has no Twilio, so each text is recorded as not sent (by the
     // worker, a moment later). The demo's own reminders not sent count too (every kind), and the worker may add one at
     // any moment: each shown number is compared with the server's at the same moment
+    // no dashboard page open meanwhile (as TX2): the page left on Today since sign-in would tell of the new texts
+    // itself, as soon as they are recorded, and mark them seen, so the Today opened below would have no notice left
+    await page.goto('about:blank');
     const mine: string[] = [];
     for (const i of [1, 2]) {
       const made = await call<{ id: string }>('POST', `/clinics/${C}/tasks`, { type: 'refill', medication: `Carprofen S2-${i}`, callbackNumber: `(720) 555-01${60 + i}` });
