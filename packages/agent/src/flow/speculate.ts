@@ -69,6 +69,25 @@ export function askedCallerIdNumber(asked: string, callerNumber: string | null):
   return digits.endsWith(id.last4) || (['en', 'es'] as const).some((l) => asked.includes(normalise(digitsAsWords(id.last4, l))));
 }
 
+/**
+ * The caller said the pet's profile is on the number they are calling from, without being asked: "on the number I'm
+ * calling from", "desde el número del que llamo", "con este número", "el mismo número" (a live run, 2026-11-26: the
+ * Spanish caller still got the caller-ID question). A "not this number" or "another number" never is.
+ */
+const CALLING_NUMBER = new RegExp([
+  "(?:the|this) (?:same )?number (?:i'?m|i am) calling (?:from|on)",
+  '(?:on|under|with|from) this (?:same |very )?number',
+  "(?:it'?s|its|it is) (?:the same|this) number",
+  '(?:el|este) (?:mismo )?numero (?:del|desde el|con el) que (?:le )?(?:llamo|estoy llamando)',
+  'del numero (?:del|desde el) que (?:le )?llamo',
+  'con este (?:mismo )?numero',
+  'este mismo numero',
+  'el mismo numero',
+  '(?:con|desde) el que (?:le )?estoy llamando',
+].map((p) => `\\b${p}\\b`).join('|'));
+const OTHER_NUMBER = /\b(?:not (?:on |under )?(?:this|the same|that) number|isn'?t (?:this|the same) number|(?:a |another |different |other )number|no (?:es|esta (?:con|en)) (?:este|el mismo|ese) numero|otro numero|numero (?:diferente|distinto))\b/;
+export const saysCallingNumber = (text: string) => { const t = normalise(text); return CALLING_NUMBER.test(t) && !OTHER_NUMBER.test(t); };
+
 function identityLookup(state: CallState, clinic: ClinicConfig, said: string, ctx: SpeculationContext): Speculation | null {
   if (industryPack(clinic.industry).identity !== 'pet' || state.verifiedPatient || state.saidNew() === 'new' || /\b(new|nuev[oa])\b/.test(said)) return null;
   const yes = isClearYes(said, clinic.languages);
@@ -87,6 +106,8 @@ function identityLookup(state: CallState, clinic: ClinicConfig, said: string, ct
   // a clear yes to the caller-ID question: the caller ID's number, with the pet when they named one that is on it; with
   // none named, the number's pets to pick from ("Is this for Biscuit or Max, or a new pet?"), as the voice would call it
   if (yes && !state.memory.verified && !state.phonesConfirmed.size && askedCallerIdNumber(askedLast(state), ctx.callerNumber)) return verify(null, petSaid(state, ctx));
+  // said without being asked ("Hola, soy Linh Nguyen, desde el número del que llamo"): the same yes, before the question
+  if (!state.memory.verified && !state.phonesConfirmed.size && callerIdOf(ctx.callerNumber) && saysCallingNumber(said)) return verify(null, petSaid(state, ctx));
   return null;
 }
 

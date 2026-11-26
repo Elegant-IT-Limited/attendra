@@ -2,7 +2,7 @@
 import { PACKS, RIVERBEND_CLINIC } from '@attendra/core';
 import { seedRiverbend } from '@attendra/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { askedCallerIdNumber, petNamedIn } from '../src';
+import { askedCallerIdNumber, petNamedIn, saysCallingNumber } from '../src';
 import { world } from './support';
 
 // Call speed (2026-11-19): the lookup the caller's words make plain runs before the voice replies (lookup-ahead), so the
@@ -138,3 +138,43 @@ describe('the words lookup-ahead reads', () => {
     expect(petNamedIn('a new one', ['Biscuit'])).toBeNull();
   });
 });
+
+// a live run (2026-11-26): "Hola, soy Linh Nguyen, desde el número del que llamo. ¿Puede venir Biscuit…?" still got the
+// caller-ID question, where "on the number I'm calling from" in English did not. Said up front, it is the caller-ID yes
+describe('ES-CALLERID: the profile said to be on the number they call from, up front, EN and ES', () => {
+  const ES = ['desde el número del que llamo', 'del número del que llamo', 'con este número', 'este mismo número', 'el número desde el que llamo', 'el mismo número', 'con el que estoy llamando'];
+  const EN = ["on the number I'm calling from", 'the number I am calling from', 'on this number', 'under this same number', "it's the same number"];
+  it.each([...ES, ...EN])('ES-CALLERID: "%s" is the number they are calling from', (phrase) => {
+    expect(saysCallingNumber(phrase)).toBe(true);
+  });
+  it.each(['no es este número', 'es otro número', "it's not this number", 'a different number', 'Can Biscuit come in tomorrow?', 'Llámeme a otro número'])('ES-CALLERID: "%s" is not', (phrase) => {
+    expect(saysCallingNumber(phrase)).toBe(false);
+  });
+
+  for (const [lang, line] of [
+    ['es', 'Hola, soy Linh Nguyen, desde el número del que llamo. ¿Puede venir Biscuit mañana por la mañana para una consulta por enfermedad?'],
+    ['es', 'Hola, quiero una cita para Biscuit, con este número.'],
+    ['en', "Hi, Linh Nguyen, on the number I'm calling from. Can Biscuit come in tomorrow morning for a sick visit?"],
+  ] as const) {
+    it(`ES-CALLERID: said in the first turn, the caller ID's number is looked up at once, with the pet (${lang})`, async () => {
+      const c = await w.call(PHONE, { clinic });
+      await c.agent.preloadHousehold();
+      if (lang === 'es') c.state.language = 'es';
+      c.caller(line);
+      expect(c.agent.speculate()).toEqual({ name: 'verify_caller', args: { phone: null, pet_name: 'Biscuit', owner_name: null, phone_last4: null } });
+    });
+  }
+
+  it('ES-CALLERID: "no es este número" or a new pet runs no caller-ID lookup', async () => {
+    const c = await w.call(PHONE, { clinic });
+    await c.agent.preloadHousehold();
+    c.state.language = 'es';
+    c.caller('Hola, quiero una cita para Biscuit, pero no es este número.');
+    expect(c.agent.speculate()?.name).not.toBe('verify_caller');
+    const d = await w.call(PHONE, { clinic });
+    await d.agent.preloadHousehold();
+    d.caller("Hi, on the number I'm calling from, I want to book for my new puppy.");
+    expect(d.agent.speculate()?.name).not.toBe('verify_caller');
+  });
+});
+
