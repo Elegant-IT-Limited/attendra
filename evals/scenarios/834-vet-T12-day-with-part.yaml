@@ -4,7 +4,7 @@ clinic: riverbend
 local_time: "10:00"
 tags: [no-demo, tester-call, booking]
 turns:
-  - caller: Hi, Linh Nguyen. Can Biscuit come in tomorrow morning for a sick visit?
+  - caller: "Hi, Linh Nguyen, on the number I'm calling from. Can Biscuit come in tomorrow morning for a sick visit?"
     reply: "{offered.0}, or {offered.1}."
     delegate:
       - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
