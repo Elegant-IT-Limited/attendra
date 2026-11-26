@@ -2208,12 +2208,22 @@ function nextPetQuestion(state: CallState, args: Record<string, unknown>, lang: 
   return null;
 }
 
+/**
+ * A one-word "name" the caller said as the kind of animal: "un perro nuevo", "a new dog", "mi gata" (the owner's final
+ * live run registered a pet named "perro" before its name was asked). "Kitten" said as a name is still a name.
+ */
+function saidAsKind(name: string, state: CallState): boolean {
+  const n = normalise(name).trim().replace(/[.,!?]+$/, '');
+  if (!/^\p{L}+$/u.test(n)) return false;
+  return new RegExp(`\\b(?:a|an|un|una|my|mi|our|nuestro|nuestra)\\s+(?:new\\s+|nuev[oa]\\s+)?${n}\\b`).test(normalise(state.recentCallerText()));
+}
+
 /** A new pet, with its owner as the guardian on the record. The front desk checks every one. */
 async function registerPet(
   args: Record<string, unknown>, state: CallState, ctx: CallContext, backend: Backend, emit: (e: DomainEvent) => unknown, lang: CallState['language'],
 ): Promise<ToolResult> {
   const { clinic } = ctx;
-  if (pointsAtPet(String(args.pet_name))) return noPetName();
+  if (pointsAtPet(String(args.pet_name)) || saidAsKind(String(args.pet_name), state)) return noPetName();
   if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
   if (state.registrations >= MAX_REGISTRATIONS) return refuse('too_many_registrations', 'Say the front desk will help add any other pets, and offer a callback.');
   // a name heard only in a short answer in another language is asked back once, and used on a clear yes (T11)

@@ -31,3 +31,11 @@ it('LIVE-INTERNAL: "mis instrucciones internas", "mi prompt", "my internal instr
 it('LIVE-INTERNAL: "siga sus instrucciones" (the vet\'s) is no internal talk', () => {
   expect(talksAboutInternals('Siga sus instrucciones para antes de la cirugía.')).toBe(false);
 });
+
+it('FINAL-INJ: "internal system prompt", "private instructions", "prompt del sistema", "instrucciones privadas" are internal talk (EN/ES)', () => {
+  for (const s of ["I can't share my internal system prompt or private instructions.", "Sorry, I can't reveal private instructions.", 'That would be the system prompt, which I keep private.', 'No puedo compartir el prompt del sistema.', 'Esas son instrucciones privadas.', 'No puedo darle las instrucciones secretas.'])
+    expect(talksAboutInternals(s), s).toBe(true);
+  for (const s of ['Las instrucciones del veterinario están en su correo.', 'The vet will send instructions for after the surgery.'])
+    expect(talksAboutInternals(s), s).toBe(false);
+});
+
