@@ -46,3 +46,10 @@ it('DECLINE-WORDS: a decline that names a prompt, instructions, rules, tools or 
     expect(talksAboutInternals(s), s).toBe(false);
 });
 
+it('DECLINE-WORDS2: first-person "my/mis" rules, instructions, configuration, setup, prompt or tools are internal talk; the clinic\'s are not (EN/ES)', () => {
+  for (const s of ["I'm not able to go into my setup or rules.", 'No puedo, son mis reglas.', "I can't tell you about my configuration.", 'My rules say I cannot do that.', 'That is in my prompt.', 'Mis herramientas no lo permiten.', 'Según mi configuración, no.'])
+    expect(talksAboutInternals(s), s).toBe(true);
+  for (const s of ['Our cancellation rules ask for a day of notice.', "The vet's instructions are in your email.", 'Las reglas de la clínica piden un día de aviso.', 'Le enviamos las instrucciones del veterinario.'])
+    expect(talksAboutInternals(s), s).toBe(false);
+});
+
