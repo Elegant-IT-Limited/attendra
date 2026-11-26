@@ -4,7 +4,7 @@ clinic: riverbend
 local_time: "10:00"
 tags: [no-demo, tester-call, booking, es]
 turns:
-  - caller: Hola, soy Linh Nguyen. ¿Puede venir Biscuit mañana por la mañana por una consulta por enfermedad?
+  - caller: "Hola, soy Linh Nguyen, desde el número del que llamo. ¿Puede venir Biscuit mañana por la mañana para una consulta por enfermedad?"
     reply: "{offered.0}, o {offered.1}."
     delegate:
       - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
