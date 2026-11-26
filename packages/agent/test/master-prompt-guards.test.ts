@@ -221,7 +221,64 @@ describe('LIVE: the adversarial live run', () => {
     d.caller('How much Benadryl can I give her?');
     d.assistant("I can't give medical advice. Would you like a visit with one of our vets, or a call back from our team?");
     d.caller('No thanks.');
-    expect((await d.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual(['no_clear_yes']);
+    // the read-back is asked again (send-back), and nothing is booked
+    expect((await d.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual(['ask_readback_again']);
+    expect(await w.backend.scheduler.upcoming(clinic.id, d.state.verifiedPatient!.id, new Date('2026-09-28T00:00:00Z'))).toHaveLength(0);
+  });
+
+  // send-back: a yes to the medical offer was taken as the yes to an earlier read-back, and booked
+  const pendingVisit = async (phone: string, owner: string, pet: string, language: 'en' | 'es' = 'en') => {
+    const c = await w.call(phone, { clinic });
+    c.caller(`Hi, ${owner}. Can ${pet} come in tomorrow for a sick visit?`);
+    await c.delegate([{ tool: 'verify_caller', args: { owner_name: owner, pet_name: pet } }]);
+    const found = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: '2026-09-30', part_of_day: 'any' } }]);
+    c.state.language = language;
+    await c.delegate([{ tool: 'propose_booking', args: { slot_id: (found.results[0]!.data.slots as { slot_id: string }[])[0]!.slot_id, replaces_appointment_id: null } }]);
+    c.readBack(language === 'es' ? '¿Se la reservo?' : 'Shall I book it?');
+    return c;
+  };
+
+  it('ASK2: "Sure." to the medical offer after a read-back is never the read-back\'s yes; it is asked again, and only a yes after that books (EN)', async () => {
+    const c = await pendingVisit('+17205550173', 'Daniel Brooks', 'Pepper');
+    c.caller('how much Benadryl can I give her');
+    c.assistant("I can't give medical advice. Would you like a visit with one of our vets, or a call back from our team?");
+    c.caller('Sure.');
+    const out = await c.delegate([{ tool: 'commit_pending', args: {} }]);
+    expect(out.errors).toEqual(['ask_readback_again']);
+    expect(String(out.results[0]!.data.say)).toContain('shall I book');
+    expect(await w.backend.scheduler.upcoming(clinic.id, c.state.verifiedPatient!.id, new Date('2026-09-28T00:00:00Z'))).toHaveLength(0);
+    // a yes with no new read-back still books nothing
+    c.caller('Yes, book it.');
+    expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).not.toEqual([null]);
+    c.readBack('So shall I book it?');
+    c.caller('Yes.');
+    expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual([null]);
+  });
+
+  it('ASK2: "Sí." to the medical offer after a read-back is never the read-back\'s yes (ES)', async () => {
+    const c = await pendingVisit('+17205550174', 'Carmen Ortiz', 'Luna', 'es');
+    c.caller('cuánto Benadryl le puedo dar');
+    c.assistant('No puedo dar consejo médico. ¿Quiere una cita con uno de nuestros veterinarios o que alguien del equipo le llame?');
+    c.caller('Sí.');
+    expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual(['ask_readback_again']);
+    c.readBack('Entonces, ¿se la reservo?');
+    c.caller('Sí, por favor.');
+    expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual([null]);
+  });
+
+  it('ASK2: a cancellation read-back, then the medical offer answered "Sure.", cancels nothing until it is asked again', async () => {
+    const c = await w.call('+17205550172', { clinic });
+    c.caller('Hi, Linh Nguyen. I need to cancel Biscuit\'s visit.');
+    await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: 'Biscuit' } }]);
+    const [visit] = await w.backend.scheduler.upcoming(clinic.id, c.state.verifiedPatient!.id, new Date('2026-09-28T00:00:00Z'));
+    expect(visit).toBeTruthy();
+    await c.delegate([{ tool: 'propose_cancellation', args: { appointment_id: visit!.id } }]);
+    c.readBack('Shall I cancel it?');
+    c.caller('how much Benadryl can I give him');
+    c.assistant("I can't give medical advice. Would you like a visit with one of our vets, or a call back from our team?");
+    c.caller('Sure.');
+    expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual(['ask_readback_again']);
+    expect((await w.backend.scheduler.upcoming(clinic.id, c.state.verifiedPatient!.id, new Date('2026-09-28T00:00:00Z'))).map((v) => v.id)).toContain(visit!.id);
   });
 });
 

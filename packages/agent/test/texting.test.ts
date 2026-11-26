@@ -249,3 +249,22 @@ describe('the reminder question after a booking', () => {
     expect((await c.delegate([{ tool: 'set_reminder_consent', args: { agreed: true } }])).errors).toEqual(['identity_required']);
   });
 });
+
+// send-back (2026-11-26): a "sí" to the medical offer is never consent to a text offered before it
+describe('ASK2: a text offer, then the medical offer', () => {
+  it('ASK2: "Sí." to the medical offer sends no text; the text is asked again first', async () => {
+    const c = await w.call('+13035550147', { clinic: TEXTING });
+    c.state.language = 'es';
+    c.caller('¿Dónde están ubicados?');
+    await c.delegate([{ tool: 'get_clinic_info', args: { question: 'address' } }]);
+    expect((await c.delegate([{ tool: 'send_text', args: { kind: 'directions', ref: null, to: null } }])).errors).toEqual(['consent_required']);
+    c.assistant('Estamos en 214 Maple Street. ¿Quiere que se lo envíe por mensaje al número desde el que llama?');
+    c.caller('cuánto Benadryl le puedo dar a mi perro');
+    c.assistant('No puedo dar consejo médico. ¿Quiere una cita con uno de nuestros veterinarios o que alguien del equipo le llame?');
+    c.caller('Sí.');
+    const out = await c.delegate([{ tool: 'send_text', args: { kind: 'directions', ref: null, to: null } }]);
+    expect(out.errors).toEqual(['text_yes_again']);
+    expect(w.sms).toHaveLength(0);
+  });
+});
+

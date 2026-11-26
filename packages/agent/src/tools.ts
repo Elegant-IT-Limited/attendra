@@ -1520,13 +1520,19 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if (pending.readbackAtMs === null) return refuse('not_read_back', `Read it back first: ${pending.readback}.`);
       // an answer naming the time offered is a yes too ("okay, 9:20 is fine"; call quality Q3)
       const at = pending.kind === 'cancel' ? pending.start : pending.slot.start;
-      // a yes said with a medical question ("Yes. Also, how much Benadryl can I give her?") is the read-back's answer,
-      // whatever answers the medical offer after it ("No thanks"; review)
-      const before = state.answerBeforeMedicalOffer();
-      // "yes, but no text": a yes to the change, and no confirmation text
-      const answer = before && isClearYesTo(declinesText(before) ? withoutTextRefusal(before) : before, clinic.languages, { start: at, timeZone: clinic.timezone }) ? before : state.answerToReadback();
+      // "yes, but no text": a yes to the change, and no confirmation text. After the medical line, only the words before
+      // the medical question answer the read-back ("Yes. Also, how much Benadryl…"; CallState.answerAfter)
+      const answer = state.answerToReadback();
       const noText = declinesText(answer);
       if (!isClearYesTo(noText ? withoutTextRefusal(answer) : answer, clinic.languages, { start: at, timeZone: clinic.timezone })) {
+        // the medical line came after the read-back and no yes came before the medical question: whatever the caller said
+        // since answered the medical offer. The read-back is asked again, and only a yes after it counts (send-back)
+        if (state.medicalTurnAfter(pending.readbackAtMs)) {
+          pending.readbackAtMs = null;
+          pending.heard = '';
+          pending.proposedAtMs = state.lastMs();
+          return refuse('ask_readback_again', `Do not make the change yet: the caller's last answer was to your medical offer, not to this change. Ask again, in these words: "${askYesAgain(lang, pending.readback)}" and wait for their yes.`);
+        }
         // never a set phrase to repeat: a test call asked four times for "yes, move it" (2026-11-16). A plain yes,
         // okay or sí is enough; a question is answered first
         const ask = askYesAgain(lang, pending.readback);
@@ -1679,7 +1685,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if (offer.askedAtMs === null) return refuse('not_asked', `Ask first: "${pack.reminderOffer}"`);
       state.reminderOffer = null; // asked once, answered once
       // a yes is the caller's own clear words after the question, never the model's reading of them
-      if (!args.agreed || !isClearYes(state.latestCallerWordsAfter(offer.askedAtMs), clinic.languages)) {
+      if (!args.agreed || !isClearYes(state.answerAfter(offer.askedAtMs), clinic.languages)) {
         return { ok: true, data: { reminders: false, say: 'No reminder texts. Carry on with the call.', spoken: pack.spoken.reminders({ agreed: false }) } };
       }
       await backend.patients.setTextConsent!(clinic.id, offer.patientId, ctx.callId);
@@ -1748,6 +1754,12 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         consentAtMs = lastCaller.startMs;
       } else if (same && offer.askedAtMs !== null) {
         const answer = state.answerToTextOffer();
+        // the medical line came after the text offer: a yes since answered it, so the text is asked again first (send-back)
+        if (!isClearYes(answer, clinic.languages) && state.medicalTurnAfter(offer.askedAtMs)) {
+          offer.offeredAtMs = state.lastMs();
+          offer.askedAtMs = null;
+          return refuse('text_yes_again', `Do not send it yet: the caller's last answer was to your medical offer. Ask once, in these words: "${askTextAgain(lang, target)}" On a yes, call send_text again with the same details.`);
+        }
         if (!isClearYes(answer, clinic.languages)) {
           // a plain no is a no; anything else unclear is asked about once more, plainly, never taken as a no
           if (!answer.trim() || declinedOffer(answer) || offer.reasked) return refuse('no_clear_yes', 'Do not send it. Carry on with the call.');
@@ -1761,7 +1773,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         // the assistant may have offered on its own (the emergency script ends with an offer): the yes after that counts
         const spoken = same ? null : state.spokenTextOfferMs(TEXT_OFFER_MARKER);
         // an offer whose yes already sent a text does not send another
-        if (spoken !== null && spoken > state.lastTextConsentMs && isClearYes(state.latestCallerWordsAfter(spoken), clinic.languages)) consentAtMs = spoken;
+        if (spoken !== null && spoken > state.lastTextConsentMs && isClearYes(state.answerAfter(spoken), clinic.languages)) consentAtMs = spoken;
         else {
           if (!same) state.textOffer = { kind, ref, to: target, offeredAtMs: state.lastMs(), askedAtMs: null };
           return refuse('consent_required', `Ask exactly: "${pack.textOffer({ target })}" Then call send_text again with the same details once they say yes.`);

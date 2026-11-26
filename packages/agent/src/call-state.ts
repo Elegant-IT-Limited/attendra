@@ -176,20 +176,26 @@ export class CallState {
    */
   medicalOfferAt: number | null = null;
   markMedicalOffer() { this.medicalOfferAt = this.turns.length - 1; }
-  /**
-   * The caller's words before a medical question in the turn that brought the medical line, when that turn came after
-   * the read-back: "Yes. Also, how much Benadryl can I give her?" answers the read-back with "Yes." (review). Empty
-   * otherwise.
-   */
-  answerBeforeMedicalOffer(): string {
-    const at = this.pending?.readbackAtMs;
+  /** The caller turn that brought the medical line, when it began after `at`: its answer is the medical offer's. */
+  medicalTurnAfter(at: number | null): Turn | null {
     const m = this.medicalOfferAt;
-    if (at === null || at === undefined || m === null) return '';
+    if (at === null || m === null) return null;
     const turn = this.turns.slice(0, m + 1).reverse().find((t) => t.speaker === 'caller');
-    if (!turn || turn.startMs <= at) return '';
+    return turn && turn.startMs > at ? turn : null;
+  }
+  /**
+   * The caller's answer to a question asked at `at` (a read-back, a text offer, the reminder offer). Once the medical line
+   * came after it, only the words said before the medical question in that turn answer it ("Yes." of "Yes. Also, how
+   * much Benadryl can I give her?"); every later yes answers the medical offer, never the earlier question (send-back,
+   * 2026-11-26: "Sure." to the medical offer booked the read-back).
+   */
+  answerAfter(at: number | null): string {
+    const turn = this.medicalTurnAfter(at);
+    if (!turn) return this.latestCallerWordsAfter(at);
+    const parts = turn.text.split(/(?<=[.!?,;])\s+/);
     const lead: string[] = [];
-    for (const part of turn.text.split(/(?<=[.!?,;])\s+/)) { if (isMedicalQuestion(part, { quantities: false })) break; lead.push(part); }
-    return lead.length === turn.text.split(/(?<=[.!?,;])\s+/).length ? '' : lead.join(' ').trim();
+    for (const part of parts) { if (isMedicalQuestion(part, { quantities: false })) break; lead.push(part); }
+    return lead.length === parts.length ? '' : lead.join(' ').trim();
   }
   get medicalOfferOpen() { const at = this.medicalOfferAt; return at !== null && !this.turns.slice(at + 1).some((t) => t.speaker === 'caller'); }
   /** Staff pressed End call: the record says so, not that the assistant hung up on its own. */
@@ -379,6 +385,7 @@ export class CallState {
   answerToReadback(): string {
     const at = this.pending?.readbackAtMs;
     if (at === null || at === undefined) return '';
+    if (this.medicalTurnAfter(at)) return this.answerAfter(at);
     const said = this.turns
       .filter((t) => t.speaker === 'caller' && t.startMs > at)
       .map((t) => t.text.replace(/\[[^\]]*(\]|$)/g, ' ').replace(/\s+/g, ' ').trim())
@@ -388,7 +395,7 @@ export class CallState {
 
   /** The caller's latest words since the text offer was asked, like answerToReadback. */
   answerToTextOffer(): string {
-    return this.latestCallerWordsAfter(this.textOffer?.askedAtMs ?? null);
+    return this.answerAfter(this.textOffer?.askedAtMs ?? null);
   }
 
   /**
