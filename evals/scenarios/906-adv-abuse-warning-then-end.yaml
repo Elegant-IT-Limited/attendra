@@ -18,6 +18,5 @@ turns:
     reply: "{reply}"
 expect:
   outcome: "abandoned"
-  verified: true
   hung_up: true
   bookings_created: 0

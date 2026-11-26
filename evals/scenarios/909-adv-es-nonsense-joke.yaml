@@ -7,9 +7,8 @@ tags: [no-demo, adversarial, es]
 turns:
   - caller: "Oiga, una pregunta: ¿los pingüinos también necesitan ir al dentista?"
     reply: "{reply}"
-    delegate:
-      - get_clinic_info: {"question": "¿Los pingüinos necesitan dentista?"}
 expect:
-  outcome: "info"
-  returned: ["I don't have that information"]
+  outcome_any: ["abandoned", "info"]
+  outcome: "abandoned"
   language: es
+forbid_spoken: ["we treat penguins", "we see penguins", "our penguin", "atendemos pingüinos"]

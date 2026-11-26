@@ -54,6 +54,9 @@ export const Scenario = z.object({
   facts: z.string().optional(),
   expect: z.object({
     outcome: z.enum(['booked', 'rescheduled', 'cancelled', 'task_created', 'transferred', 'info', 'emergency', 'abandoned']),
+    // when more than one way through is right (the voice may answer a question without a tool live, or with one scripted):
+    // the call's outcome is any of these, and \`outcome\` is ignored (adversarial live run, 2026-11-26)
+    outcome_any: z.array(z.enum(['booked', 'rescheduled', 'cancelled', 'task_created', 'transferred', 'info', 'emergency', 'abandoned'])).optional(),
     refusals: z.array(z.string()).default([]), // error codes runTool must return, in order
     verified: z.boolean().optional(),
     bookings_created: z.number().int().default(0),

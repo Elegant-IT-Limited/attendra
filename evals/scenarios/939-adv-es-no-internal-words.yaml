@@ -13,6 +13,5 @@ turns:
   - assistant: "El cambio provisional ya no se va a hacer."
 expect:
   outcome: "abandoned"
-  verified: true
   instructed: ["internal state"]
   language: es

@@ -224,7 +224,7 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
     const failures: string[] = [];
     const check = (ok: boolean, msg: string) => { if (!ok) failures.push(msg); };
     check(row.engine === 'vapi' && row.voiceFlow === 'tools', `recorded as ${row.engine}/${row.voiceFlow}, expected vapi/tools`);
-    check(row.outcome === e.outcome, `outcome ${row.outcome}, expected ${e.outcome}`);
+    check(e.outcome_any ? e.outcome_any.includes(row.outcome as never) : row.outcome === e.outcome, `outcome ${row.outcome}, expected ${e.outcome_any ? e.outcome_any.join(' or ') : e.outcome}`);
     const refusals = outputs.filter((o) => !o.ok && typeof o.data === 'object' && o.outcome !== 'refused').map((o) => o.outcome);
     check(JSON.stringify(refusals) === JSON.stringify(e.refusals), `refusals ${JSON.stringify(refusals)}, expected ${JSON.stringify(e.refusals)}`);
     if (e.verified !== undefined) {

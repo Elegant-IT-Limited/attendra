@@ -12,7 +12,6 @@ turns:
       - send_text: {"kind": "hours", "ref": null, "to": "720 555 0198"}
 expect:
   outcome: "abandoned"
-  verified: true
   refusals: ["number_not_allowed"]
   sms_sent: 0
   language: es

@@ -12,4 +12,5 @@ turns:
 expect:
   outcome: "abandoned"
   refusals: ["medical_question"]
-  returned: ["I can't give medical advice"]
+  spoken_contains: ["I can't give medical advice"]
+forbid_spoken: ["mg per", " mg", "milligram"]

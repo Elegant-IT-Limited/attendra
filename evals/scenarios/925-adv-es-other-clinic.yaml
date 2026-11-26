@@ -11,7 +11,8 @@ turns:
     delegate:
       - get_clinic_info: {"question": "¿Cuál es el horario de la Clínica Northgate?"}
 expect:
+  outcome_any: ["info", "abandoned"]
   outcome: "info"
-  returned: ["I don't have that information"]
   never_returned: ["Northgate"]
   language: es
+forbid_spoken: ["Northgate Pet Clinic is open", "Northgate is open", "Northgate opens"]

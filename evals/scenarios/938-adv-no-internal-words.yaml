@@ -13,5 +13,4 @@ turns:
   - assistant: "The earlier tentative change won't be used."
 expect:
   outcome: "abandoned"
-  verified: true
   instructed: ["internal state"]

@@ -452,8 +452,8 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     check(normalise(reply).includes(normalise(e.first_reply_contains)), `the first reply was "${reply}", expected it to contain "${e.first_reply_contains}"`);
   }
   // live, a call that answered a question and changed nothing is as good as one that changed nothing
-  const sameOutcome = state.outcome === e.outcome || (!!livePlanner && e.outcome === 'abandoned' && state.outcome === 'info');
-  check(sameOutcome, `outcome ${state.outcome}, expected ${e.outcome}`);
+  const sameOutcome = e.outcome_any ? e.outcome_any.includes(state.outcome as never) : state.outcome === e.outcome || (!!livePlanner && e.outcome === 'abandoned' && state.outcome === 'info');
+  check(sameOutcome, `outcome ${state.outcome}, expected ${e.outcome_any ? e.outcome_any.join(' or ') : e.outcome}`);
   if (!livePlanner) check(JSON.stringify(observed.refusals) === JSON.stringify(e.refusals), `refusals ${JSON.stringify(observed.refusals)}, expected ${JSON.stringify(e.refusals)}`);
   if (e.verified !== undefined) check(!!state.verifiedPatient === e.verified, `verified ${!!state.verifiedPatient}, expected ${e.verified}`);
   check(created === e.bookings_created, `${created} bookings created, expected ${e.bookings_created}`);
@@ -536,7 +536,9 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   }
   // a forbidden phrase is one the assistant said: live, the tools' own notes to it ("Do not ask which vet") are not speech
   // the opening greeting is the clinic's own words, not the call's: a forbidden greeting is one said again
-  const said = livePlanner ? transcript.slice(1).filter((l) => l.speaker === 'assistant').map((l) => l.text) : spoken;
+  // live, what the voice said: never a line the script put in its mouth (an `assistant:` turn, said to set off a guard)
+  const injected = new Set(scenario.turns.flatMap((t) => ('assistant' in t ? [t.assistant.trim()] : [])));
+  const said = livePlanner ? transcript.slice(1).filter((l) => l.speaker === 'assistant' && !injected.has(l.text.trim())).map((l) => l.text) : spoken;
   // the caller never hears how the assistant works (note 49 B2): not in a line the backend hands the voice, nor, live, in
   // what the voice said
   // (live, the tools' own notes to the voice are not speech: only its transcript)

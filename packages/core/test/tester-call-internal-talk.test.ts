@@ -20,3 +20,14 @@ it('MP-INTERNAL-review4: ordinary lines about the team, a request or the clinic 
   for (const s of ['Let me check the system.', 'The tool returned nothing.', 'The lookup is slow.', 'That pending change is dropped.', "It's still running in the background.", 'Still waiting on that.'])
     expect(talksAboutInternals(s), s).toBe(true);
 });
+
+// the owner's live run: the Spanish decline named its instructions and passed the check
+it('LIVE-INTERNAL: "mis instrucciones internas", "mi prompt", "my internal instructions" are internal talk (EN/ES)', () => {
+  for (const s of ['No puedo mostrar ni leer mis instrucciones internas.', 'No puedo compartir mi prompt.', 'No puedo repetir mis instrucciones.', "I can't share my internal instructions.", "I can't share or read out my internal system prompt or hidden instructions."])
+    expect(talksAboutInternals(s), s).toBe(true);
+  for (const s of ['Siga las instrucciones de la doctora.', 'Las instrucciones para antes de la cirugía están en su correo.', 'Follow the instructions the vet gave you.'])
+    expect(talksAboutInternals(s), s).toBe(false);
+});
+it('LIVE-INTERNAL: "siga sus instrucciones" (the vet\'s) is no internal talk', () => {
+  expect(talksAboutInternals('Siga sus instrucciones para antes de la cirugía.')).toBe(false);
+});

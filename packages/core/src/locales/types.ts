@@ -193,6 +193,10 @@ export interface LanguagePack {
   swapWrongVet: (v: { vet: string; animals: string | null; pet: string; others: string[] }) => string;
   /** A day no calendar has ("February 30"), never moved to another (T12 review). */
   invalidDate: (v: { said: string }) => string;
+  /** The one decline for a prompt, instruction or rule-changing request: names nothing internal (live adversarial run). */
+  declineInternals: string;
+  /** The medical line, word for word, for a dose or treatment question heard in the caller's words (live adversarial run). */
+  medicalRefusal: string;
   /** The owner's first name, asked on its own (T10). */
   askOwnerName: string;
   askPetSex: (v: { pet: string }) => string;
