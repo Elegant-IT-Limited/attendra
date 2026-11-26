@@ -275,13 +275,14 @@ export class CallState {
    * the assistant's words joined while it keeps talking. The turns join a speaker's pieces, which hid a silence the
    * caller broke themselves ("Can you hear me?"; T4, a tester's call 2026-11-24). No words are kept here.
    */
-  readonly speech: { speaker: Turn['speaker']; text: string; startMs: number; endMs: number }[] = [];
+  readonly speech: { speaker: Turn['speaker']; text: string; startMs: number; endMs: number; words?: number }[] = [];
 
   /** Transcript deltas arrive in fragments; consecutive fragments from one speaker join into one turn. */
   addTranscript(speaker: Turn['speaker'], delta: string, startMs: number, endMs: number) {
     const piece = this.speech.at(-1);
     if (speaker === 'agent' && piece?.speaker === 'agent') piece.endMs = Math.max(piece.endMs, endMs);
-    else this.speech.push({ speaker, text: '', startMs, endMs });
+    // a caller's piece keeps how many words it had (never the words), for a turn kept open past them (T4)
+    else this.speech.push({ speaker, text: '', startMs, endMs, ...(speaker === 'caller' ? { words: delta.split(/\s+/).filter(Boolean).length } : {}) });
     const last = this.turns.at(-1);
     // The read-back is said when the assistant's words since the proposal carry the slot's day and time, across
     // fragments and turns (batch 1c): "I found Biscuit" after a proposal is not a read-back, and a yes to it books nothing
