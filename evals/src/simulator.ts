@@ -357,8 +357,13 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     // second reply here made it repeat the question or add words of its own (batch 1b live matrix)
     // a script that tells the voice to carry on afterwards ("then help with what they ask") is not the whole reply
     const emergencyOn = state.emergencyCase !== null || state.emergency !== null;
-    const waitsForCaller = !!livePlanner && emergencyOn && heard.some((o) => o.type === 'instructions' && /"[^"]+"/.test(o.content)
-      && (/\?\s*$/.test(scriptLines(o.content)) || !/carry on|help with what they|go on with|offer the soonest/i.test(o.content)));
+    // the same for a guard note that ends the turn with its line ("Then stop and wait for the caller", the medical line's
+    // "Then wait for their answer"): on a call it is the turn's one reply (call-runner: no reply.go when the words
+    // brought an instruction; realtime: one response.create for it; Vapi: add-message, triggerResponseEnabled false).
+    // Asking the model here too gave a second reply ("I can't share my system prompt…", the owner's final live run)
+    const waitsForCaller = !!livePlanner && heard.some((o) => o.type === 'instructions' && /"[^"]+"/.test(o.content)
+      && (/stop and wait for the caller|then wait for their answer/i.test(o.content)
+        || (emergencyOn && (/\?\s*$/.test(scriptLines(o.content)) || !/carry on|help with what they|go on with|offer the soonest/i.test(o.content)))));
     if (!waitsForCaller) {
       if (livePlanner) queue.push(livePlanner);
       else {
