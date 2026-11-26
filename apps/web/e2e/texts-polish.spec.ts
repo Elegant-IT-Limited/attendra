@@ -24,7 +24,7 @@ test.describe.serial('texts polish', () => {
   let page: Page;
   let C: string;
   const search = (body: Record<string, unknown>) => call<Page_>(page, 'POST', `/clinics/${C}/texts/search`, body);
-  const problems = () => call<{ total: number; problems: { textId: string; number: number }[] }>(page, 'GET', `/clinics/${C}/tasks/text-problems`);
+  const problems = () => call<{ total: number; problems: { textId: string; taskId: string; number: number }[] }>(page, 'GET', `/clinics/${C}/tasks/text-problems`);
   test.beforeAll(async ({ browser }) => {
     page = await signInAgain(browser, 'Vet clinic manager');
     C = clinicOf(page);
@@ -60,11 +60,19 @@ test.describe.serial('texts polish', () => {
     // three refills closed as ready to pick up: the demo has no Twilio, so each text is recorded as not sent. No
     // dashboard page is open meanwhile, so the notice on Today is the first to tell of them
     await page.goto('about:blank');
+    const mine: string[] = [];
     for (const i of [1, 2, 3]) {
       const made = await call<{ id: string }>(page, 'POST', `/clinics/${C}/tasks`, { type: 'refill', medication: `Carprofen ${i}`, callbackNumber: `(720) 555-01${80 + i}` });
       await call(page, 'POST', `/clinics/${C}/tasks/${made.id}/done`, { outcome: 'refill_ready' });
+      mine.push(made.id);
     }
-    await expect.poll(async () => (await problems()).total, { timeout: 30_000 }).toBeGreaterThanOrEqual(3);
+    // all three texts recorded before Today opens, so one notice tells of them: the total counts every kind since
+    // SMALL-2, and the demo's reminders not sent reached ">= 3" before these did (gate ae949e2f: a second notice came
+    // after the first was closed, and the list behind it read as empty)
+    await expect.poll(async () => {
+      const listed = new Set((await problems()).problems.map((p) => p.taskId));
+      return mine.every((id) => listed.has(id));
+    }, { timeout: 30_000 }).toBe(true);
     await page.goto(`/c/${C}`);
     // the notice, for the texts this browser has not been told of yet: "1 text was not sent", "2 texts were not sent"
     const notice = page.getByRole('alertdialog').or(page.getByRole('dialog')).filter({ hasText: /^\d+ texts? (was|were) not sent/ });
@@ -77,8 +85,10 @@ test.describe.serial('texts polish', () => {
     await expect(item).toHaveCount(1);
     // no row per text any more
     await expect(list.getByText(/^Text not sent · R-/)).toHaveCount(0);
-    // emergencies and unclaimed requests come first
+    // emergencies and unclaimed requests come first (read once no notice covers the list)
+    await expect(notice).toHaveCount(0);
     const titles = await list.getByRole('listitem').allInnerTexts();
+    expect(titles.length).toBeGreaterThan(0);
     const at = titles.findIndex((t) => t.includes('not sent in the last 7 days · Review'));
     titles.forEach((t, i) => { if (/Emergency|nobody has it yet/.test(t)) expect(i, t).toBeLessThan(at); });
     await expect(page.getByTestId('attention-count')).toHaveText(countOf(titles.length, 'item'));

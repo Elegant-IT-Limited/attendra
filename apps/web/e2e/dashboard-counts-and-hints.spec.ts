@@ -6,7 +6,7 @@ import { openAs, signInAgain } from './session';
 // handled over one window, from one count on the server, and say the window (SMALL-2); the visit's break says it may
 // run past closing (FND-1115-6). Every shown value is checked against what the server sends.
 type Summary = { today: { sent: number; notSent: number }; week: { sent: number; notSent: number }; needsHandling: number; todayDate: string; weekFrom: string };
-type Problems = { total: number; from?: string; problems: { textId: string }[] };
+type Problems = { total: number; from?: string; problems: { textId: string; taskId: string }[] };
 const clinicOf = (page: Page) => new URL(page.url()).pathname.split('/')[2]!;
 const SIZES = [{ name: 'desktop', width: 1280, height: 800 }, { name: 'tablet', width: 768, height: 1024 }, { name: 'phone', width: 390, height: 844 }];
 async function shots(page: Page, name: string, locator?: ReturnType<Page['locator']>) {
@@ -42,12 +42,18 @@ test.describe.serial('SMALL-2', () => {
     // two refills closed as ready to pick up: the demo has no Twilio, so each text is recorded as not sent (by the
     // worker, a moment later). The demo's own reminders not sent count too (every kind), and the worker may add one at
     // any moment: each shown number is compared with the server's at the same moment
-    const baseline = (await call<Problems>('GET', `/clinics/${C}/tasks/text-problems`)).total;
+    const mine: string[] = [];
     for (const i of [1, 2]) {
       const made = await call<{ id: string }>('POST', `/clinics/${C}/tasks`, { type: 'refill', medication: `Carprofen S2-${i}`, callbackNumber: `(720) 555-01${60 + i}` });
       await call('POST', `/clinics/${C}/tasks/${made.id}/done`, { outcome: 'refill_ready' });
+      mine.push(made.id);
     }
-    await expect.poll(async () => (await call<Problems>('GET', `/clinics/${C}/tasks/text-problems`)).total, { timeout: 30_000 }).toBeGreaterThanOrEqual(baseline + 2);
+    // wait for these two texts themselves: the total counts every kind now, so a reminder the worker records meanwhile
+    // could reach any total first, and Today would open before the texts its notice is about
+    await expect.poll(async () => {
+      const listed = new Set((await call<Problems>('GET', `/clinics/${C}/tasks/text-problems`)).problems.map((p) => p.taskId));
+      return mine.every((id) => listed.has(id));
+    }, { timeout: 30_000 }).toBe(true);
     // one source of truth: the same count and the same first day, whichever endpoint answers
     const both = async () => {
       const [problems, summary] = await Promise.all([call<Problems>('GET', `/clinics/${C}/tasks/text-problems`), call<Summary>('GET', `/clinics/${C}/texts/summary`)]);
