@@ -225,3 +225,29 @@ describe('CALLERID-PET: the pet named in the turn goes with the calling number, 
   }
 });
 
+// review: a household read that never answers held every later lookup-ahead turn 800 ms; after one timeout, no more waits
+describe('HOUSEHOLD-TIMEOUT: a hung household read is waited for once', () => {
+  it('HOUSEHOLD-TIMEOUT: the first turn waits at most 800 ms, a later turn not at all, and nothing is run ahead without the pets', async () => {
+    const patients = w.backend.patients as { petsOnNumber?: unknown; householdOnNumber?: unknown };
+    const [pets, household] = [patients.petsOnNumber, patients.householdOnNumber];
+    patients.petsOnNumber = () => new Promise(() => undefined);
+    patients.householdOnNumber = () => new Promise(() => undefined);
+    try {
+      const c = await w.call(PHONE, { clinic });
+      c.caller("Hi, Linh Nguyen, on the number I'm calling from. Can Biscuit come in tomorrow morning for a sick visit?");
+      let at = Date.now();
+      await c.agent.householdReady();
+      const first = Date.now() - at;
+      expect(first).toBeGreaterThanOrEqual(700);
+      expect(first).toBeLessThan(1200);
+      expect(c.agent.speculate()?.name).not.toBe('verify_caller');
+      at = Date.now();
+      await c.agent.householdReady();
+      expect(Date.now() - at).toBeLessThan(50);
+    } finally {
+      patients.petsOnNumber = pets;
+      patients.householdOnNumber = household;
+    }
+  });
+});
+
