@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ChoiceRenames, type CustomField, HOLDS_TIME, normalizeName, TEXT_GROUPS, withRenamedChoices } from '@attendra/core';
+import { type ChoiceRenames, type CustomField, HOLDS_TIME, normalizeName, withRenamedChoices } from '@attendra/core';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL, sql } from 'drizzle-orm';
 import { clinicAccess, clinicMemberships, memberships } from '../auth-schema';
 import { type Database, type Tx, withClinic } from '../client';
@@ -117,14 +117,13 @@ export function textStatusWhere(status: TextStatusFilter | undefined): SQL | und
     and coalesce(later.task_id::text, later.appointment_id::text, later.to_hash) = coalesce(${smsMessages.taskId}::text, ${smsMessages.appointmentId}::text, ${smsMessages.toHash}))`);
 }
 /**
- * Refill texts (the Texts page's Refills kinds, the texts about requests) not sent since `since` that nobody has handled
- * (a later text of the same kind to the same request that went clears one): the one count Today's item and the Texts
- * page's strip both show, and exactly what its Refills, not handled, from that day filter lists (SMALL-2). A visit's
- * reminder that was not sent is not here: Today has never listed those.
+ * Texts of every kind not sent since `since` that nobody has handled (a later text of the same kind to the same request,
+ * visit or number that went clears one): the one count Today's item and the Texts page's strip both show, and exactly
+ * what its "Needs handling" filter from that day lists (SMALL-2). Every kind, so no text that failed goes unsaid.
  */
 async function countNotHandled(tx: Tx, clinicId: string, since: Date): Promise<number> {
   const [row] = await tx.select({ n: sql<number>`count(*)::int` }).from(smsMessages)
-    .where(and(eq(smsMessages.clinicId, clinicId), inArray(smsMessages.template, [...TEXT_GROUPS.refills]), sql`${smsMessages.createdAt} >= ${since}`, textStatusWhere('needs_handling')));
+    .where(and(eq(smsMessages.clinicId, clinicId), sql`${smsMessages.createdAt} >= ${since}`, textStatusWhere('needs_handling')));
   return row!.n;
 }
 export type TextFailure = { status: string; failureReason: string | null; errorCode: string | null; at: Date };
@@ -1082,7 +1081,7 @@ export class FrontDeskRepository {
     return and(...each) ?? sql`true`;
   }
 
-  /** Today's and the last 7 days' texts, sent and not sent, and the refill texts of the 7 days not sent that nobody has handled (the Texts page's strip). */
+  /** Today's and the last 7 days' texts, sent and not sent, and the texts of the 7 days not sent that nobody has handled, of every kind (the Texts page's strip). */
   async textSummary(clinicId: string, since: { today: Date; week: Date }) {
     return withClinic(this.db, clinicId, async (tx) => {
       const failed = sql`${smsMessages.status} in ('not_sent', 'failed', 'undelivered')`;

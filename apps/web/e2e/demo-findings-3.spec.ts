@@ -77,7 +77,7 @@ test.describe.serial('demo findings 3, 2026-11-16', () => {
     await notice.getByRole('button', { name: /OK|Close|Got it/ }).first().click();
     await expect(notice).toBeHidden();
     // Today: one item for it, with the same words (texts not sent are one item since texts polish TX2)
-    const item = page.getByText('1 refill text not handled · Review', { exact: true });
+    const item = page.getByText('1 text not sent in the last 7 days · Review', { exact: true });
     await expect(item).toBeVisible();
     await expect(page.getByText(`R-${mine.number} · Callback: Text not sent: the carrier refused it (error 30006).`, { exact: false }).first()).toBeVisible();
     // said once in this browser: back on Today, no notice again

@@ -65,7 +65,6 @@ test.describe.serial('texts polish', () => {
       await call(page, 'POST', `/clinics/${C}/tasks/${made.id}/done`, { outcome: 'refill_ready' });
     }
     await expect.poll(async () => (await problems()).total, { timeout: 30_000 }).toBeGreaterThanOrEqual(3);
-    const { total } = await problems();
     await page.goto(`/c/${C}`);
     // the notice, for the texts this browser has not been told of yet: "1 text was not sent", "2 texts were not sent"
     const notice = page.getByRole('alertdialog').or(page.getByRole('dialog')).filter({ hasText: /^\d+ texts? (was|were) not sent/ });
@@ -74,36 +73,45 @@ test.describe.serial('texts polish', () => {
     expect(heading).toBe(textsNotSent(Number(heading.split(' ')[0])));
     await notice.first().getByRole('button', { name: /OK|Close|Got it/ }).first().click();
     const list = page.getByRole('list', { name: 'Needs attention' });
-    const item = list.getByRole('listitem').filter({ hasText: `${countOf(total, 'refill text')} not handled · Review` });
+    const item = list.getByRole('listitem').filter({ has: page.getByTestId('texts-not-sent-review') });
     await expect(item).toHaveCount(1);
     // no row per text any more
     await expect(list.getByText(/^Text not sent · R-/)).toHaveCount(0);
     // emergencies and unclaimed requests come first
     const titles = await list.getByRole('listitem').allInnerTexts();
-    const at = titles.findIndex((t) => t.includes('not handled · Review'));
+    const at = titles.findIndex((t) => t.includes('not sent in the last 7 days · Review'));
     titles.forEach((t, i) => { if (/Emergency|nobody has it yet/.test(t)) expect(i, t).toBeLessThan(at); });
     await expect(page.getByTestId('attention-count')).toHaveText(countOf(titles.length, 'item'));
     // Review: the Texts page, with exactly those texts
     await item.getByRole('link', { name: 'Review' }).click();
-    // over the Texts page's 7 days (SMALL-2)
-    await expect(page).toHaveURL(/\/texts\?status=needs_handling&kind=refills&from=/);
+    // every kind, over the Texts page's 7 days (SMALL-2)
+    await expect(page).toHaveURL(/\/texts\?status=needs_handling&from=/);
     const from = new URL(page.url()).searchParams.get('from')!;
-    const server = await search({ status: 'needs_handling', kind: 'refills', from, limit: 50 });
-    expect(server.texts.length).toBe(total);
-    await expect(page.getByTestId('text-row')).toHaveCount(Math.min(total, 10));
-    // mark the newest handled: who and when, and it leaves Today
-    const row = page.locator(`[data-text-id="${server.texts[0]!.id}"]`);
+    // every kind counts (SMALL-2), and the demo's worker may record another reminder not sent at any moment: the list,
+    // the rows and Today's count are each compared with the server's at the same moment
+    await expect(async () => {
+      const [p, listed] = await Promise.all([problems(), search({ status: 'needs_handling', from, limit: 50 })]);
+      expect(listed.texts.length).toBe(Math.min(p.total, 50));
+      await expect(page.getByTestId('text-row')).toHaveCount(Math.min(p.total, 10), { timeout: 1000 });
+    }).toPass({ timeout: 30_000 });
+    const server = await search({ status: 'needs_handling', from, limit: 50 });
+    // mark the newest refill text handled: who and when, and it leaves Today
+    const target = server.texts.find((t) => ['request_ready', 'refill_sent', 'refill_not_approved'].includes(t.template))!;
+    const row = page.locator(`[data-text-id="${target.id}"]`);
     await row.getByRole('button').first().click();
     await row.getByTestId('text-mark-handled').click();
     await expect(page.getByText('Marked handled. It is off Today.')).toBeVisible();
-    await expect.poll(async () => (await problems()).total).toBe(total - 1);
-    const handled = (await search({ status: 'not_sent', kind: 'refills', limit: 50 })).texts.find((t) => t.id === server.texts[0]!.id)!;
+    await expect.poll(async () => (await search({ status: 'needs_handling', from, limit: 50 })).texts.some((t) => t.id === target.id)).toBe(false);
+    const handled = (await search({ status: 'not_sent', kind: 'refills', limit: 50 })).texts.find((t) => t.id === target.id)!;
     expect(handled.handledBy).toMatch(/Robin/);
     await page.getByRole('button', { name: 'All', exact: true }).click();
     await page.locator(`[data-text-id="${handled.id}"]`).getByRole('button').first().click();
     await expect(page.locator(`[data-text-id="${handled.id}"]`).getByTestId('text-handled')).toContainText(`Handled by ${handled.handledBy}`);
     await page.goto(`/c/${C}`);
-    await expect(list.getByRole('listitem').filter({ hasText: `${countOf(total - 1, 'refill text')} not handled · Review` })).toHaveCount(total - 1 ? 1 : 0);
+    await expect(async () => {
+      const left = (await problems()).total;
+      await expect(list.getByRole('listitem').filter({ hasText: `${countOf(left, 'text')} not sent in the last 7 days · Review` })).toHaveCount(left ? 1 : 0, { timeout: 1000 });
+    }).toPass({ timeout: 30_000 });
   });
 
   test('TX3: the Texts page: a short intro, the strip, 10 rows by day, more on request', async () => {
@@ -112,8 +120,7 @@ test.describe.serial('texts polish', () => {
     await page.goto(`/c/${C}/texts`);
     await expect(page.getByText(`Texts sent to your clients. Words are kept ${settings.retentionDays} days.`)).toBeVisible();
     await expect(page.getByTestId('summary-today')).toHaveText(`Today: ${summary.today.sent} sent · ${summary.today.notSent} not sent`);
-    // of those not sent, the refill texts nobody handled: Today's count (SMALL-2)
-    await expect(page.getByTestId('summary-week')).toHaveText(`Last 7 days: ${summary.week.sent} sent · ${summary.week.notSent} not sent${summary.needsHandling ? ` · ${countOf(summary.needsHandling, 'refill text')} not handled` : ''}`);
+    await expect(page.getByTestId('summary-week')).toHaveText(`Last 7 days: ${summary.week.sent} sent · ${summary.week.notSent} not sent`);
     const first = await search({ limit: 10 });
     await expect(page.getByTestId('text-row')).toHaveCount(10);
     for (const [i, t] of first.texts.entries()) {

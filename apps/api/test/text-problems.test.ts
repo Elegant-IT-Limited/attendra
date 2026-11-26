@@ -53,25 +53,28 @@ describe('a text about a request that was not sent', () => {
 });
 
 // SMALL-2 (2026-11-26): Today said "35 not sent" over 3 days while Texts said 37 over 7, for the same clinic. One
-// window (the last 7 clinic-local days) and one count (refill texts not handled), whichever route answers.
+// window (the last 7 clinic-local days) and one count: every text not sent and not handled, of any kind, so nothing
+// goes silent (master's decision in review), whichever route answers.
 describe('SMALL-2: Today and Texts read one count over one window', () => {
-  it('SMALL-2: text-problems\' total and from are the Texts summary\'s needsHandling and weekFrom, over 7 days, and its filter lists exactly those', async () => {
+  it('SMALL-2: text-problems\' total and from are the Texts summary\'s needsHandling and weekFrom: every kind, 7 days, and its filter lists exactly those', async () => {
     const read = async () => ({
       tp: (await api.request('GET', `${C}/tasks/text-problems`, { cookie: staff })).json() as { total: number; from: string },
       summary: (await api.request('GET', `${C}/texts/summary`, { cookie: staff })).json() as { needsHandling: number; weekFrom: string },
     });
+    const visitText = (template: string, status: string, minutesAgo: number) => api.t.owner.execute(sql`insert into sms_messages (clinic_id, template, to_hash, status, idempotency_key, failure_reason, created_at)
+      values (${DEMO_CLINIC.id}, ${template}, ${`h-${Math.random()}`}, ${status}, ${`k-${Math.random()}`}, 'not_textable', now() - make_interval(mins => ${minutesAgo}))`);
     const before = await read();
-    await text(refill.id, { template: 'refill_sent', status: 'not_sent', reason: 'not_textable', minutesAgo: 5 * 24 * 60 }); // five days ago: inside
-    await text(other.id, { template: 'refill_not_approved', status: 'failed', code: '30006', minutesAgo: 9 * 24 * 60 }); // nine days ago: outside
-    // a visit's reminder not sent is not one of Today's (it never was), on either route
-    await api.t.owner.execute(sql`insert into sms_messages (clinic_id, template, to_hash, status, idempotency_key, failure_reason, created_at)
-      values (${DEMO_CLINIC.id}, 'reminder', 'r', 'not_sent', ${`k-${Math.random()}`}, 'not_textable', now() - make_interval(mins => 30))`);
+    await text(refill.id, { template: 'refill_sent', status: 'not_sent', reason: 'not_textable', minutesAgo: 5 * 24 * 60 }); // a refill text, five days ago
+    await visitText('reminder', 'failed', 30); // a visit's reminder the carrier refused, this week
+    await visitText('booking_confirmed', 'not_sent', 2 * 24 * 60); // a booking confirmation not sent, two days ago
+    await visitText('reminder', 'undelivered', 9 * 24 * 60); // nine days ago: outside the window
+    await text(other.id, { template: 'refill_not_approved', status: 'failed', code: '30006', minutesAgo: 9 * 24 * 60 }); // outside too
     const { tp, summary } = await read();
     expect(tp.from).toBe(summary.weekFrom);
     expect(tp.total).toBe(summary.needsHandling);
-    expect(tp.total).toBe(before.tp.total + 1);
-    // the Texts page's own filter, as Today's Review link opens it, lists exactly that many
-    const listed = (await api.request('POST', `${C}/texts/search`, { cookie: staff, body: { status: 'needs_handling', kind: 'refills', from: summary.weekFrom, limit: 50 } })).json() as { texts: unknown[] };
+    expect(tp.total).toBe(before.tp.total + 3);
+    // the Texts page's own filter, as Today's Review link opens it (every kind), lists exactly that many
+    const listed = (await api.request('POST', `${C}/texts/search`, { cookie: staff, body: { status: 'needs_handling', from: summary.weekFrom, limit: 50 } })).json() as { texts: unknown[] };
     expect(listed.texts.length).toBe(tp.total);
   });
 });

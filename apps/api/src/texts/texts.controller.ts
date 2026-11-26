@@ -60,7 +60,7 @@ export class TextsController {
 
   @Get('summary')
   @Requires('patients:read')
-  @ApiOperation({ summary: 'Today\'s and the last 7 days\' texts (clinic-local days), sent and not sent, and how many refill texts of the 7 days not sent nobody has handled (the count Today shows). Counts only; not audited.' })
+  @ApiOperation({ summary: 'Today\'s and the last 7 days\' texts (clinic-local days), sent and not sent, and how many texts of the 7 days, of any kind, not sent nobody has handled (the count Today shows). Counts only; not audited.' })
   @ApiOkResponse({ schema: schemaOf(TextSummary) })
   async summary(@Param('clinicId') clinicId: string): Promise<TextSummary> {
     const tz = (await this.clinic(clinicId)).timezone;

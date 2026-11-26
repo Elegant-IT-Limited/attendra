@@ -4,13 +4,13 @@ import { countOf } from '@attendra/core';
 import { requestNumber, requestTextLine, taskType } from './format';
 
 /**
- * The Texts page with the texts Today counts (texts polish TX2, SMALL-2): refill texts not sent and not handled, from the
- * window's first clinic-local day, as the server gives it (TextProblems.from), so the link and the count share one window.
+ * The Texts page with the texts Today counts (texts polish TX2, SMALL-2): not sent and not handled, every kind, from the
+ * window's first clinic-local day, as the server gives it (TextProblems.from), so the link, its rows and the count agree.
  */
-export const textsNotSentHref = (clinicId: string, from: string) => `/c/${clinicId}/texts?status=needs_handling&kind=refills&from=${from}`;
+export const textsNotSentHref = (clinicId: string, from: string) => `/c/${clinicId}/texts?status=needs_handling&from=${from}`;
 
-/** "3 refill texts not handled": Today's item and the Texts page's strip say the one count in the same words (SMALL-2). */
-export const notHandledWords = (n: number) => `${countOf(n, 'refill text')} not handled`;
+/** "3 texts not sent in the last 7 days": Today's item and the Texts page's strip say the one count in the same words (SMALL-2). */
+export const notSentWords = (n: number) => `${countOf(n, 'text')} not sent in the last 7 days`;
 
 /**
  * Texts about requests that were not sent (note 2026-11-16, demo findings 3: a refill's "ready to pick up" text failed

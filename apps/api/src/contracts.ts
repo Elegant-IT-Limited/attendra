@@ -469,7 +469,7 @@ export const TextSearch = z.object({
   limit: z.number().int().min(1).max(50).default(10),
 });
 export const TextPage = TextList.extend({ next: z.string().nullable() });
-/** The Texts page's strip: today's and the last 7 days' texts, sent and not sent, and how many refill texts of the 7 days not sent nobody has handled (Today's count). */
+/** The Texts page's strip: today's and the last 7 days' texts, sent and not sent, and how many texts of the 7 days, of any kind, not sent nobody has handled (Today's count). */
 export const TextSummary = z.object({
   today: z.object({ sent: z.number().int(), notSent: z.number().int() }),
   week: z.object({ sent: z.number().int(), notSent: z.number().int() }),
@@ -568,7 +568,7 @@ export const TaskHistory = z.object({
 export const TaskCount = z.object({ open: z.number() });
 /** Texts about requests that were not sent, lately: request number and type, the text's state and why. No patient data. */
 export const TextProblems = z.object({
-  /** Every refill text of the 7 days not sent and not handled (Today's one item, texts polish TX2; the Texts page's count, SMALL-2), though `problems` lists the newest 20. */
+  /** Every text of the 7 days not sent and not handled, of any kind (Today's one item, texts polish TX2; the Texts page's count, SMALL-2), though `problems` lists the newest 20 about requests. */
   total: z.number().int(),
   /** The window's first clinic-local day: the Texts page's "Last 7 days" and the filter Today's Review link opens. */
   from: z.string(),

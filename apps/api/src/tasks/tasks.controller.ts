@@ -121,7 +121,7 @@ export class TasksController {
    */
   @Get('text-problems')
   @Requires('tasks:read')
-  @ApiOperation({ summary: 'Refill texts (about requests) not sent in the last 7 clinic-local days that nobody marked handled: how many (total, the Texts page\'s count too), the first day (from), and the newest 20: request number and type, the text\'s state and why. No patient data, not audited.' })
+  @ApiOperation({ summary: 'Texts not sent in the last 7 clinic-local days that nobody marked handled: how many of every kind (total, the Texts page\'s count too), the first day (from), and the newest 20 about requests: request number and type, the text\'s state and why. No patient data, not audited.' })
   @ApiOkResponse({ schema: schemaOf(TextProblems) })
   async textProblems(@Param('clinicId') clinicId: string): Promise<TextProblems> {
     // the Texts page's "Last 7 days": the same days its link from Today filters by
