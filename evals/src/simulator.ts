@@ -251,6 +251,8 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const now = opts.now ?? (scenario.local_time ? zonedInstant('2026-09-28', scenario.local_time, clinic.timezone) : SIM_NOW);
   const callerNumber = scenario.caller_number === undefined ? defaultCaller(scenario) : scenario.caller_number;
   const { livePlanner } = opts;
+  // the live planner is the voice (the tools path): the turn's guard notes go to it, and it alone speaks
+  const notesToModel = !!livePlanner?.readsNotes;
   const scheduler = new BuiltinScheduler(db, 'voice-agent', cipher);
   const sms: string[] = [];
   const smsVars: Record<string, string>[] = [];
@@ -326,15 +328,21 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     transcript.push({ speaker: 'caller', text: turn.caller });
     observed.turn++;
     // the voice let this turn go: after 5 s the watchdog gives it the caller's own words to answer, and it hands them on
+    const nudgeNotes: string[] = [];
     if (turn.dropped) {
       const nudge = agent.onSilence(1);
       outbound.push(...nudge);
-      for (const o of nudge) if (o.type === 'instructions') { transcript.push({ speaker: 'instruction', text: o.content }); dropNudges.push(o.content); }
+      for (const o of nudge) if (o.type === 'instructions') { transcript.push({ speaker: 'instruction', text: o.content }); dropNudges.push(o.content); nudgeNotes.push(o.content); }
     }
+    // the guard notes this turn brought: on a call they are system messages the voice reads before its one reply
+    const notes: string[] = [...nudgeNotes];
     for (const o of heard) if (o.type === 'instructions') {
       transcript.push({ speaker: 'instruction', text: o.content });
-      // live, the voice model says the script it was handed (the quoted lines), as it does on a call
-      if (livePlanner) { const said = scriptLines(o.content); if (said) { clock += 1500; agent.onAgentTranscript(said, clock, clock + 1000); transcript.push({ speaker: 'assistant', text: said }); } }
+      notes.push(o.content);
+      // live with a planner that is the voice (the tools path), the note goes to it with the turn and its one reply is the
+      // reply (the owner's second final run: the harness said the line, then asked the model, which added a second one).
+      // With the planner path's backend model, the harness says the script as GPT-Live would
+      if (livePlanner && !notesToModel) { const said = scriptLines(o.content); if (said) { clock += 1500; agent.onAgentTranscript(said, clock, clock + 1000); transcript.push({ speaker: 'assistant', text: said }); } }
     }
     await segment('caller', turn.caller, clock);
     const say = async () => {
@@ -357,15 +365,11 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     // second reply here made it repeat the question or add words of its own (batch 1b live matrix)
     // a script that tells the voice to carry on afterwards ("then help with what they ask") is not the whole reply
     const emergencyOn = state.emergencyCase !== null || state.emergency !== null;
-    // the same for a guard note that ends the turn with its line ("Then stop and wait for the caller", the medical line's
-    // "Then wait for their answer"): on a call it is the turn's one reply (call-runner: no reply.go when the words
-    // brought an instruction; realtime: one response.create for it; Vapi: add-message, triggerResponseEnabled false).
-    // Asking the model here too gave a second reply ("I can't share my system prompt…", the owner's final live run)
-    const waitsForCaller = !!livePlanner && heard.some((o) => o.type === 'instructions' && /"[^"]+"/.test(o.content)
-      && (/stop and wait for the caller|then wait for their answer/i.test(o.content)
-        || (emergencyOn && (/\?\s*$/.test(scriptLines(o.content)) || !/carry on|help with what they|go on with|offer the soonest/i.test(o.content)))));
+    // (a planner that is the voice writes that reply itself, with the note: never waited out here)
+    const waitsForCaller = !!livePlanner && !notesToModel && emergencyOn && heard.some((o) => o.type === 'instructions' && /"[^"]+"/.test(o.content)
+      && (/\?\s*$/.test(scriptLines(o.content)) || !/carry on|help with what they|go on with|offer the soonest/i.test(o.content)));
     if (!waitsForCaller) {
-      if (livePlanner) queue.push(livePlanner);
+      if (livePlanner) queue.push(notesToModel && notes.length ? { plan: (input, execute) => livePlanner.plan({ ...input, notes }, execute) } : livePlanner);
       else {
         const steps: ScriptedStep[] = turn.delegate!.map((step) => {
           const [tool, args] = Object.entries(step)[0]! as [ToolName, Record<string, unknown>];
@@ -423,7 +427,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   // live, the voice speaks the planner's words, which paraphrase the backend's: a line the
   // backend gave in a tool result (the read-back, the no-medical-advice line) counts as given
   const given = livePlanner ? observed.calls.flatMap((c) => ['say', 'readback', 'spoken'].flatMap((k) => (typeof c.data[k] === 'string' ? [c.data[k] as string] : []))) : [];
-  const spoken = [...outbound.flatMap((o) => (o.type === 'commentary' ? [o.content] : o.type === 'instructions' && scriptLines(o.content) ? [scriptLines(o.content)] : o.type === 'thinking' && announcedLine(o.content) ? [announcedLine(o.content)!] : [])), ...replies, ...given];
+  const spoken = [...outbound.flatMap((o) => (o.type === 'commentary' ? [o.content] : o.type === 'instructions' && !notesToModel && scriptLines(o.content) ? [scriptLines(o.content)] : o.type === 'thinking' && announcedLine(o.content) ? [announcedLine(o.content)!] : [])), ...replies, ...given];
   const transfer = outbound.find((o) => o.type === 'transfer');
   const e = scenario.expect;
   const failures: string[] = [];

@@ -17,6 +17,11 @@ import { VISIT_TYPES_RULE } from './visit-offer';
  */
 export interface Planner {
   plan(input: PlannerInput, execute: (name: ToolName, args: unknown) => Promise<ToolResult>): Promise<PlannerOutput>;
+  /**
+   * The planner is the voice itself (the tools path's voice model): the call's guard notes for the turn come to it in
+   * `notes`, as a call's voice reads them, and its reply is the turn's one reply. The eval harness relies on it.
+   */
+  readsNotes?: boolean;
 }
 
 /**
@@ -33,6 +38,11 @@ export interface PlannerInput {
    * done before the backend confirms it. Given, the first round is streamed.
    */
   onLookup?: (line: string) => void;
+  /**
+   * The guard notes the caller's words brought this turn ("Say, word for word, only this line…"), for a planner that is
+   * the voice (readsNotes): on a call they are system messages in the voice's conversation before its one reply.
+   */
+  notes?: readonly string[];
 }
 export interface PlannerOutput { say: string | null; quiet?: string; timing?: PlannerTiming }
 /**
