@@ -23,6 +23,15 @@ describe('T1 review: the caller\'s own words, read as they say them', () => {
     expect(petFactNotSaid(call(['caller', "He's about a year."]), { birthday_or_age: '1.5 years' })).toBe('age');
   });
 
+  it('T1-review2: a date is checked as year, month and day: the wrong month, or a month and day never said, is asked for', () => {
+    expect(petFactNotSaid(call(['caller', 'She was born May 3rd 2023.']), { birthday_or_age: '2023-03-03' })).toBe('age');
+    expect(petFactNotSaid(call(['caller', 'She is 3. Born 2023.']), { birthday_or_age: '2023-03-03' })).toBe('age');
+    expect(petFactNotSaid(call(['caller', 'Nació el 3 de mayo de 2023.']), { birthday_or_age: '2023-03-03' })).toBe('age');
+    expect(petFactNotSaid(call(['caller', 'She was born on March 3rd.'], ['caller', 'In 2023.']), { birthday_or_age: '2023-03-03' })).toBeNull();
+    expect(petFactNotSaid(call(['caller', 'Born 3/3/2023.']), { birthday_or_age: '2023-03-03' })).toBeNull();
+    expect(petFactNotSaid(call(['caller', 'She was born in March 2023.']), { birthday_or_age: 'March 2023' })).toBeNull();
+  });
+
   it('T1-review: a yes counts only for a question that named the value, never for a statement ("Got it, Tango is a cat." "Okay.")', () => {
     expect(petFactNotSaid(call(['agent', 'Got it, Tango is a cat.'], ['caller', 'Okay.']), { species: 'cat' })).toBe('species');
     expect(petFactNotSaid(call(['agent', 'Is Tango a cat?'], ['caller', 'Yes.']), { species: 'cat' })).toBeNull();

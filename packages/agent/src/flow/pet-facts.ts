@@ -20,18 +20,49 @@ const sentences = (text: string) => text.split(/(?<=[.!?¿¡])\s+|(?<=[.!?])(?=\
  * answered ("Is Tango a cat?" "Yes."): never a statement the caller only acknowledged ("Got it, Tango is a cat."
  * "Okay."), and never a choice ("a boy or a girl?"), which a yes answers neither way (reviewer, T1).
  */
-function evidence(state: CallState): string[] {
+function evidenceRaw(state: CallState): string[] {
   const turns = state.turns.slice(state.newFromTurn);
   const out: string[] = [];
   turns.forEach((t, i) => {
     if (t.speaker !== 'caller') return;
-    out.push(...sentences(t.text).map(flat));
+    out.push(...sentences(t.text));
     const asked = turns.slice(0, i).reverse().find((x) => x.speaker === 'agent');
     if (!asked || !isClearYes(t.text, LANGUAGES)) return;
     const question = sentences(asked.text).filter((s) => /\?\s*$/.test(s)).at(-1);
-    if (question && !/\b(?:or|o)\b/i.test(normalise(question))) out.push(flat(question));
+    if (question && !/\b(?:or|o)\b/i.test(normalise(question))) out.push(question);
   });
   return out;
+}
+const evidence = (state: CallState) => evidenceRaw(state).map(flat);
+
+/** A date's parts as said: year, month and day where each was said ("March 3rd 2023", "3 de marzo", "3/3/2023", "2023"). */
+interface DateParts { y?: number; m?: number; d?: number }
+const MONTH_NAMES = '(january|february|march|april|may|june|july|august|september|october|november|december|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)';
+function datesIn(text: string): DateParts[] {
+  const t = normalise(text).replace(/\b(\d{1,2})(?:st|nd|rd|th|ro|do|to)\b/g, '$1');
+  const month = (w: string) => MONTH_NUMBER[w];
+  const out: DateParts[] = [];
+  for (const m of t.matchAll(new RegExp(`\\b${MONTH_NAMES}\\s+(\\d{1,2})(?!\\d)(?:,?\\s+(?:of\\s+|de\\s+)?(\\d{4}))?`, 'g'))) out.push({ m: month(m[1]!), d: Number(m[2]), ...(m[3] ? { y: Number(m[3]) } : {}) });
+  for (const m of t.matchAll(new RegExp(`\\b(\\d{1,2})\\s+(?:de\\s+|of\\s+)?${MONTH_NAMES}(?:,?\\s+(?:de\\s+|del\\s+)?(\\d{4}))?`, 'g'))) out.push({ d: Number(m[1]), m: month(m[2]!), ...(m[3] ? { y: Number(m[3]) } : {}) });
+  for (const m of t.matchAll(new RegExp(`\\b${MONTH_NAMES}\\s+(?:of\\s+|de\\s+|del\\s+)?(\\d{4})`, 'g'))) out.push({ m: month(m[1]!), y: Number(m[2]) });
+  for (const m of t.matchAll(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/g)) out.push({ y: Number(m[1]), m: Number(m[2]), d: Number(m[3]) });
+  for (const m of t.matchAll(/\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})\b/g)) {
+    const y = Number(m[3]) < 100 ? 2000 + Number(m[3]) : Number(m[3]);
+    out.push({ m: Number(m[1]), d: Number(m[2]), y }, { m: Number(m[2]), d: Number(m[1]), y }); // either order: the arg decides
+  }
+  for (const m of t.matchAll(/\b((?:19|20)\d{2})\b/g)) out.push({ y: Number(m[1]) });
+  return out;
+}
+
+/**
+ * Whether the caller said this date: its year somewhere, and its month and day said together as a month and a day (a
+ * month or day never said is asked for, never filled; reviewer, T1: "May 3rd 2023" was taken for 2023-03-03).
+ */
+function saidDate(said: string[], want: DateParts): boolean {
+  const found = said.flatMap(datesIn);
+  const yearOk = want.y === undefined || found.some((p) => p.y === want.y);
+  const monthDayOk = want.m === undefined || found.some((p) => p.m === want.m && (want.d === undefined || p.d === want.d));
+  return yearOk && monthDayOk;
 }
 
 const has = (text: string, word: string) => text.includes(` ${word} `);
@@ -101,7 +132,10 @@ function numbersIn(text: string): number[] {
   return out;
 }
 
-function saidAge(sentencesSaid: string[], age: string): boolean {
+function saidAge(sentencesSaid: string[], age: string, raw: string[] = []): boolean {
+  // a date is its parts, said as such; an age is its numbers
+  const asDate = datesIn(age).find((p) => p.m !== undefined) ?? (/^\s*(?:19|20)\d{2}\s*$/.test(age) ? { y: Number(age.trim()) } : undefined);
+  if (asDate) return saidDate(raw, asDate);
   const text = sentencesSaid.join(' ');
   const a = flat(age);
   const said = new Set(numbersIn(text));
@@ -119,7 +153,7 @@ export function petFactNotSaid(state: CallState, args: { species?: unknown; sex?
   const pet = typeof args.pet_name === 'string' && args.pet_name.trim() ? args.pet_name.trim() : state.memory.get('petName') ?? null;
   if (typeof args.species === 'string' && args.species.trim() && !saidSpecies(said, args.species)) return 'species';
   if (typeof args.sex === 'string' && args.sex && !saidSex(said, args.sex, pet)) return 'sex';
-  if (typeof args.birthday_or_age === 'string' && args.birthday_or_age.trim() && !saidAge(said, args.birthday_or_age)) return 'age';
+  if (typeof args.birthday_or_age === 'string' && args.birthday_or_age.trim() && !saidAge(said, args.birthday_or_age, evidenceRaw(state))) return 'age';
   return null;
 }
 
