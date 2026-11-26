@@ -269,3 +269,25 @@ describe('PR2 review', () => {
     expect(out.results[0]!.data.verified).toBeUndefined();
   });
 });
+
+describe('PR2 review 2', () => {
+  it('T6-review2: "Who is the vet on Friday?" names only the vets in that day, never the whole list', async () => {
+    const day = { ...clinic, providers: clinic.providers.map((p) => (p.id === 'prov_bell' ? { ...p, timeOff: [{ from: '2026-10-02', to: '2026-10-02' }] } : p)) };
+    const c = await w.call('+13035550171', { clinic: day });
+    c.caller('Who is the vet on Friday?');
+    const out = await c.delegate([{ tool: 'get_clinic_info', args: { question: 'Who is the vet on Friday?' } }]);
+    const spoken = String(out.results[0]!.data.spoken ?? '');
+    expect(spoken).toContain('Dr. Elena Ruiz');
+    expect(spoken).not.toContain('Dr. Marcus Bell'); // away that Friday
+    expect(spoken).not.toContain('Dr. Hana Sato'); // works Tuesdays and Thursdays only
+  });
+
+  it('T6-review2: "Who are your doctors and where did they train?" is about the vets: their qualifications are answered (EN and ES)', async () => {
+    for (const q of ['Who are your doctors and where did they train?', '¿Quiénes son sus doctores y dónde estudiaron?']) {
+      const c = await w.call('+13035550171', { clinic });
+      c.caller(q);
+      const out = await c.delegate([{ tool: 'get_clinic_info', args: { question: q } }]);
+      expect(String(out.results[0]!.data.spoken ?? ''), q).toContain('DVM');
+    }
+  });
+});
