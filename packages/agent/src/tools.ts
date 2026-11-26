@@ -17,7 +17,7 @@ import { householdNames } from './flow/voice-tools';
 import type { CallState } from './call-state';
 import { answerForAsked, answersFromFaqs, asksIfOffered } from './knowledge';
 import { askedVisitWords, asksWhatVisits, bookableVisits, closestVisits, visitChoicesIn, visitSharesTopic } from './visit-offer';
-import { asksAboutTraining, asksAboutVets, asksEmergencyHandling, asksWhichVet, saysTextsNotArriving, textsNotArrivingNote, withoutMeaningAsk } from './flow/guards';
+import { asksAboutTraining, asksAboutVets, asksEmergencyHandling, asksWhichVet, requestHeldForPrivacy, saysTextsNotArriving, textsNotArrivingNote, withoutMeaningAsk } from './flow/guards';
 import { visitMeant, whichVisitLine } from './flow/visit-pick';
 import { outOfScopeLine } from '@attendra/knowledge/scope';
 
@@ -667,6 +667,11 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
   }
   // after the medical line (a question), a request or a booking waits for the caller to answer it: the voice took a
   // callback in the same breath, unasked (the owner's live rerun, 2026-11-26)
+  // a staff member's or another client's private details: never given, and no request for the team unless the caller asks
+  // for one in their words or says yes to the offer (the faithful live run filed a callback unasked)
+  if ((name === 'create_callback' || name === 'create_refill_request') && requestHeldForPrivacy(state)) {
+    return refuse('ask_first', 'Not yet: the caller asked for someone\'s private details, which are never given, and did not ask for a callback. Say in a few words that you can\'t share that, and offer to take a message for the team if they want one; take it only on their yes.');
+  }
   if (ASK_FIRST.has(name) && state.medicalOfferOpen) {
     return refuse('ask_first', `Not yet: the caller has not answered your offer. If you have not said it, say, word for word: "${PACKS[state.language].medicalRefusal}" Then wait for their answer, and take a callback or book only for what they choose.`);
   }

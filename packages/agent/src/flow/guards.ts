@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, type Language, LANGUAGES, normalise, PACKS } from '@attendra/core';
+import { type ClinicConfig, isClearYes, type Language, LANGUAGES, normalise, PACKS } from '@attendra/core';
 import type { CallState } from '../call-state';
 
 /**
@@ -188,3 +188,42 @@ export function textsNotArrivingNote(state: Pick<CallState, 'verifiedPatient' | 
   const line = textsNotArrivingLine(state.language, phone.length >= 4 ? phone.slice(-4) : null, clinic.industry === 'vet');
   return `The caller says texts are not arriving. Do not answer with the clinic's details. Say, word for word: "${line}" On a yes, call create_callback with the reason "Texts not arriving: check or update the number on file" and the best number to call.`;
 }
+
+/**
+ * The caller asks for a staff member's private details ("Dr. Ruiz's home address and cell number", "el celular de la
+ * doctora Ruiz") or for another client's ("I'm Linh's neighbour…", "otro cliente"). Never given; and never a request
+ * for the team unless the caller asks for one (the faithful live run filed a callback unasked).
+ */
+const PRIVATE_DETAILS = [
+  /\b(?:dr|doctor|vet|nurse|receptionist|technician)\.?(?: \w+)?'s (?:home|personal|private|cell|mobile|own)\b/,
+  /\b(?:where|what street) does (?:dr\.? \w+|doctor \w+|the vet|\w+) live\b/,
+  /\b(?:direccion|domicilio|celular|movil|telefono personal|numero personal|telefono de casa)\b.{0,40}\b(?:del|de la|de) (?:dr|dra|doctor|doctora|veterinari[oa])\b/,
+  /\bdonde vive (?:el|la) (?:dr|dra|doctor|doctora|veterinari[oa])\b/,
+  /\b(?:i'?m|i am) (?:\w+'s )?(?:neighbou?r|friend|coworker|roommate|ex)\b/,
+  /\b(?:another|other) (?:client|owner|customer)'?s?\b/,
+  /\bsoy (?:la |el |su )?(?:vecin[oa]|amig[oa]|companer[oa]|ex) de\b/,
+  /\botr[oa] (?:cliente|dueno|duena)\b/,
+];
+export const asksPrivateDetails = (said: string) => { const t = normalise(said); return PRIVATE_DETAILS.some((p) => p.test(t)); };
+/** The caller asks, in their own words, for a callback or a message to the team. */
+const ASKS_CALLBACK = /\b(?:call (?:me|us) back|callback|call-back|(?:have|can|could) (?:someone|somebody|the team|a vet|the vet|her|him|they|them) call|someone call me|leave (?:a|her|him) (?:message|note)|take a message|pass (?:it|that|a message) on|me (?:pueden|puede|podrian|podria) llamar|que me llamen?|me llame alguien|llamarme|devolver(?:me)? la llamada|dej(?:ar|e)(?:le)? un (?:mensaje|recado)|tom(?:ar|e) un (?:mensaje|recado))\b/;
+const OFFERS_CALLBACK = /\b(?:call (?:you|them) back|callback|message|note for the team|le llame|le llamen|mensaje|recado|devolver la llamada)\b/;
+/**
+ * Whether a request for the team waits: the caller asked for someone's private details and has not, since, asked for a
+ * callback or a message, nor said yes to the assistant's offer of one.
+ */
+export function requestHeldForPrivacy(state: CallState): boolean {
+  const turns = state.turns;
+  let at = -1;
+  for (let i = turns.length - 1; i >= 0; i--) if (turns[i]!.speaker === 'caller' && asksPrivateDetails(turns[i]!.text)) { at = i; break; }
+  if (at < 0) return false;
+  for (let i = at; i < turns.length; i++) {
+    const t = turns[i]!;
+    if (t.speaker !== 'caller') continue;
+    if (ASKS_CALLBACK.test(normalise(t.text))) return false;
+    const offer = turns.slice(0, i).reverse().find((x) => x.speaker === 'agent');
+    if (i > at && offer && OFFERS_CALLBACK.test(normalise(offer.text)) && isClearYes(t.text, LANGUAGES)) return false;
+  }
+  return true;
+}
+
