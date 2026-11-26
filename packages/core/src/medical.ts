@@ -16,6 +16,27 @@ const CHILD = 'child|kid|kids|baby|infant|toddler|son|daughter|newborn';
 const DRUGS_ES = 'ibuprofeno|paracetamol|acetaminofen|aspirina|naproxeno|difenhidramina|amoxicilina|antibioticos?|prednisona|insulina|melatonina|omeprazol|gabapentina|codeina|pastillas?|tabletas?|capsulas?|pildoras?|medicinas?|medicamentos?|remedios?|jarabe|gotas|calmantes?|analgesicos?|antiinflamatorios?|antialergicos?';
 const ANY_DRUG = `${DRUGS}|${DRUGS_ES}`;
 
+/** An amount of a medicine: "25 mg", "half a", "a quarter of", "media", "un cuarto de". */
+const AMOUNT = '\\d+(?:[.,]\\d+)? ?(?:mg|milligrams?|miligramos?|ml|mililitros?|cc|units?|unidades|tablets?|tabletas?|pills?|pastillas?|capsules?|capsulas?)|half (?:a|an|of)|a half|(?:a )?quarter (?:of )?(?:a|an)|medi[oa]|un cuarto de';
+/** Pet medicines, for the dose questions only: named in a refill ("a refill of Apoquel for Bella") they ask nothing. */
+const VET_DRUGS = 'rimadyl|carprofen|metacam|meloxicam|galliprant|apoquel|cerenia|trazodone';
+const SOMEONE = 'him|her|it|them|my \\w+|the \\w+|our \\w+|his \\w+';
+/**
+ * A dose asked with an amount or a dosing verb, whatever the amount (the owner's decision, 2026-11-26: a dosing answer
+ * is a safety risk): "can I give him 25 mg of Benadryl?", "is 50 mg OK?", "can she have half a Tylenol?", "how many mg",
+ * "¿le puedo dar 25 mg?", "¿puede tomar media pastilla?". A refill naming its own dose asks none of these.
+ */
+const DOSE = [
+  words(`(?:should|can|could|may) (?:i|we) give (?:${SOMEONE})? ?(?:${AMOUNT})`),
+  words(`(?:is|are|would|will) (?:${AMOUNT})(?: of)?(?: \\w+)? (?:ok|okay|safe|fine|alright|too much|enough|right)`),
+  words('how (?:much|many) (?:mg|milligrams?|ml|cc|units?|tablets?|pills?|capsules?)'),
+  words(`(?:can|could|should|may) (?:he|she|it|they|${SOMEONE}) (?:have|take|get|eat) (?:(?:${AMOUNT})|(?:some |a |an |any )?(?:of )?(?:my |his |her |the |our )?(?:${DRUGS}|${VET_DRUGS}))`),
+  words(`(?:le |les )?(?:puedo|podemos|debo|deberia) dar(?:le|les)? (?:${AMOUNT})`),
+  words(`(?:puede|pueden|podria|deberia|debe) (?:tomar|tomarse|comer|recibir) (?:(?:${AMOUNT})|(?:un poco de |algo de |una? )?(?:${ANY_DRUG}|${VET_DRUGS}))`),
+  words(`(?:es|son|seria) (?:${AMOUNT})(?: de)?(?: \\w+)? (?:mucho|demasiado|seguro|suficiente|bien|ok)`),
+  words('cuant(?:o|a|os|as) (?:mg|miligramos?|ml|mililitros?|pastillas?|tabletas?|capsulas?|gotas)'),
+];
+
 const PATTERNS = [
   // English: a medicine and what to do with it
   words(`(${DRUGS}) (for|before|with|after|while|during)`),
@@ -42,8 +63,8 @@ const PATTERNS = [
 
 /** What the assistant says when the clinic's documents do not answer a question. */
 export const NO_INFORMATION = "I don't have that information, I can have someone call you back.";
-/** And when the question is one only a clinician may answer. */
-export const MEDICAL_REFUSAL = "I can't give medical advice, but I can have someone from the care team call you back.";
+/** And when the question is one only a clinician may answer: a question, so the caller chooses before anything is taken (the owner's live rerun, 2026-11-26). */
+export const MEDICAL_REFUSAL = "I can't give medical advice. Would you like a visit with one of our vets, or a call back from our team?";
 
 /** A bare amount ("16 mg", "two tablets"): a dose question when asked, but also how a refill is named. */
 const QUANTITY = words('\\d+ ?(mg|milligrams?|miligramos?|ml|mililitros?|units?|unidades|tablets?|tabletas?|pills?|pastillas?)');
@@ -68,7 +89,7 @@ const ABOUT_THEIR_OWN = words('refill (of|for) (it|her|his|its|that|them|the sam
 
 export function isMedicalQuestion(text: string, opts: { quantities?: boolean } = {}): boolean {
   const t = normalise(text);
-  return PATTERNS.some((p) => p.test(t)) || (WHICH_MEDICINE.some((p) => p.test(t)) && !ABOUT_THEIR_OWN.test(t)) || (opts.quantities !== false && QUANTITY.test(t));
+  return PATTERNS.some((p) => p.test(t)) || DOSE.some((p) => p.test(t)) || (WHICH_MEDICINE.some((p) => p.test(t)) && !ABOUT_THEIR_OWN.test(t)) || (opts.quantities !== false && QUANTITY.test(t));
 }
 
 /**

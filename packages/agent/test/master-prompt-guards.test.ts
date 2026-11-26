@@ -75,7 +75,7 @@ describe('LIVE: the adversarial live run', () => {
 
   it('LIVE-MED: a dose question is answered with the clinic\'s medical line, word for word, before any tool (EN/ES)', async () => {
     const c = await w.call('+13035550189', { clinic });
-    expect(lines(c.caller('How much Benadryl can I give my dog?'))).toContain("I can't give medical advice, but I can have someone from the care team call you back.");
+    expect(lines(c.caller('How much Benadryl can I give my dog?'))).toContain("I can't give medical advice. Would you like a visit with one of our vets, or a call back from our team?");
     const es = await w.call('+13035550190', { clinic });
     es.state.language = 'es';
     expect(lines(es.caller('¿Cuánto Benadryl le puedo dar a mi perro?'))).toContain('No puedo dar consejo médico');
@@ -102,8 +102,8 @@ describe('LIVE: the adversarial live run', () => {
       expect(await said(refill), refill).not.toContain('medical advice');
     }
     expect(await said('Necesito una recarga de Carprofen 75 mg para Biscuit.', 'es')).not.toContain('consejo médico');
-    expect(await said('How much Benadryl can I give my dog?')).toContain("I can't give medical advice, but I can have someone from the care team call you back.");
-    expect(await said('What medicine should I give my cat for fleas?')).toContain("I can't give medical advice, but I can have someone from the care team call you back.");
+    expect(await said('How much Benadryl can I give my dog?')).toContain("I can't give medical advice. Would you like a visit with one of our vets, or a call back from our team?");
+    expect(await said('What medicine should I give my cat for fleas?')).toContain("I can't give medical advice. Would you like a visit with one of our vets, or a call back from our team?");
   });
 
   const afterOffer = async (line: string, language: 'en' | 'es' = 'en') => {
@@ -129,6 +129,54 @@ describe('LIVE: the adversarial live run', () => {
     }
     for (const elsewhere of ['Llame a la clínica para confirmar la cita.', 'Comuníquese directamente con la clínica para reservar.']) {
       expect(await afterOffer(elsewhere, 'es'), elsewhere).toMatch(/can be booked on this call/);
+    }
+  });
+
+  // the owner's live rerun (2026-11-26): after the medical line the voice took a callback in the same breath, unasked
+  it('LIVE2-ASK: after the medical line, a callback waits for the caller to answer the offer (ES)', async () => {
+    const es = await w.call('+13035550196', { clinic });
+    es.state.language = 'es';
+    expect(lines(es.caller('¿Cuánto Benadryl le puedo dar a mi perro?'))).toContain('No puedo dar consejo médico. ¿Quiere una cita con uno de nuestros veterinarios o que alguien del equipo le llame?');
+    es.assistant('No puedo dar consejo médico. ¿Quiere una cita con uno de nuestros veterinarios o que alguien del equipo le llame?');
+    const unasked = await es.delegate([{ tool: 'create_callback', args: { reason: 'Pregunta de dosis de Benadryl para un perro.', callback_number: null, topic: null } }]);
+    expect(unasked.errors).toEqual(['ask_first']);
+    expect(unasked.results[0]!.data.task_id).toBeUndefined();
+    es.caller('Sí, que me llame alguien del equipo, por favor.');
+    expect((await es.delegate([{ tool: 'create_callback', args: { reason: 'Pregunta de dosis de Benadryl para un perro.', callback_number: null, topic: null } }])).errors).toEqual([null]);
+  });
+
+  it('LIVE2-ASK: the medical refusal from get_clinic_info holds a request or a booking until the caller answers too (EN)', async () => {
+    const c = await w.call('+17205550172', { clinic });
+    c.caller('Hi, Linh Nguyen, for Biscuit.');
+    await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: 'Biscuit' } }]);
+    c.assistant('Thanks, I found Biscuit. How can I help?');
+    c.caller('Is it safe to give him Benadryl before a car ride?');
+    const out = await c.delegate([{ tool: 'get_clinic_info', args: { question: 'Is it safe to give him Benadryl before a car ride?' } }, { tool: 'create_callback', args: { reason: 'Benadryl question', callback_number: null, topic: null } }]);
+    expect(out.errors).toEqual(['medical_question', 'ask_first']);
+    expect(JSON.stringify(out.results[0]!.data)).toContain("Would you like a visit with one of our vets, or a call back from our team?");
+    const found = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: '2026-09-29', part_of_day: 'morning' } }]);
+    const slot = (found.results[0]!.data.slots as { slot_id: string }[])[0]!.slot_id;
+    expect((await c.delegate([{ tool: 'propose_booking', args: { slot_id: slot, replaces_appointment_id: null } }])).errors).toEqual(['ask_first']);
+    c.assistant("I can't give medical advice. Would you like a visit with one of our vets, or a call back from our team?");
+    c.caller('A visit, please. Tomorrow morning.');
+    expect((await c.delegate([{ tool: 'propose_booking', args: { slot_id: slot, replaces_appointment_id: null } }])).errors).toEqual([null]);
+  });
+
+  it('DOSE: a dose question with an amount or a dosing verb gets the medical line; a refill naming its own dose does not (EN/ES)', async () => {
+    let n = 0;
+    const said = async (text: string) => {
+      const c = await w.call(`+130355503${String(n++).padStart(2, '0')}`, { clinic });
+      if (/[¿áéíóúñ]|\b(?:le|de|una?)\b/i.test(text)) c.state.language = 'es';
+      return lines(c.caller(text));
+    };
+    for (const dose of ['Can I give him 25 mg of Benadryl?', 'Is 50 mg of Benadryl OK for my dog?', 'How much Benadryl can I give my 20 lb dog?', 'What dose of Rimadyl for a 30 kg dog?', 'Can she have half a Tylenol?', 'How many mg of aspirin can my cat take?']) {
+      expect(await said(dose), dose).toContain("I can't give medical advice. Would you like a visit with one of our vets, or a call back from our team?");
+    }
+    for (const dose of ['¿Le puedo dar 25 mg de Benadryl?', '¿Cuánto Benadryl le doy a mi perro de 10 kilos?', '¿Qué dosis de Rimadyl le doy?', '¿Puede tomar media pastilla de paracetamol?']) {
+      expect(await said(dose), dose).toContain('No puedo dar consejo médico.');
+    }
+    for (const refill of ['I need a refill of her Apoquel 16 mg.', 'Can I get a refill of Carprofen 75 mg for Biscuit?', 'She takes 5 mg of prednisone, I need more.', 'Necesito una recarga de Carprofen 75 mg para Biscuit.', 'What medicine is Bella on?']) {
+      expect(await said(refill), refill).not.toMatch(/medical advice|consejo médico/);
     }
   });
 });

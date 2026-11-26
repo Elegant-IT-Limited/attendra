@@ -170,6 +170,13 @@ export class CallState {
   toolLog: { name: string; ok: boolean; error: string | null }[] = [];
   /** Lines the guards say once a call: a claim corrected, side talk, the recording answer. */
   readonly guardsSaid = new Set<string>();
+  /**
+   * The turn at which the medical line (a question: a visit or a call back?) was due, or null. Until a caller turn
+   * after it, a callback, a refill request or a booking is not taken (the owner's live rerun, 2026-11-26).
+   */
+  medicalOfferAt: number | null = null;
+  markMedicalOffer() { this.medicalOfferAt = this.turns.length - 1; }
+  get medicalOfferOpen() { const at = this.medicalOfferAt; return at !== null && !this.turns.slice(at + 1).some((t) => t.speaker === 'caller'); }
   /** Staff pressed End call: the record says so, not that the assistant hung up on its own. */
   endedByStaff = false;
   /** Answers that ran past the 60 s limit and were apologised for: counted on the call row (migration 0044). */

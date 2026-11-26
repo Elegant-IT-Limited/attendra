@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
   bookableProviders, demoEmergency, detectEmergencies, joinSaid,
-  addDays, resolveWeekday, EMERGENCY_CHOICES, EMERGENCY_LINES, emergencyHandlingSummary, saysSlot, ageOn, asE164, digitByDigit, groupedNumber, heardNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isClearYesTo, asksForText, isSmallTalk, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  addDays, resolveWeekday, EMERGENCY_CHOICES, EMERGENCY_LINES, emergencyHandlingSummary, saysSlot, ageOn, asE164, digitByDigit, groupedNumber, heardNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isClearYesTo, asksForText, isSmallTalk, isMedicalQuestion, type KnowledgeBase, localDateOf, localName,
   fold, industryPack, isOpen, isPetEmergency, LANGUAGES, normalise, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, inProviderOrder, providerFacts, providerOrderAsked, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, BOOKING_LEAD_MINUTES, bookingPolicy, callFacts, earliestStart, lastBookableDate, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant, dayShift, offerTimesLine,
@@ -86,6 +86,8 @@ const WRITE_TOOLS = new Set<ToolName>(['register_patient', 'propose_booking', 'p
 const EMERGENCY_ALLOWED = new Set<ToolName>(['transfer_call', 'create_callback', 'end_call', 'get_clinic_info', 'send_text']);
 /** What waits for the caller's answer to the emergency question, for the pet it is about: looking for times and booking. */
 const WAITS_FOR_ANSWER = new Set<ToolName>(['find_slots', 'propose_booking', 'commit_pending']);
+/** A request or a booking: after the medical line, only once the caller has answered it. */
+const ASK_FIRST = new Set<ToolName>(['create_callback', 'create_refill_request', 'propose_booking', 'commit_pending']);
 
 /** The note on a booking for the team: who booked it (when not the owner on file), and what an emergency the caller cleared reported. */
 function bookingNote(state: CallState, byCaller: string | null, clinic: ClinicConfig): { note?: string } {
@@ -211,7 +213,8 @@ function askLastFour(state: CallState, lang: CallState['language'], after: 'wron
   return refuse('ask_last_four', `Ask, in these words: "${PACKS[lang].lastFourQuestion({ after })}" When they answer, call verify_caller with phone_last4 (the four digits as they said them), pet_name, and phone null. Never say a number or a name from the records.`);
 }
 const NO_CALLBACK_NUMBER = (lang: CallState['language']) => refuse('no_callback_number', `Say you can't see the number they're calling from, and ask, in these words: "${PACKS[lang].callbackNumberQuestion}" Then call this again with it.`);
-const MEDICAL = () => refuse('medical_question', `Do not answer it, and do not read anything from the clinic's documents. Say: "${MEDICAL_REFUSAL}" Offer to take a callback.`);
+/** The medical line, a question: a callback or a booking then waits for the caller's answer (state.medicalOfferAt). */
+const MEDICAL = (state: CallState) => { state.markMedicalOffer(); return refuse('medical_question', `Do not answer it, and do not read anything from the clinic's documents. Say, word for word: "${PACKS[state.language].medicalRefusal}" Then wait for their answer: never take a callback or book before they choose.`); };
 
 const refuse = (code: string, say: string): ToolResult => ({ ok: false, data: { error: code, say } });
 /** The last four digits alone, once the pet's name is known (CB11). */
@@ -642,6 +645,11 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
   if (name === 'find_slots' && rawArgs && typeof rawArgs === 'object' && impossibleDate((rawArgs as { from_date?: unknown }).from_date, ctx.clinic, ctx.now())) {
     return refuse('invalid_date', `Say, in these words: "${PACKS[state.language].invalidDate({ said: String((rawArgs as { from_date: unknown }).from_date) })}"`);
   }
+  // after the medical line (a question), a request or a booking waits for the caller to answer it: the voice took a
+  // callback in the same breath, unasked (the owner's live rerun, 2026-11-26)
+  if (ASK_FIRST.has(name) && state.medicalOfferOpen) {
+    return refuse('ask_first', `Not yet: the caller has not answered your offer. If you have not said it, say, word for word: "${PACKS[state.language].medicalRefusal}" Then wait for their answer, and take a callback or book only for what they choose.`);
+  }
   // a vet's name or a day in words for find_slots passes the schema as a string: read as meant first (T12)
   const first = schema.safeParse(name === 'find_slots' ? slotArgsAsMeant(rawArgs, ctx.clinic, ctx.now()) : rawArgs);
   const parsed = first.success ? first : schema.safeParse(name === 'find_slots' ? slotArgsAsMeant(blanksAsNull(rawArgs), ctx.clinic, ctx.now()) : blanksAsNull(rawArgs));
@@ -951,7 +959,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       // about the clinic's emergency handling, "what does it mean?" asks about the setting, not a result (note 49 B3);
       // anything else medical in the same words is still refused
       const meaning = trade.identity === 'pet' && asksEmergencyHandling(`${question} ${state.lastTurn('caller')}`) ? withoutMeaningAsk : (t: string) => t;
-      if (!whichVet && (isMedicalQuestion(meaning(question)) || isMedicalQuestion(meaning(state.recentCallerText()), { quantities: false }))) return MEDICAL();
+      if (!whichVet && (isMedicalQuestion(meaning(question)) || isMedicalQuestion(meaning(state.recentCallerText()), { quantities: false }))) return MEDICAL(state);
       // not about the clinic (the weather, how the assistant is made): the one polite line, nothing searched (batch 2)
       const outOfScope = outOfScopeLine(question);
       if (outOfScope && !whichVet) return { ok: true, data: { passages: [], say: `Say exactly: "${outOfScope}"` } };
@@ -1053,7 +1061,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
 
     case 'search_knowledge': {
       const question = String(args.question);
-      if (isMedicalQuestion(question) || isMedicalQuestion(state.recentCallerText(), { quantities: false })) return MEDICAL();
+      if (isMedicalQuestion(question) || isMedicalQuestion(state.recentCallerText(), { quantities: false })) return MEDICAL(state);
       const outOfScope = outOfScopeLine(question);
       if (outOfScope) return { ok: true, data: { passages: [], say: `Say exactly: "${outOfScope}"` } };
       const topic = topicOf(question, clinic.name);

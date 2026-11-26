@@ -202,7 +202,7 @@ export const es: LanguagePack = {
   readbackSwap: ({ when: w, provider, visit, from, to }) => `pasar la cita de ${visit.toLowerCase()} del ${sinEl(w)} con ${provider} de ${from} a ${to}`,
   askOwnerName: '¿Cuál es su nombre?',
   declineInternals: 'Eso no es algo con lo que pueda ayudarle. Puedo ayudarle con las citas de su mascota o con preguntas sobre la clínica.',
-  medicalRefusal: 'No puedo dar consejo médico, pero puedo pedir que alguien del equipo de atención le llame.',
+  medicalRefusal: 'No puedo dar consejo médico. ¿Quiere una cita con uno de nuestros veterinarios o que alguien del equipo le llame?',
   invalidDate: ({ said }) => `${said} no es una fecha del calendario. ¿Qué día le viene bien?`,
   swapWrongVet: ({ vet, animals, pet, others }) => `${vet} ${animals ? `solo atiende ${animals}` : `no atiende ese tipo de animal`}, así que no puedo pasarle esa cita a ${pet}. ${others.length ? `${others.length === 1 ? others[0] : `${others.slice(0, -1).join(', ')} o ${others.at(-1)}`} puede atender a ${pet}: ¿le busco una hora?` : `¿Quiere que el equipo le llame para darle una cita a ${pet}?`}`,
   askPetSex: ({ pet }) => `¿${pet} es macho o hembra?`,

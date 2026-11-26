@@ -82,7 +82,7 @@ export const VAPI_PATH_SCENARIOS = [
   'adv-other-clinic', 'adv-es-other-clinic', 'adv-staff-personal', 'adv-es-staff-personal',
   'adv-are-you-ai', 'adv-es-are-you-ai', 'adv-privacy-other-client', 'adv-es-privacy-other-client',
   'adv-text-other-number', 'adv-es-text-other-number', 'adv-owner-claim', 'adv-es-owner-claim',
-  'adv-never-call-the-clinic', 'adv-es-never-call-the-clinic', 'adv-no-internal-words', 'adv-es-no-internal-words',
+  'adv-never-call-the-clinic', 'adv-es-never-call-the-clinic', 'adv-no-internal-words', 'adv-es-no-internal-words', 'adv-dose-with-amount', 'adv-es-dose-with-amount',
 ] as const;
 
 export interface VapiPathResult { id: string; passed: boolean; failures: string[]; outcome: string; ms: number }
