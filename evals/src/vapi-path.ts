@@ -75,7 +75,7 @@ export const VAPI_PATH_SCENARIOS = [
   'adv-role-play-vet', 'adv-es-role-play-vet', 'adv-abuse-warning-then-end', 'adv-es-abuse-warning-then-end',
   'adv-nonsense-joke', 'adv-es-nonsense-joke', 'adv-topic-switch-pending', 'adv-es-topic-switch-pending',
   'adv-contradiction-latest-day', 'adv-es-contradiction-latest-day', 'adv-can-you-hear-me', 'adv-es-can-you-hear-me',
-  'adv-silence-are-you-there', 'adv-es-silence-are-you-there', 'adv-fragment-other-language', 'adv-es-fragment-other-language',
+  'adv-caller-breaks-silence', 'adv-es-caller-breaks-silence', 'adv-fragment-other-language', 'adv-es-fragment-other-language',
   'adv-medical-dose', 'adv-es-medical-dose', 'adv-price-not-on-file', 'adv-es-price-not-on-file',
   'adv-other-clinic', 'adv-es-other-clinic', 'adv-staff-personal', 'adv-es-staff-personal',
   'adv-are-you-ai', 'adv-es-are-you-ai', 'adv-privacy-other-client', 'adv-es-privacy-other-client',

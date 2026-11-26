@@ -216,3 +216,24 @@ describe('T4 review: a held reply never starts over a caller still talking; the 
     expect(h.closes.at(-1)!.quality.maxGapMs).toBe(800);
   });
 });
+
+describe('MP-SILENCE: a caller who goes silent after a question is asked once whether they are still there', () => {
+  it('MP-SILENCE: 10 s of silence after the assistant\'s question: "Are you still there?" once (EN), "¿Sigue ahí?" (ES)', async () => {
+    vi.useFakeTimers();
+    for (const [lang, line] of [['en', 'Are you still there?'], ['es', '¿Sigue ahí?']] as const) {
+      const h = harness();
+      h.agent.state.language = lang;
+      void h.runner.start();
+      await h.runner.handle(said('in', 'i1', lang === 'es' ? 'Quiero una cita para mi perro.' : 'I want a visit for my dog.', 0));
+      await vi.advanceTimersByTimeAsync(800);
+      await h.runner.handle(said('out', 'o1', lang === 'es' ? '¿Cómo se llama su perro?' : "What's your dog's name?", 800));
+      await vi.advanceTimersByTimeAsync(9000);
+      expect(h.sent.filter((e) => (e.content ?? '').includes(line))).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(h.sent.filter((e) => (e.content ?? '').includes(line))).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(h.sent.filter((e) => (e.content ?? '').includes(line))).toHaveLength(1); // once
+    }
+    vi.useRealTimers();
+  });
+});

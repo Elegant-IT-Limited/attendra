@@ -29,8 +29,6 @@ const PATTERNS = [
   // giving a medicine to someone else: a child, or a pet at a veterinary clinic
   words(`((should|can|could|may) (i|we)|is it (ok|okay|safe|bad) to) give (him|her|it|them|my \\w+|the \\w+|our \\w+)? ?(some |a little )?(of )?(my |his |her |the |our )?(${DRUGS})`),
   words('(should|can|could) (i|we) give (him|her|it|them) (something|anything)|what (can|could|should) (i|we) give (him|her|it|them|my \\w+|the \\w+|our \\w+) for'),
-  // "what medicine should I give my cat for fleas?" (step 4, an adversarial eval: a medicine named only as "medicine")
-  words('what (medicine|medicines|medication|medications|meds|drug|drugs|pill|pills|remedy|remedies|treatment) (can|could|should|do|would) (i|we) give'),
   // Spanish, without accents: text is normalised first. The same questions as the English above, in the same order
   words(`(${ANY_DRUG}) (para|antes de|despues de|con|durante|mientras)`),
   words(`dosis (de|del|para) (${ANY_DRUG})|cuant(o|a|os|as) (de )?(la |el |su |mi )?(${ANY_DRUG})`),
@@ -40,7 +38,6 @@ const PATTERNS = [
   // giving a medicine to a pet or a child: "¿le puedo dar ibuprofeno a mi perro?", "¿qué le puedo dar para el dolor?"
   words(`((le |les )?(puedo|podemos|debo|deberia|tengo que|se (le )?puede) dar(le|les|selo|sela)?|es (seguro|bueno|malo) dar(le|les)?|(le|les) (doy|damos)) (un poco de |algo de |medi[oa] |una? )?(mi |mis |su |sus |el |la |los |las |este |esta |ese |esa )?(${ANY_DRUG})`),
   words('(le |les )?(puedo|podemos|debo|deberia) dar(le|les)? algo (para|contra)|que (le |les )?(puedo|podemos|debo|deberia) dar(le|les)?( a (mi|su|el|la|nuestro|nuestra) \\w+)? (para|contra)'),
-  words('que (medicina|medicinas|medicamento|medicamentos|remedio|remedios|pastilla|pastillas|tratamiento) (le |les )?((puedo|podemos|debo|deberia) dar(le|les)?|doy|damos)'),
 ];
 
 /** What the assistant says when the clinic's documents do not answer a question. */
@@ -56,9 +53,20 @@ const QUANTITY = words('\\d+ ?(mg|milligrams?|miligramos?|ml|mililitros?|units?|
  * a bare amount, for the caller's recent turns: "a refill of Apoquel 16 mg" must not
  * make the next question, "what time do you close?", a medical one.
  */
+/**
+ * "What medicine should I give my cat for fleas?": which medicine to give, asked of the assistant (step 4, an adversarial
+ * eval). Never when the caller asks about their pet's own medicine to refill it or forgot its name: that is the record,
+ * and a refill request (review 4).
+ */
+const WHICH_MEDICINE = [
+  words('what (medicine|medicines|medication|medications|meds|drug|drugs|pill|pills|remedy|remedies|treatment) (can|could|should|do|would) (i|we) give'),
+  words('que (medicina|medicinas|medicamento|medicamentos|remedio|remedios|pastilla|pastillas|tratamiento) (le |les )?((puedo|podemos|debo|deberia) dar(le|les)?|doy|damos)'),
+];
+const ABOUT_THEIR_OWN = words('refills?|repeat prescription|renew|(forgot|forget|don\'?t remember|can\'?t remember) (the|its|her|his) name|(every|each) (day|morning|night)|receta|recetas|resurtir|reponer|olvide (el|su) nombre|no (me )?acuerdo (del|de su) nombre|todos los dias|cada dia');
+
 export function isMedicalQuestion(text: string, opts: { quantities?: boolean } = {}): boolean {
   const t = normalise(text);
-  return PATTERNS.some((p) => p.test(t)) || (opts.quantities !== false && QUANTITY.test(t));
+  return PATTERNS.some((p) => p.test(t)) || (WHICH_MEDICINE.some((p) => p.test(t)) && !ABOUT_THEIR_OWN.test(t)) || (opts.quantities !== false && QUANTITY.test(t));
 }
 
 /**
@@ -67,7 +75,7 @@ export function isMedicalQuestion(text: string, opts: { quantities?: boolean } =
  * check on every line handed to the voice, and the check on what it said in a live run. English and Spanish. A change
  * explained as internal state is one too (T5, a tester's call 2026-11-24: "The earlier tentative change won't be used").
  */
-export const INTERNAL_TALK = /\b(?:in the background|lookups?\b|still waiting on\b|(?:i'?m |i am )?(?:still )?waiting for (?:that|it|this|the (?:request|change|booking|cancellation)|that (?:request|change)) to (?:complete|finish|go through|come back)|until it (?:finishes|completes|is done|goes through)|as soon as it'?s ready|esperando a que (?:termine|se complete)|hasta que termine|waiting (?:on|for) (?:that|the|this|my|a) (?:lookup|search|check|result|system)|(?:lookup|search) to (?:finish|come back|load)|esperando (?:que termine )?(?:la busqueda|el resultado)|(?:still |it'?s )running|still loading|processing (?:it|that|your)|the (?:information|info|result|results|data|details) (?:i |that )?(?:got back|returned|came back|i (?:got|received|have here)|(?:it |that )?(?:returned|shows|says))|i got back|what came back|(?:the|my|our) (?:system|tool|tools|database|lookup|search results?)\b|(?:a|the) tool\b|en segundo plano|(?:la|los) (?:informacion|resultados?|datos) (?:que )?(?:recibi|obtuve|devolvio|volvio|me (?:dio|llego))|(?:el|mi|nuestro) sistema\b|la herramienta|tentative (?:change|booking|cancell?ation|one)|earlier (?:change|proposal)|(?:won'?t|will not) be used|waiting to (?:be )?confirm(?:ed)?|(?:i )?had waiting|pending (?:change|booking|cancell?ation)|the one (?:booked|made) on this call|cambio (?:pendiente|provisional)|no se (?:usara|va a (?:hacer|usar)))/i;
+export const INTERNAL_TALK = /\b(?:in the background|lookups?\b|still waiting on\b|(?:i'?m |i am )?(?:still )?waiting for (?:that|it|this|the (?:request|change|booking|cancellation)|that (?:request|change)) to (?:complete|finish|go through|come back)|until it (?:finishes|completes|is done|goes through)|as soon as it'?s ready|esperando a que (?:termine|se complete)|hasta que termine|waiting (?:on|for) (?:that|the|this|my|a) (?:lookup|search|check|result|system)|(?:lookup|search) to (?:finish|come back|load)|esperando (?:que termine )?(?:la busqueda|el resultado)|still loading|the (?:information|info|result|results|data|details) (?:i |that )?(?:got back|returned|came back|i (?:got|received|have here)|(?:it |that )?(?:returned|shows|says))|i got back|what came back|(?:the|my) system\b|(?:the|my|our) (?:tool|tools|database|lookup|search results?)\b|(?:a|the) tool\b|en segundo plano|(?:la|los) (?:informacion|resultados?|datos) (?:que )?(?:recibi|obtuve|devolvio|volvio|me (?:dio|llego))|(?:el|mi) sistema\b|la herramienta|tentative (?:change|booking|cancell?ation|one)|earlier (?:change|proposal)|(?:won'?t|will not) be used|waiting to (?:be )?confirm(?:ed)?|(?:i )?had waiting|pending (?:change|booking|cancell?ation)|the one (?:booked|made) on this call|cambio (?:pendiente|provisional)|no se (?:usara|va a (?:hacer|usar)))/i;
 /** Whether a line talks about how the assistant works (after accents are folded: "información" is "informacion"). */
 export function talksAboutInternals(line: string): boolean {
   return INTERNAL_TALK.test(line.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));

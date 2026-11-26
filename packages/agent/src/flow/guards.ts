@@ -83,8 +83,13 @@ export function recordingLine(clinic: Pick<ClinicConfig, 'recording'>, language:
 const HUMAN_ASKED = /\b(?:are you (?:a )?(?:real|human|person|robot|bot|machine|computer|an? ai|ai)|is this (?:a )?(?:real person|human|robot|bot|recording)|am i (?:talking|speaking) to (?:a )?(?:real person|human|person|robot|bot|machine|computer)|eres (?:un |una )?(?:persona|humano|humana|robot|maquina)|es usted (?:una )?(?:persona|humano|robot)|estoy hablando con (?:una )?(?:persona|maquina|robot))\b/;
 export const askedIfHuman = (said: string) => HUMAN_ASKED.test(normalise(said));
 /** "Can you hear me?", "are you there?", "¿me escucha?": answered at once, in a few words (master prompt, step 4). */
-const HEAR_ASKED = /\b(?:(?:can|could|do) you hear me|are you (?:still )?there|me (?:escucha|escuchas|oye|oyes)|(?:esta|estas) (?:ahi|ahí)|sigue ahi)\b/;
-export const asksIfHeard = (said: string) => HEAR_ASKED.test(normalise(said));
+// only the question on its own (with "hello", "hola" and the like around it), never "are you there on Saturdays?" or
+// "¿está ahí el doctor?" (review 4): each clause is checked whole
+const HEAR_ALONE = /^(?:(?:hello|hi|hey|sorry|um|uh|so|hola|oiga|perdon|alo|bueno)\s+)*(?:(?:can|could|do) you hear me(?: now| ok| okay| alright)?|are you (?:still )?there|me (?:escucha|escuchas|oye|oyes)(?: bien)?|(?:esta|estas|sigue) (?:ahi|ahí)|hello|hola|alo)(?:\s+(?:hello|hola))*$/;
+const clauses = (said: string) => normalise(said).split(/[?.!,;¿¡]+/).map((c) => c.trim()).filter(Boolean);
+export const asksIfHeard = (said: string) => { const parts = clauses(said); return parts.some((c) => HEAR_ALONE.test(c)) && parts.some((c) => HEAR_ALONE.test(c) && !/^(?:hello|hola|alo)(?:\s+(?:hello|hola))*$/.test(c)); };
+/** Whether the turn says more than the question about the line ("Can you hear me? I want to book Bella for Friday"). */
+export const saysMoreThanHeard = (said: string) => clauses(said).some((c) => !HEAR_ALONE.test(c));
 export const heardLine = (language: Language) => (language === 'es' ? 'Sí, le escucho.' : 'Yes, I can hear you.');
 export const humanLine = (language: Language) => (language === 'es' ? 'Soy el asistente de inteligencia artificial de la clínica. Si lo prefiere, le paso un mensaje al equipo para que le llamen.' : 'I\'m the clinic\'s AI assistant. If you\'d rather talk to someone, I can have the team call you back.');
 

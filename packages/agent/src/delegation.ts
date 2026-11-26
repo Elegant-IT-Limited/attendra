@@ -8,7 +8,7 @@ import { afterTool, type FlowMemory, flowStage, nextStep } from './flow/booking'
 import { lookupLikelyNext, speculativeLookup, type Speculation } from './flow/speculate';
 import { excerptFor, handoffFor, type HandoffEvent, lastSteps, noteNames, reasonFromSteps, seenNames, stepResult } from './handoff';
 import { answerTo, BORDERLINE, confirmsCleared, doneAfterEmergency, justAsking, type EmergencyCase, lastQuestionIsOurs, MILD, pastAndFineNow, SEVERE, saysSevere, staffNote } from './flow/emergency';
-import { asksEmergencyHandling, askedAboutRecording, askedIfHuman, asksIfHeard, askedWhy, heardLine, claimsIn, DISPUTE_NOTE, disputes, humanLine, notInTheClinicsLanguages, recordingLine, saysTextsNotArriving, sideTalkLine, textsNotArrivingNote, WHY } from './flow/guards';
+import { asksEmergencyHandling, askedAboutRecording, askedIfHuman, asksIfHeard, askedWhy, heardLine, saysMoreThanHeard, claimsIn, DISPUTE_NOTE, disputes, humanLine, notInTheClinicsLanguages, recordingLine, saysTextsNotArriving, sideTalkLine, textsNotArrivingNote, WHY } from './flow/guards';
 import { outOfScopeLine } from '@attendra/knowledge/scope';
 import { isVoiceTool, shapeForVoice, type VoiceToolOutput } from './flow/voice-tools';
 import { asksHours, type Backend, type CallContext, runTool, textOfferAfter, type ToolResult } from './tools';
@@ -969,7 +969,9 @@ export class CallAgent {
     const out: Outbound[] = [];
     // "can you hear me?" first, at once and short, each time it is asked (master prompt, step 4: the tester asked it
     // after 13 s of silence and waited on)
-    if (asksIfHeard(said) && once(`hear:${i}`)) out.push(say(`Answer at once, word for word: "${heardLine(lang)}" Then carry on from where you were.`));
+    if (asksIfHeard(said) && once(`hear:${i}`)) {
+      out.push(say(`Answer at once, word for word: "${heardLine(lang)}" ${saysMoreThanHeard(said) ? 'Then answer what else they said, as usual.' : 'Then carry on from where you were.'}`));
+    }
     const human = askedIfHuman(said);
     if (human && once(`human:${i}`)) out.push(say(`Answer honestly, word for word: "${humanLine(lang)}" Then carry on.`));
     if (askedAboutRecording(said) && once(`recording:${i}`)) out.push(say(`Answer truthfully, from the clinic's setting, word for word: "${recordingLine(clinic, lang)}" Then carry on.`));

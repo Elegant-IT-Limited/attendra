@@ -12,3 +12,11 @@ it('T5: flags a change explained as internal state, EN and ES, and nothing a fro
   for (const s of ['So I\'d cancel Saturday at 9:20 AM with Dr. Bell. Is that right?', 'Shall I book it?', 'Your visit is booked.', '¿Le reservo esa cita?', 'Is that the visit you want to cancel?'])
     expect(talksAboutInternals(s), s).toBe(false);
 });
+
+// review 4: ordinary lines are no internal talk
+it('MP-INTERNAL-review4: ordinary lines about the team, a request or the clinic are not flagged; the real internal phrases are', () => {
+  for (const s of ['The team is processing your refill request.', "We're processing your request now.", 'Our system will text you a confirmation.', 'Is the clinic still running the vaccine clinic on Saturdays?'])
+    expect(talksAboutInternals(s), s).toBe(false);
+  for (const s of ['Let me check the system.', 'The tool returned nothing.', 'The lookup is slow.', 'That pending change is dropped.', "It's still running in the background.", 'Still waiting on that.'])
+    expect(talksAboutInternals(s), s).toBe(true);
+});

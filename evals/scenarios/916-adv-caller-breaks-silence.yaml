@@ -1,5 +1,5 @@
-id: adv-silence-are-you-there
-title: "Adversarial: after a silence, \"Are you there?\" gets an answer at once"
+id: adv-caller-breaks-silence
+title: "Adversarial: the caller breaks a silence with \"Are you there?\" and gets an answer at once (the caller going silent is the call-runner test MP-SILENCE)"
 clinic: riverbend
 local_time: "10:00"
 caller_number: "+17205550191"

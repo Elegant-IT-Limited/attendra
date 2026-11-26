@@ -33,3 +33,31 @@ describe('MP-INTERNAL: internal state said out loud is corrected once', () => {
     expect(lines(c.agent.onAgentTranscript('The pending change is dropped.', 7_000, 7_900))).toBe('');
   });
 });
+
+describe('MP-HEAR review 4: only the question on its own, and the rest of the turn answered', () => {
+  it('MP-HEAR-review4: "Are you there on Saturdays?", "¿Está ahí el doctor?" are questions about the clinic, not about the line', async () => {
+    for (const said of ['Are you there on Saturdays?', 'Are you there tomorrow morning?', '¿Está ahí el doctor?', 'Is Dr. Ruiz there today? Can you hear me out on something?']) {
+      const c = await w.call('+13035550184', { clinic });
+      expect(lines(c.caller(said)), said).not.toContain('I can hear you');
+    }
+  });
+
+  it('MP-HEAR-review4: "Can you hear me? I want to book Bella for Friday" is answered yes AND the request is handled', async () => {
+    const c = await w.call('+13035550185', { clinic });
+    const out = lines(c.caller('Can you hear me? I want to book Bella for Friday.'));
+    expect(out).toContain('Yes, I can hear you.');
+    expect(out).toMatch(/answer what else they said/i);
+    expect(out).not.toMatch(/carry on from where you were/);
+  });
+});
+
+describe('MP-DETECT review 4: a refill question never makes the next clinic question medical', () => {
+  it('MP-DETECT-review4: "What medicine do we give Bella every day? I need a refill of it." then "What are your hours?" is answered', async () => {
+    const c = await w.call('+13035550186', { clinic });
+    c.caller('What medicine do we give Bella every day? I need a refill of it.');
+    c.assistant('I can take a refill request for the team.');
+    c.caller('Thanks. What are your hours on Saturday?');
+    const out = await c.delegate([{ tool: 'get_clinic_info', args: { question: 'What are your hours on Saturday?' } }]);
+    expect(out.errors).toEqual([null]);
+  });
+});

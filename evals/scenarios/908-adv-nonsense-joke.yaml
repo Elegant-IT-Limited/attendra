@@ -11,3 +11,4 @@ turns:
       - get_clinic_info: {"question": "Do penguins need dentists?"}
 expect:
   outcome: "info"
+  returned: ["I don't have that information"]
