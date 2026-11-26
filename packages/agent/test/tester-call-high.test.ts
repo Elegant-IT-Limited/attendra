@@ -291,3 +291,28 @@ describe('PR2 review 2', () => {
     }
   });
 });
+
+describe('PR2 review 3', () => {
+  it('T6-review3: "Which vets are in on October 2?" names only the vets in that day', async () => {
+    const day = { ...clinic, providers: clinic.providers.map((p) => (p.id === 'prov_bell' ? { ...p, timeOff: [{ from: '2026-10-02', to: '2026-10-02' }] } : p)) };
+    const c = await w.call('+13035550171', { clinic: day });
+    c.caller('Which vets are in on October 2?');
+    const out = await c.delegate([{ tool: 'get_clinic_info', args: { question: 'Which vets are in on October 2?' } }]);
+    const spoken = String(out.results[0]!.data.spoken ?? '');
+    expect(spoken).toContain('Dr. Elena Ruiz');
+    expect(spoken).not.toContain('Dr. Marcus Bell');
+    expect(spoken).not.toContain('Dr. Hana Sato');
+  });
+
+  it('T6-review3: "Where did your vets go to school?" and "Who are your doctors and where did they train?" get one answer: the vets\' qualifications, never the address', async () => {
+    for (const q of ['Where did your vets go to school?', 'Who are your doctors and where did they train?', '¿Dónde estudiaron sus veterinarios?']) {
+      const c = await w.call('+13035550171', { clinic });
+      c.caller(q);
+      const out = await c.delegate([{ tool: 'get_clinic_info', args: { question: q } }]);
+      const data = out.results[0]!.data;
+      expect(String(data.spoken ?? ''), q).toContain('DVM');
+      expect(data.answer ?? null, q).toBeNull();
+      expect(JSON.stringify(data), q).not.toContain('88 Riverbend Road, Denver, with free parking');
+    }
+  });
+});

@@ -174,7 +174,7 @@ describe('T4 review: a held reply never starts over a caller still talking; the 
     turn(s, 'i1', 'Is Tuesday free?');
     toolCalled(s, 'call_1');
     const start = s.sent.length;
-    // the real event order: speech started ... (no transcript while they talk) ... stopped, committed, then the words
+    // the real event order: speech started ... (no transcript while they talk) ... stopped, committed, then the transcript
     s.play({ type: 'input_audio_buffer.speech_started', event_id: 'n1', item_id: 'i2' });
     sideband.send({ type: 'tool.result', event_id: 't1', call_id: 'call_1', output: JSON.stringify({ ok: true, outcome: 'ok', spoken: 'Tuesday at 9 is free.' }) });
     for (let sec = 1; sec <= 12; sec++) {
@@ -183,7 +183,6 @@ describe('T4 review: a held reply never starts over a caller still talking; the 
     }
     s.play({ type: 'input_audio_buffer.speech_stopped', event_id: 'n2', item_id: 'i2' });
     s.play({ type: 'input_audio_buffer.committed', event_id: 'n3', item_id: 'i2' });
-    s.play({ type: 'conversation.item.input_audio_transcription.delta', event_id: 'd1', item_id: 'i2', delta: 'and actually, ' });
     s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 'n4', item_id: 'i2', transcript: 'and actually, could it be Wednesday instead, in the afternoon, with Dr. Bell if she is in that day?' });
     vi.advanceTimersByTime(2000);
     expect(creates(s, start)).toHaveLength(1);
