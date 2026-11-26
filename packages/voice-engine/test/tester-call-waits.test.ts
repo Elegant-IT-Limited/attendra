@@ -166,3 +166,51 @@ describe('T9: nothing said twice', () => {
     vi.useRealTimers();
   });
 });
+
+describe('T4 review: a held reply never starts over a caller still talking; the wait counts only what the assistant owed', () => {
+  it('T4-review: a caller talking 12 s (no stop for 12 s, words still coming) holds the reply the whole time; their turn\'s end answers once', async () => {
+    vi.useFakeTimers();
+    const { s, sideband } = await engineFor('rtc_t4r1');
+    turn(s, 'i1', 'Is Tuesday free?');
+    toolCalled(s, 'call_1');
+    const start = s.sent.length;
+    s.play({ type: 'input_audio_buffer.speech_started', event_id: 'n1', item_id: 'i2' });
+    sideband.send({ type: 'tool.result', event_id: 't1', call_id: 'call_1', output: JSON.stringify({ ok: true, outcome: 'ok', spoken: 'Tuesday at 9 is free.' }) });
+    for (let sec = 1; sec <= 12; sec++) {
+      vi.advanceTimersByTime(1000);
+      s.play({ type: 'conversation.item.input_audio_transcription.delta', event_id: `d${sec}`, item_id: 'i2', delta: 'and ' });
+      expect(creates(s, start), `${sec} s`).toHaveLength(0);
+    }
+    s.play({ type: 'input_audio_buffer.speech_stopped', event_id: 'n2', item_id: 'i2' });
+    s.play({ type: 'input_audio_buffer.committed', event_id: 'n3', item_id: 'i2' });
+    s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 'n4', item_id: 'i2', transcript: 'and actually, could it be Wednesday instead, in the afternoon, with Dr. Bell if she is in that day?' });
+    vi.advanceTimersByTime(2000);
+    expect(creates(s, start)).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
+  it('T4-review: a lost stop event with nothing heard since: after the cap the stale line is dropped and the caller\'s latest words are answered', async () => {
+    vi.useFakeTimers();
+    const { s, sideband } = await engineFor('rtc_t4r2');
+    turn(s, 'i1', 'Is Tuesday free?');
+    toolCalled(s, 'call_1');
+    const start = s.sent.length;
+    s.play({ type: 'input_audio_buffer.speech_started', event_id: 'n1', item_id: 'i2' });
+    sideband.send({ type: 'tool.result', event_id: 't1', call_id: 'call_1', output: JSON.stringify({ ok: false, outcome: 'refused', say: 'Say, in these words: "Tuesday is fully booked."' }) });
+    vi.advanceTimersByTime(9000);
+    const sent = creates(s, start);
+    expect(sent).toHaveLength(1);
+    expect((sent[0]!.response as { tool_choice?: string } | undefined)?.tool_choice).toBeUndefined();
+    vi.useRealTimers();
+  });
+
+  it('T4-review: the caller\'s own pauses between sentences are no wait; a silence the assistant owed is', async () => {
+    const h = harness();
+    await h.runner.handle(said('out', 'o1', 'Thanks for calling. How can I help?', 0, 1500));
+    await h.runner.handle(said('in', 'i1', 'I want to register my cat.', 2000, 1500)); // ends 3500
+    await h.runner.handle(said('in', 'i2', 'She is two years old.', 5500, 1000)); // a 2 s pause of the caller's own
+    await h.runner.handle(said('out', 'o2', 'What is her name?', 7300)); // 800 ms after
+    await h.runner.handle({ type: 'session.closed', event_id: 'c1', reason: 'remote_hangup', usage: { seconds: 10 } });
+    expect(h.closes.at(-1)!.quality.maxGapMs).toBe(800);
+  });
+});
