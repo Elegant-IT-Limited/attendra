@@ -116,26 +116,11 @@ describe('the texts table, row by row, in English and Spanish (batch 1e)', () =>
         expect((await ask('transfer_failed_backup', language, ASKS.hours)).refused).toBe('emergency_in_progress');
       });
 
-      it('RPT-batch-1b-9: the transfer failed with no backup hospital: the clinic\'s emergency number is texted, after a yes', async () => {
-        for (const kind of [ASKS.address, ASKS.hospital]) {
-          const t = await ask('transfer_failed', language, kind);
-          expect(t.refused).toBeNull();
-          // review 3: the phone number alone, in its own words: never the clinic's address (it may be closed) or "emergency vet:"
-          expect(t.text).toMatchObject({ template: 'emergency_line', vars: { emergencyLine: TEAM } });
-          expect(t.text!.body).not.toMatch(/88 Riverbend Road|emergency vet|urgencias veterinarias|, ,/);
-          expect(t.text!.body).toContain(language === 'es' ? 'línea de emergencias' : 'emergency line');
-        }
+      it('RPT-batch-1b-9: no new text wording, the failed transfer with no hospital still refuses no_hospital (owner decision 26 Nov)', async () => {
+        for (const kind of [ASKS.address, ASKS.hospital]) expect((await ask('transfer_failed', language, kind)).refused).toBe('no_hospital');
         expect((await ask('transfer_failed', language, ASKS.hours)).refused).toBe('emergency_in_progress');
-      });
-
-      it('RPT-batch-1b-9: with no emergency number either, there is still nothing to text', async () => {
-        const none = ClinicConfig.parse({ ...base, emergencies: { mode: 'handle', number: TEAM } });
-        const c = await w.call('+13035550147', { clinic: none });
-        c.state.language = language;
-        escalated(c.state, none, 'failed');
-        c.state.emergencyCase!.route = { ...c.state.emergencyCase!.route!, number: null } as never;
-        const out = await c.delegate([{ tool: 'send_text', args: { kind: ASKS.hospital, ref: null, to: null } }]);
-        expect(out.errors[0]).toBe('no_hospital');
+        // no text of a new wording exists to be sent instead
+        expect(Object.keys(PACKS[language].sms)).not.toContain('emergency_line');
       });
     });
   }

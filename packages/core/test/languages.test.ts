@@ -51,7 +51,7 @@ describe('language packs', () => {
 
 const SAMPLE = {
   address: '400 Main Street, Denver, CO 80202', mapUrl: 'https://maps.google.com/?q=400%20Main%20Street%2C%20Denver', hours: 'Mon–Fri 8 AM–5 PM, Sat 9 AM–12 PM',
-  hospital: 'Front Range Pet Emergency', hospitalAddress: '1200 Colfax Avenue, Denver', hospitalPhone: '+13035550199', emergencyLine: '+13035550177', emergencyNumber: '911',
+  hospital: 'Front Range Pet Emergency', hospitalAddress: '1200 Colfax Avenue, Denver', hospitalPhone: '+13035550199', emergencyNumber: '911',
   provider: 'Dr. Priya Shah', details: 'DVM, Exotics, Dentistry', answer: 'Please bring your pet\'s vaccine records to the first visit.', label: 'New client form', url: 'https://riverbend.example/new-client', pharmacy: 'CVS on Colfax Avenue',
 };
 
