@@ -12,7 +12,7 @@ import { createHash } from 'node:crypto';
 import { fillFromMemory } from './call-memory';
 import { dayReason, doesntDoType, frontDeskLine, nothingFound, vetHoursLine } from './slot-answer';
 import { doneAfterEmergency, justAsking } from './flow/emergency';
-import { nameHeardInFragment, petFactNotSaid } from './flow/pet-facts';
+import { isKindWord, nameHeardInFragment, petFactNotSaid } from './flow/pet-facts';
 import { householdNames } from './flow/voice-tools';
 import type { CallState } from './call-state';
 import { answerForAsked, answersFromFaqs, asksIfOffered } from './knowledge';
@@ -2209,13 +2209,16 @@ function nextPetQuestion(state: CallState, args: Record<string, unknown>, lang: 
 }
 
 /**
- * A one-word "name" the caller said as the kind of animal: "un perro nuevo", "a new dog", "mi gata" (the owner's final
- * live run registered a pet named "perro" before its name was asked). "Kitten" said as a name is still a name.
+ * A "name" that is only the kind of animal the caller described: "Quiero registrar un perro nuevo" registered as
+ * "perro" (the owner's final live run). Only a kind word (pet-facts' lists, EN/ES), said as the kind ("un/a/my (new)
+ * perro"), and never given as the name ("a kitten named Kitten", "se llama Gatita"); "my Luna" is a name (review).
  */
 function saidAsKind(name: string, state: CallState): boolean {
   const n = normalise(name).trim().replace(/[.,!?]+$/, '');
-  if (!/^\p{L}+$/u.test(n)) return false;
-  return new RegExp(`\\b(?:a|an|un|una|my|mi|our|nuestro|nuestra)\\s+(?:new\\s+|nuev[oa]\\s+)?${n}\\b`).test(normalise(state.recentCallerText()));
+  if (!/^\p{L}+$/u.test(n) || !isKindWord(n)) return false;
+  const said = normalise(state.recentCallerText());
+  if (new RegExp(`\\b(?:named|called|name is|name's|se llama|llamad[oa]|su nombre es|de nombre)\\s+${n}\\b`).test(said)) return false;
+  return new RegExp(`\\b(?:a|an|un|una|my|mi|our|nuestro|nuestra)\\s+(?:new\\s+|nuev[oa]\\s+)?${n}\\b`).test(said);
 }
 
 /** A new pet, with its owner as the guardian on the record. The front desk checks every one. */

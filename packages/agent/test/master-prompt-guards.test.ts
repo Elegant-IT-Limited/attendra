@@ -313,5 +313,22 @@ describe('LIVE: the adversarial live run', () => {
     k.caller("Hi, I'm Corin Vale. I want to register a new dog, he's male and about two.");
     expect((await k.delegate([{ tool: 'register_patient', args: { pet_name: 'Kitten', owner_name: 'Corin Vale', species: 'dog', sex: 'male', birthday_or_age: 'two years', phone: null } }])).errors).not.toEqual(['pet_name']);
   });
+
+  // review: only a kind of animal, said as the kind and never given as the name, is refused
+  it('FINAL-NAME2: a real name after "my/a/mi" registers; a kind said as the kind asks the name; "a kitten named Kitten" registers (EN/ES)', async () => {
+    const register = async (lang: 'en' | 'es', line: string, name: string) => {
+      const c = await w.call('+13035550176', { clinic });
+      c.state.language = lang;
+      c.caller(line);
+      return (await c.delegate([{ tool: 'register_patient', args: { pet_name: name, owner_name: 'Corin Vale', species: 'dog', sex: 'female', birthday_or_age: 'two years', phone: null } }])).errors[0];
+    };
+    expect(await register('en', "I'm Corin Vale. I want to register my Luna, she's a two-year-old dog.", 'Luna')).not.toBe('pet_name');
+    expect(await register('en', "I'm Corin Vale. My Coco is new here, she's a two-year-old dog.", 'Coco')).not.toBe('pet_name');
+    expect(await register('es', 'Soy Corin Vale. Quiero registrar a mi Perla, es una perra de dos años.', 'Perla')).not.toBe('pet_name');
+    expect(await register('en', "I'm Corin Vale. I have a new kitten named Kitten, she's two.", 'Kitten')).not.toBe('pet_name');
+    expect(await register('es', 'Soy Corin Vale. Tengo una gatita nueva que se llama Gatita.', 'Gatita')).not.toBe('pet_name');
+    expect(await register('es', 'Hola, soy Corin Vale. Quiero registrar un perro nuevo, es macho y tiene unos dos años.', 'perro')).toBe('pet_name');
+    expect(await register('en', "Hi, I'm Corin Vale. I want to register a new puppy, she's two.", 'puppy')).toBe('pet_name');
+  });
 });
 
