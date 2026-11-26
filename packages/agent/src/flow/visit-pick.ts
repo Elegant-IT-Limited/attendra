@@ -10,11 +10,11 @@ export interface UpcomingVisit { id: string; start: Date; providerId?: string }
  * booking a second visit the caller asked to move "it" to another day, and the visit the clinic had booked earlier was moved,
  * then the wrong one cancelled). In this order:
  * 1. the visit the caller's own words name last, by its time or, when no other visit shares it, its day ("the 2:00
- *    one", "315", "the Thursday one") or its vet ("the booking with Dr. Maya"), since the latest visit booked on this
+ *    one", "315", "the Thursday one") or its vet ("the booking with Dr. Ruiz"), since the latest visit booked on this
  *    call when there is one;
  * 2. "it", with none named: the visit booked or moved on this call. Never when the caller's words name a vet, a day or
  *    another pet that does not pick one visit: a named vet, day or pet always wins over "the one just booked" (T3, a
- *    tester's call 2026-11-24: "cancel the booking with Dr. Maya" was turned into the visit just booked, with Dr. Patel);
+ *    tester's call 2026-11-24: "cancel the booking with Dr. <first name>" was turned into the visit just booked, with another vet);
  * 3. the visit the assistant itself put forward to move ("would you rather move that one?").
  * Null when none of these says: the caller is asked which, naming each.
  */
@@ -69,7 +69,7 @@ function namedIn(
 
 const TITLE = /^(?:dr|dra|doctor|doctora|doc)$/;
 /**
- * The vets these words name: a part of the vet's name after a title ("Dr. Maya", "la doctora Chen"), by sound, or a
+ * The vets these words name: a part of the vet's name after a title ("Dr. Elena", "la doctora Ruiz"), by sound, or a
  * whole first or last name of four letters or more said on its own ("the one with Ruiz").
  */
 export function vetsNamedIn(text: string, providers: readonly Pick<Provider, 'id' | 'name' | 'kind'>[], pets: readonly string[] = []): Set<string> {
