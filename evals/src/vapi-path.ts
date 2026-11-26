@@ -63,7 +63,7 @@ export const VAPI_PATH_SCENARIOS = [
   'vet-T9-said-once', 'vet-es-T9-said-once', 'vet-tester-call-whole', 'vet-es-tester-call-whole',
   'vet-T6-vets-answered-once', 'vet-es-T6-vets-answered-once', 'vet-T7-household-kept', 'vet-es-T7-household-kept',
   'vet-T8-visit-to-another-pet', 'vet-es-T8-visit-to-another-pet', 'vet-T10-one-question', 'vet-es-T10-one-question',
-  'vet-T11-fragment-confirmed', 'vet-es-T11-fragment-confirmed', 'vet-T12-slot-args-shapes', 'vet-es-T12-slot-args-shapes',
+  'vet-T11-fragment-confirmed', 'vet-es-T11-fragment-confirmed', 'vet-T12-slot-args-shapes', 'vet-es-T12-slot-args-shapes', 'vet-T12-day-with-part', 'vet-es-T12-day-with-part',
   'vet-T13-verified-on-calling-number', 'vet-es-T13-verified-on-calling-number',
   'vet-T8-swap-wrong-vet', 'vet-es-T8-swap-wrong-vet',
   // a plain yes in either language at every clinic (owner decision, 26 Nov)

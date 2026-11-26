@@ -1,0 +1,17 @@
+id: vet-T12-day-with-part
+title: "T12: find_slots with from_date 'tomorrow morning' (part of day in the day's words) is read as tomorrow, in the morning, never invalid_arguments (the owner's live rerun, 2026-11-26)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, tester-call, booking]
+turns:
+  - caller: Hi, Linh Nguyen. Can Biscuit come in tomorrow morning for a sick visit?
+    reply: "{offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: tomorrow morning, part_of_day: morning, time_mode: earliest }
+expect:
+  outcome: abandoned
+  verified: true
+  refusals: []
+  not_offered_on: ["2026-09-28", "2026-09-30", "2026-10-01", "2026-10-02"]
+  never_returned: ["invalid_arguments"]

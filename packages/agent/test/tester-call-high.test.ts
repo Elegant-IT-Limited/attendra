@@ -134,7 +134,9 @@ describe('T11: a fragment in another language is confirmed before it is used', (
 describe('T12: find_slots takes the argument shapes voice models send', () => {
   const shapes: Record<string, unknown>[] = [];
   const provider = [undefined, null, 'any', 'none', '', 'prov_ruiz', 'Dr. Ruiz', 'Elena Ruiz', 'ruiz'];
-  const date = [undefined, null, 'any', '', '2026-10-01', '2026-10-01T09:00:00', 'tomorrow', 'today', 'Thursday', 'next Thursday', 'October 1', '10/01/2026', 'mañana', 'el jueves'];
+  const date = [undefined, null, 'any', '', '2026-10-01', '2026-10-01T09:00:00', 'tomorrow', 'today', 'Thursday', 'next Thursday', 'October 1', '10/01/2026', 'mañana', 'el jueves',
+    // a day with a part of day or a time in the same words (the owner's live rerun, 2026-11-26: "tomorrow morning")
+    'tomorrow morning', 'tomorrow afternoon', 'Friday morning', 'next Tuesday at 3', 'this evening', 'mañana por la mañana', 'el viernes por la tarde', 'pasado mañana'];
   const part = [undefined, null, 'any', 'morning', 'Afternoon', 'evening', ''];
   const time = [undefined, null, '', '15:00', '3pm', '3:30 PM', '15:00:00', 'noon', 'after 3'];
   // every value of each argument at least once, with the others varied, as a property check
@@ -161,6 +163,35 @@ describe('T12: find_slots takes the argument shapes voice models send', () => {
     expect(bad).toEqual([]);
     expect((slotArgsAsMeant({ visit_type_id: 'vt_sick', provider_id: 'Dr. Ruiz' }, clinic) as { provider_id: unknown }).provider_id).toBe('prov_ruiz');
     expect((slotArgsAsMeant({ visit_type_id: 'vt_sick', from_date: 'tomorrow' }, clinic, new Date('2026-09-28T16:00:00Z')) as { from_date: unknown }).from_date).toBe('2026-09-29');
+  });
+});
+
+describe('T12-live: a day said with a part of day or a time is read as both', () => {
+  const now = new Date('2026-09-28T16:00:00Z');
+  const meant = (from_date: string, part_of_day: unknown = null) => slotArgsAsMeant({ visit_type_id: 'vt_sick', provider_id: null, from_date, part_of_day }, clinic, now) as Record<string, unknown>;
+  const day = (words: string) => meant(words).from_date;
+
+  it('T12-live: the date part is taken, and part_of_day filled from the words when it was left out (EN/ES)', () => {
+    expect(meant('tomorrow morning')).toMatchObject({ from_date: '2026-09-29', part_of_day: 'morning' });
+    expect(meant('tomorrow afternoon')).toMatchObject({ from_date: '2026-09-29', part_of_day: 'afternoon' });
+    expect(meant('Friday morning')).toMatchObject({ from_date: day('Friday'), part_of_day: 'morning' });
+    expect(meant('next Tuesday at 3')).toMatchObject({ from_date: day('next Tuesday'), from_time: '15:00', time_mode: 'at' });
+    expect(meant('this evening')).toMatchObject({ from_date: '2026-09-28', part_of_day: 'afternoon' });
+    expect(meant('mañana por la mañana')).toMatchObject({ from_date: '2026-09-29', part_of_day: 'morning' });
+    expect(meant('el viernes por la tarde')).toMatchObject({ from_date: day('el viernes'), part_of_day: 'afternoon' });
+    expect(meant('pasado mañana')).toMatchObject({ from_date: '2026-09-30', part_of_day: 'any' });
+    expect(meant('tomorrow morning', 'any')).toMatchObject({ from_date: '2026-09-29', part_of_day: 'morning' });
+    // a part of day the model gave is kept
+    expect(meant('tomorrow morning', 'afternoon')).toMatchObject({ from_date: '2026-09-29', part_of_day: 'afternoon' });
+  });
+
+  it('T12-live: from_date "tomorrow morning" with part_of_day "morning" (the live call) finds tomorrow morning, never invalid_arguments', async () => {
+    const c = await w.call('+17205550172', { clinic });
+    c.caller('Hi, Linh Nguyen. Can Biscuit come in tomorrow morning for a sick visit?');
+    await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: 'Biscuit' } }]);
+    const out = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, provider_gender: null, specialty: null, from_date: 'tomorrow morning', part_of_day: 'morning', from_time: null, time_mode: 'earliest', propose_if_exact: null } }]);
+    expect(out.errors).toEqual([null]);
+    expect(JSON.stringify(out.results[0]!.data.slots)).toContain('September 29');
   });
 });
 
