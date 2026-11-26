@@ -1,0 +1,18 @@
+id: vet-es-T12-day-with-part
+title: "T12 in Spanish: find_slots with from_date 'mañana por la mañana' and no part of day is read as tomorrow, in the morning, never invalid_arguments (the owner's live rerun, 2026-11-26)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, tester-call, booking, es]
+turns:
+  - caller: Hola, soy Linh Nguyen. ¿Puede venir Biscuit mañana por la mañana por una consulta por enfermedad?
+    reply: "{offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: mañana por la mañana, part_of_day: null }
+expect:
+  outcome: abandoned
+  verified: true
+  language: es
+  refusals: []
+  not_offered_on: ["2026-09-28", "2026-09-30", "2026-10-01", "2026-10-02"]
+  never_returned: ["invalid_arguments"]

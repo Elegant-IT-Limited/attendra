@@ -261,6 +261,16 @@ export function slotArgsAsMeant(args: unknown, clinic?: Pick<ClinicConfig, 'prov
     const named = providerNamed(clinic.providers, a.provider_id);
     if (named) a.provider_id = named.id;
   }
+  // a day said with a part of day or a time ("tomorrow morning", "next Tuesday at 3", "mañana por la mañana"): the day
+  // here, and the part of day or time where they go when the model left them out (the owner's live rerun, 2026-11-26)
+  if (typeof a.from_date === 'string' && !/^\d{4}-\d{2}-\d{2}/.test(a.from_date.trim())) {
+    const said = dayAndPart(a.from_date);
+    if (said) {
+      a.from_date = said.day;
+      if (said.part && (a.part_of_day === null || a.part_of_day === undefined || a.part_of_day === '' || open(a.part_of_day) || a.part_of_day === 'any')) a.part_of_day = said.part;
+      if (said.time && (a.from_time === null || a.from_time === undefined || a.from_time === '')) { a.from_time = said.time; a.time_mode ??= said.mode; }
+    }
+  }
   // a day in words ("tomorrow", "next Thursday", "October 1", "10/01/2026", "el jueves"): its date on the clinic's clock
   if (clinic && typeof a.from_date === 'string' && !/^\d{4}-\d{2}-\d{2}/.test(a.from_date.trim())) { const d = dateSaid(a.from_date, clinic, now); if (d && d !== INVALID_DATE) a.from_date = d; }
   // "noon", "after 3", "before 5", "around 4": the time, and how it was said
@@ -285,6 +295,31 @@ export function slotArgsAsMeant(args: unknown, clinic?: Pick<ClinicConfig, 'prov
   if (typeof a.time_mode === 'string') { const t = a.time_mode.trim().toLowerCase(); a.time_mode = t === 'exact' || t === 'exactly' ? 'at' : t === 'first' || t === 'soonest' ? 'earliest' : t; }
   if (typeof a.propose_if_exact === 'string') a.propose_if_exact = /^true$/i.test(a.propose_if_exact) ? true : /^false$/i.test(a.propose_if_exact) ? false : a.propose_if_exact;
   return a;
+}
+
+/**
+ * A from_date that says a part of day or a time with the day: "tomorrow morning", "Friday afternoon", "next Tuesday at 3",
+ * "this evening", "mañana por la mañana", "el viernes por la tarde". The day's words, and the part of day or the time;
+ * null when the words say neither. A bare hour of 1 to 7 is in the afternoon, as clinic hours are.
+ */
+function dayAndPart(fromDate: string): { day: string; part: 'morning' | 'afternoon' | null; time: string | null; mode: 'at' | 'after' | 'before' | 'around' | null } | null {
+  const t = normalise(fromDate).replace(/[,.]/g, ' ').replace(/\s+/g, ' ').trim();
+  const partOf = (w: string) => (/^(?:morning|manana)$/.test(w) ? 'morning' as const : 'afternoon' as const);
+  const today = /^(?:this (morning|afternoon|evening)|tonight|esta (manana|tarde|noche))$/.exec(t);
+  if (today) return { day: 'today', part: partOf(today[1] ?? today[2] ?? 'evening'), time: null, mode: null };
+  const part = /^(.+?) (?:in the )?(morning|afternoon|evening|night)$|^(.+?) (?:por|en|de) la (manana|tarde|noche)$/.exec(t);
+  if (part) return { day: (part[1] ?? part[3])!, part: partOf((part[2] ?? part[4])!), time: null, mode: null };
+  const time = /^(.+?) (at|around|about|after|before|a las|sobre las|despues de las|antes de las) (\d{1,2})(?::(\d{2}))? ?(am|pm|a m|p m)?$/.exec(t);
+  if (!time) return null;
+  let h = Number(time[3]);
+  const ampm = (time[5] ?? '').replace(' ', '');
+  if (ampm === 'pm' && h < 12) h += 12;
+  else if (ampm === 'am' && h === 12) h = 0;
+  else if (!ampm && h >= 1 && h <= 7) h += 12;
+  if (h > 23) return null;
+  const how = time[2]!;
+  const mode = /after|despues/.test(how) ? 'after' as const : /before|antes/.test(how) ? 'before' as const : /around|about|sobre/.test(how) ? 'around' as const : 'at' as const;
+  return { day: time[1]!, part: null, time: `${String(h).padStart(2, '0')}:${time[4] ?? '00'}`, mode };
 }
 
 const WEEKDAYS: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6, domingo: 0, lunes: 1, martes: 2, miercoles: 3, jueves: 4, viernes: 5, sabado: 6 };
