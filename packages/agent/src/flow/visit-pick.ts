@@ -10,11 +10,11 @@ export interface UpcomingVisit { id: string; start: Date; providerId?: string }
  * booking a second visit the caller asked to move "it" to another day, and the visit the clinic had booked earlier was moved,
  * then the wrong one cancelled). In this order:
  * 1. the visit the caller's own words name last, by its time or, when no other visit shares it, its day ("the 2:00
- *    one", "315", "the Thursday one") or its vet ("the booking with Dr. Maya"), since the latest visit booked on this
+ *    one", "315", "the Thursday one") or its vet ("the booking with Dr. Ruiz"), since the latest visit booked on this
  *    call when there is one;
  * 2. "it", with none named: the visit booked or moved on this call. Never when the caller's words name a vet, a day or
  *    another pet that does not pick one visit: a named vet, day or pet always wins over "the one just booked" (T3, a
- *    tester's call 2026-11-24: "cancel the booking with Dr. Maya" was turned into the visit just booked, with Dr. Patel);
+ *    tester's call 2026-11-24: "cancel the booking with Dr. <first name>" was turned into the visit just booked, with another vet);
  * 3. the visit the assistant itself put forward to move ("would you rather move that one?").
  * Null when none of these says: the caller is asked which, naming each.
  */
@@ -28,7 +28,7 @@ export function visitMeant(
   for (let i = state.turns.length - 1; i >= from; i--) {
     const turn = state.turns[i]!;
     if (turn.speaker !== 'caller') continue;
-    const named = namedIn(turn.text, upcoming, timeZone, now, providers);
+    const named = namedIn(turn.text, upcoming, timeZone, now, providers, state.memory.pets, state.memory.visit?.providerId ?? null);
     if (named.id) return { id: named.id, why: 'named' };
     if (named.something || otherPetNamed(turn.text, state)) namedSomething = true;
   }
@@ -42,12 +42,22 @@ export function visitMeant(
  * The one visit these words name: by its time, by its day when it is the only visit that day, or by its vet when it is
  * the only visit with them. `something` when the words name a time, a day or a vet that fits more than one visit.
  */
-function namedIn(text: string, upcoming: readonly UpcomingVisit[], timeZone: string, now: Date, providers: readonly Pick<Provider, 'id' | 'name' | 'kind'>[]): { id: string | null; something: boolean } {
+/** "the other doctor", "el otro veterinario": the visit that is not with the vet of the visit just booked (reviewer, T3). */
+const OTHER_VET = /\b(?:the other (?:doctor|vet|veterinarian|dr)|(?:el otro|la otra) (?:doctor|doctora|veterinario|veterinaria|medico|medica))\b/;
+
+function namedIn(
+  text: string, upcoming: readonly UpcomingVisit[], timeZone: string, now: Date, providers: readonly Pick<Provider, 'id' | 'name' | 'kind'>[],
+  pets: readonly string[] = [], bookedVet: string | null = null,
+): { id: string | null; something: boolean } {
+  if (OTHER_VET.test(normalise(text))) {
+    const others = bookedVet ? upcoming.filter((a) => a.providerId !== undefined && a.providerId !== bookedVet) : [];
+    return { id: others.length === 1 ? others[0]!.id : null, something: true };
+  }
   const byTime = upcoming.filter((a) => saysClockTime(text, a.start, timeZone));
   if (byTime.length === 1) return { id: byTime[0]!.id, something: true };
   if (byTime.length > 1) return { id: null, something: true };
   const byDay = upcoming.filter((a) => saysVisitDay(text, a.start, timeZone, now));
-  const vets = vetsNamedIn(text, providers);
+  const vets = vetsNamedIn(text, providers, pets);
   const byVet = vets.size ? upcoming.filter((a) => a.providerId !== undefined && vets.has(a.providerId)) : [];
   // a day and a vet together narrow it to the visit that has both
   const both = byDay.filter((a) => byVet.includes(a));
@@ -59,18 +69,20 @@ function namedIn(text: string, upcoming: readonly UpcomingVisit[], timeZone: str
 
 const TITLE = /^(?:dr|dra|doctor|doctora|doc)$/;
 /**
- * The vets these words name: a part of the vet's name after a title ("Dr. Maya", "la doctora Chen"), by sound, or a
+ * The vets these words name: a part of the vet's name after a title ("Dr. Elena", "la doctora Ruiz"), by sound, or a
  * whole first or last name of four letters or more said on its own ("the one with Ruiz").
  */
-export function vetsNamedIn(text: string, providers: readonly Pick<Provider, 'id' | 'name' | 'kind'>[]): Set<string> {
-  const words = normalise(text).replace(/[^\p{L}\p{N}' ]+/gu, ' ').split(' ').filter(Boolean);
+export function vetsNamedIn(text: string, providers: readonly Pick<Provider, 'id' | 'name' | 'kind'>[], pets: readonly string[] = []): Set<string> {
+  const words = normalise(text).replace(/'s\b/g, '').replace(/[^\p{L}\p{N}' ]+/gu, ' ').split(' ').filter(Boolean);
+  // a name the caller's own pet has is the pet's, unless a title goes before it ("Dr. Bella"): reviewer, T3
+  const petNames = new Set(pets.map((p) => normalise(p)));
   const out = new Set<string>();
   for (const p of providers) {
     if (p.kind === 'room') continue;
     const parts = normalise(p.name).replace(/[^\p{L}' ]+/gu, ' ').split(' ').filter((w) => w.length > 1 && !TITLE.test(w));
     words.forEach((w, i) => {
       const titled = i > 0 && TITLE.test(words[i - 1]!);
-      if (parts.some((part) => (titled && soundsLike(w, part)) || (part.length >= 4 && w === part))) out.add(p.id);
+      if (parts.some((part) => (titled && soundsLike(w, part)) || (part.length >= 4 && w === part && !petNames.has(w)))) out.add(p.id);
     });
   }
   return out;

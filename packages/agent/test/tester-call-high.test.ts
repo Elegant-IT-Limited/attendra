@@ -109,24 +109,24 @@ describe('T10: one registration question at a time', () => {
 });
 
 describe('T11: a fragment in another language is confirmed before it is used', () => {
-  it('T11: "Es Kelly." on an English call is asked back ("Kelly is the pet\'s name, right?") before the pet is added', async () => {
+  it('T11: "Es Sunny." on an English call is asked back ("Sunny is the pet\'s name, right?") before the pet is added', async () => {
     const c = await w.call('+13035550174', { clinic });
     c.caller("Hi, I'm Corin Vale. I'd like to add a new dog, a girl, about one year old.");
     c.assistant("What is your dog's name?");
-    c.caller('Es Kelly.');
-    const out = await c.delegate([{ tool: 'register_patient', args: { pet_name: 'Kelly', owner_name: 'Corin Vale', species: 'dog', sex: 'female', birthday_or_age: 'about one year', phone: null } }]);
+    c.caller('Es Sunny.');
+    const out = await c.delegate([{ tool: 'register_patient', args: { pet_name: 'Sunny', owner_name: 'Corin Vale', species: 'dog', sex: 'female', birthday_or_age: 'about one year', phone: null } }]);
     expect(out.errors).toEqual(['confirm_pet_name']);
-    expect(said(out)).toContain("Kelly is the pet's name, right?");
+    expect(said(out)).toContain("Sunny is the pet's name, right?");
     expect(c.state.verifiedPatient).toBeNull();
     c.caller('Yes.');
-    const added = await c.delegate([{ tool: 'register_patient', args: { pet_name: 'Kelly', owner_name: 'Corin Vale', species: 'dog', sex: 'female', birthday_or_age: 'about one year', phone: null } }]);
+    const added = await c.delegate([{ tool: 'register_patient', args: { pet_name: 'Sunny', owner_name: 'Corin Vale', species: 'dog', sex: 'female', birthday_or_age: 'about one year', phone: null } }]);
     expect(added.errors).toEqual([null]);
   });
 
   it('T11: a name said in a sentence of the call\'s own language is used at once', async () => {
     const c = await w.call('+13035550175', { clinic });
-    c.caller("Hi, I'm Corin Vale. I'd like to add my new dog Kelly, she's about one year old.");
-    const added = await c.delegate([{ tool: 'register_patient', args: { pet_name: 'Kelly', owner_name: 'Corin Vale', species: 'dog', sex: 'female', birthday_or_age: 'about one year', phone: null } }]);
+    c.caller("Hi, I'm Corin Vale. I'd like to add my new dog Sunny, she's about one year old.");
+    const added = await c.delegate([{ tool: 'register_patient', args: { pet_name: 'Sunny', owner_name: 'Corin Vale', species: 'dog', sex: 'female', birthday_or_age: 'about one year', phone: null } }]);
     expect(added.errors).toEqual([null]);
   });
 });
@@ -194,5 +194,78 @@ describe('T8: a visit moved to another pet keeps to the vets who see that animal
     expect(said(out)).toContain('Dr. Marcus Bell');
     expect(said(out)).toContain('Dr. Hana Sato');
     expect(c.state.pending).toBeNull();
+  });
+});
+
+describe('PR2 review', () => {
+  it('T6-review: the vets\' list only for who the vets are; an address, the hours or a price keep the clinic\'s own answer', async () => {
+    for (const q of ["What is the vet's address?", '¿A qué hora abre el veterinario?', 'What do the vets charge for a dental?']) {
+      const c = await w.call('+13035550171', { clinic });
+      c.caller(q);
+      const out = await c.delegate([{ tool: 'get_clinic_info', args: { question: q } }]);
+      expect(String(out.results[0]!.data.spoken ?? ''), q).not.toContain('Dr. Marcus Bell');
+    }
+    const c = await w.call('+13035550171', { clinic });
+    c.caller("What is the vet's address?");
+    const out = await c.delegate([{ tool: 'get_clinic_info', args: { question: "What is the vet's address?" } }]);
+    expect(out.results[0]!.data.source).toBe('faq_address');
+  });
+
+  it('T6-review: in Spanish the specialty is said in Spanish', async () => {
+    const c = await w.call('+13035550171', { clinic });
+    c.caller('¿Quiénes son sus veterinarios?');
+    const out = await c.delegate([{ tool: 'get_clinic_info', args: { question: '¿Quiénes son sus veterinarios?' } }]);
+    const spoken = String(out.results[0]!.data.spoken ?? '');
+    expect(spoken).toContain('medicina general');
+    expect(spoken).toContain('animales exóticos');
+    expect(spoken).not.toMatch(/general practice|exotic pets/i);
+  });
+
+  it('T8-review: the visit moves in one step: if the other pet cannot have it, the first pet keeps it, and the caller hears the truth', async () => {
+    const c = await w.call('+17205550172', { clinic });
+    c.caller('Hi, Linh Nguyen, for Biscuit.');
+    await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: 'Biscuit' } }]);
+    // Mochi already has a visit at that time, so the move can't go through
+    const found = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: 'prov_ruiz', from_date: '2026-10-13', part_of_day: 'any' } }]);
+    const slot = (found.results[0]!.data.slots as { slot_id: string }[])[0]!.slot_id;
+    await c.delegate([{ tool: 'propose_booking', args: { slot_id: slot, replaces_appointment_id: null } }]);
+    c.readBack('Shall I book it?');
+    c.caller('Yes.');
+    await c.delegate([{ tool: 'commit_pending', args: {} }]);
+    const biscuit = c.state.verifiedPatient!.id;
+    const [visit] = await w.backend.scheduler.upcoming(clinic.id, biscuit, new Date('2026-10-13T00:00:00Z'));
+    await w.backend.scheduler.book(clinic.id, { patientId: w.patientIds.mochi!, callId: c.callId, idempotencyKey: 'mochi-busy', slot: { id: 'x', providerId: 'prov_bell', visitTypeId: 'vt_sick', start: visit!.start, end: new Date(visit!.start.getTime() + 20 * 60_000) } });
+    c.caller('Give that visit to Mochi instead.');
+    await c.delegate([{ tool: 'move_visit_to_pet', args: { appointment_id: visit!.id, pet_name: 'Mochi' } }]);
+    c.readBack('Shall I?');
+    c.caller('Yes.');
+    const done = await c.delegate([{ tool: 'commit_pending', args: {} }]);
+    expect(done.errors[0]).toMatch(/patient_busy|swap_failed/);
+    const still = await w.backend.scheduler.upcoming(clinic.id, biscuit, new Date('2026-10-13T00:00:00Z'));
+    expect(still.map((a) => a.id)).toEqual([visit!.id]); // the very same visit, never cancelled and booked again
+  });
+
+  it('T12-review: an impossible date ("February 30", "02/30/2027", "June 31") is never moved to another day', async () => {
+    const c = await w.call('+17205550172', { clinic });
+    c.caller('Hi, Linh Nguyen, for Biscuit.');
+    await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: 'Biscuit' } }]);
+    for (const d of ['February 30', '02/30/2027', 'June 31', '31 de junio']) {
+      expect((slotArgsAsMeant({ visit_type_id: 'vt_sick', from_date: d }, clinic, new Date('2026-09-28T16:00:00Z')) as { from_date: unknown }).from_date, d).not.toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      const out = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: d, part_of_day: 'any' } }]);
+      expect(out.errors[0], d).toBe('invalid_date');
+      expect(String(out.results[0]!.data.say), d).toMatch(/isn't a date|no es una fecha/);
+    }
+  });
+
+  it('T13-review: a pet added under a number the caller said (not the one calling) does not mark the call verified', async () => {
+    const c = await w.call(null, { clinic, channel: 'web' });
+    c.caller("I'm Corin Vale, my new cat Tango is two years old, she's a girl. The number is 303 555 0179.");
+    let out = await c.delegate([{ tool: 'register_patient', args: { pet_name: 'Tango', owner_name: 'Corin Vale', species: 'cat', sex: 'female', birthday_or_age: 'two years', phone: '303 555 0179' } }]);
+    for (let i = 0; i < 3 && out.errors[0] !== null; i++) {
+      if (out.errors[0] === 'confirm_number') { c.assistant("That's 3 0 3, 5 5 5, 0 1 7 9?"); c.caller('Yes.'); }
+      out = await c.delegate([{ tool: 'register_patient', args: { pet_name: 'Tango', owner_name: 'Corin Vale', species: 'cat', sex: 'female', birthday_or_age: 'two years', phone: '303 555 0179' } }]);
+    }
+    expect(out.results[0]!.data.registered).toBe(true);
+    expect(out.results[0]!.data.verified).toBeUndefined();
   });
 });

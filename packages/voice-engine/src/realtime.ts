@@ -265,6 +265,8 @@ export const SHORT_TURN_WAIT_MS = 1500;
  * dropped, silences of 13 to 20 s; the foundation review asked for 6 to 8 s).
  */
 export const CALLER_TALKING_MAX_MS = 8_000;
+/** Past that cap, a sign of speech this recent (words still being written down) means the caller is still talking. */
+export const STILL_TALKING_MS = 1500;
 /** The note for tool results that came while the caller was still talking (R3). */
 export const CALLER_WENT_ON_NOTE = 'The caller went on talking before these results could be said. When they finish, answer what they said, using these results only if they still fit: call the tool again with any detail they just added (a number, the last four digits, a name). Never say a lookup failed if they have since given more.';
 /** The longest a reply waits for the caller's words before it, when transcription is slow. */
@@ -597,7 +599,11 @@ export class RealtimeEngine implements VoiceEngine {
     // 0101"; a reply went out 0.35 s into the second part, and its failed lookup was said over the caller). A start with
     // no stop for 15 s no longer holds anything back.
     let callerTalkingSince: number | null = null;
-    const callerTalking = () => callerTalkingSince !== null && Date.now() - callerTalkingSince < CALLER_TALKING_MAX_MS;
+    // the last sign the caller is still speaking (a start of speech, words being written down): past the cap, a reply
+    // held for them still waits while these keep coming (reviewer, T4: it was released over a caller still talking)
+    let heardAt = 0;
+    const stillHeard = () => Date.now() - heardAt < STILL_TALKING_MS;
+    const callerTalking = () => callerTalkingSince !== null && (Date.now() - callerTalkingSince < CALLER_TALKING_MAX_MS || stillHeard());
     // end_call went through: its goodbye is said once, and a caller's "bye" or "muy bien" after it is not answered again
     // (call quality R10, 2026-11-19: "Take care, goodbye!" then "Goodbye, take care.")
     let ending = false;
@@ -610,11 +616,14 @@ export class RealtimeEngine implements VoiceEngine {
     const clearTalkCap = () => { if (talkCap) clearTimeout(talkCap); talkCap = null; };
     const releaseDeferred = (why: 'no_words' | 'cap') => {
       clearTalkCap();
+      if (!deferred) return;
+      // at the cap, while their words are still coming in, the caller is still talking: wait on, never over them
+      if (why === 'cap' && stillHeard()) { talkCap = setTimeout(() => { talkCap = null; releaseDeferred('cap'); }, STILL_TALKING_MS); return; }
       const d = deferred;
       deferred = null;
-      if (!d) return;
       trace({ type: `gate.released_${why}` });
-      respond(d.e, d.kind);
+      // after the cap the held line is stale: the caller's latest words are answered, with everything in the conversation
+      if (why === 'cap') respond(); else respond(d.e, d.kind);
     };
     const respond = (e: Record<string, unknown> = { type: 'response.create' }, kind: ReplyKind = 'reply') => {
       if (!open) return; // the greeting on open answers for it
@@ -718,6 +727,7 @@ export class RealtimeEngine implements VoiceEngine {
         case 'input_audio_buffer.speech_started':
           if (typeof e.item_id === 'string') spokenAt.set(e.item_id, { start: ms(), end: null });
           callerTalkingSince = Date.now();
+          heardAt = Date.now();
           return;
         case 'input_audio_buffer.speech_stopped':
           callerTalkingSince = null;
@@ -762,6 +772,10 @@ export class RealtimeEngine implements VoiceEngine {
               }, ACK_AFTER_MS);
             }
           }
+          return;
+        // words of a turn still being written down: the caller is still talking
+        case 'conversation.item.input_audio_transcription.delta':
+          heardAt = Date.now();
           return;
         // the caller's turn, whole, once it is transcribed
         case 'conversation.item.input_audio_transcription.completed':
