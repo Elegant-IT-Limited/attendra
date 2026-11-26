@@ -101,8 +101,6 @@ export const en: LanguagePack = {
     vet_changed: (v) => `${v.clinic}: ${hi(v, `${whose(v)} ${v.visit || 'visit'} on ${v.when} is now with ${v.provider}, at the same time.`)} To change or cancel, call ${v.clinicPhone}. Reply STOP to opt out.`,
     directions: (v) => `${v.clinic}: ${v.address}. Map: ${v.mapUrl}. Reply STOP to opt out.`,
     hours: (v) => `${v.clinic} hours: ${v.hours}. Reply STOP to opt out.`,
-    // after a transfer nobody took, with no backup hospital: the clinic's emergency line, the number alone (RPT-batch-1b-9)
-    emergency_line: (v) => `${v.clinic}: our emergency line is ${v.emergencyLine}. If a person is hurt or in danger, call ${v.emergencyNumber}. Reply STOP to opt out.`,
     emergency_hospital: (v) => `${v.clinic}: emergency vet: ${v.hospital}, ${v.hospitalAddress}, ${v.hospitalPhone}. If a person is hurt or in danger, call ${v.emergencyNumber}. Reply STOP to opt out.`,
     provider: (v) => `${v.clinic}: ${v.provider}${v.details ? `, ${v.details}` : ''}. Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
     answer: (v) => `${v.clinic}: ${v.answer} Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,

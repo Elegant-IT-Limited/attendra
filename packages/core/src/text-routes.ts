@@ -20,7 +20,7 @@ import type { TextKind } from './clinic';
  * | person in danger / immediate script (no route)       | emergency_hospital: named one| emergency_hospital: same  | refused: emergency in progress  |
  * | emergency being put through (handle, hours open)     | refused: emergency           | refused: emergency        | refused: emergency in progress  |
  * | transfer failed, with a backup hospital              | emergency_hospital: backup   | emergency_hospital: backup| refused: emergency in progress  |
- * | transfer failed, no backup hospital                  | emergency_hospital: the clinic's emergency line (RPT-batch-1b-9; none: refused, no hospital) | same | refused: emergency in progress  |
+ * | transfer failed, no backup hospital                  | refused: no hospital         | refused: no hospital      | refused: emergency in progress  |
  */
 export const TEXT_ASKS = ['address', 'hospital', 'hours', 'provider', 'answer', 'link'] as const;
 export type TextAsk = (typeof TEXT_ASKS)[number];
@@ -34,8 +34,7 @@ export type TextSource =
   | 'clinic_hours' | 'clinic_provider' | 'clinic_answer' | 'clinic_link'
   | 'route_hospital' // the emergency route's hospital (refer, or hours when closed): the first of the clinic's choices open now
   | 'route_backup' // after a transfer nobody took: the route's backup hospital
-  | 'named_hospital' // an immediate emergency script with no route: the hospital it named (the first open now)
-  | 'clinic_emergency'; // after a transfer nobody took and no backup hospital: the clinic's own emergency line, the number just said
+  | 'named_hospital'; // an immediate emergency script with no route: the hospital it named (the first open now)
 
 /** Why nothing is sent; the tool says it in the caller's language. */
 export type TextTableRefusal = 'not_an_emergency' | 'emergency_question' | 'emergency_in_progress' | 'no_hospital';
@@ -64,7 +63,7 @@ export const TEXT_TABLE: Readonly<Record<TextSituation, Readonly<Record<TextAsk,
   emergency_script: only({ kind: 'emergency_hospital', source: 'named_hospital' }),
   emergency_transfer: only({ refuse: 'emergency_in_progress' }),
   transfer_failed_backup: only({ kind: 'emergency_hospital', source: 'route_backup' }),
-  transfer_failed: only({ kind: 'emergency_hospital', source: 'clinic_emergency' }),
+  transfer_failed: only({ refuse: 'no_hospital' }),
 };
 
 /** The cell for a situation and an ask. */

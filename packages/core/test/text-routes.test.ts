@@ -21,8 +21,7 @@ describe('the texts table', () => {
     expect(textRoute('emergency_hospital', 'address')).toEqual({ kind: 'emergency_hospital', source: 'route_hospital' });
     expect(textRoute('emergency_hospital', 'hospital')).toEqual({ kind: 'emergency_hospital', source: 'route_hospital' });
     expect(textRoute('transfer_failed_backup', 'address')).toEqual({ kind: 'emergency_hospital', source: 'route_backup' });
-    // RPT-batch-1b-9: no backup hospital, the clinic's own emergency line is the text (refused only when there is none)
-    expect(textRoute('transfer_failed', 'address')).toEqual({ kind: 'emergency_hospital', source: 'clinic_emergency' });
+    expect(textRoute('transfer_failed', 'address')).toEqual({ refuse: 'no_hospital' });
     expect(textRoute('emergency_transfer', 'hospital')).toEqual({ refuse: 'emergency_in_progress' });
     expect(textRoute('emergency_question', 'address')).toEqual({ refuse: 'emergency_question' });
     expect(textRoute('calm', 'hospital')).toEqual({ refuse: 'not_an_emergency' });

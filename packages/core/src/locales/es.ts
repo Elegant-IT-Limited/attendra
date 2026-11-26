@@ -113,7 +113,6 @@ export const es: LanguagePack = {
     vet_changed: (v) => `${v.clinic}: ${hola(v, `${v.pet ? `la cita de ${v.pet}` : 'su cita'} del ${sinEl(v.when)} ahora es con ${v.provider}, a la misma hora.`)} Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     directions: (v) => `${v.clinic}: ${v.address}. Mapa: ${v.mapUrl}. Responda STOP para no recibir más mensajes.`,
     hours: (v) => `Horario de ${v.clinic}: ${v.hours}. Responda STOP para no recibir más mensajes.`,
-    emergency_line: (v) => `${v.clinic}: nuestra línea de emergencias es el ${v.emergencyLine}. Si una persona está herida o en peligro, llame al ${v.emergencyNumber}. Responda STOP para no recibir más mensajes.`,
     emergency_hospital: (v) => `${v.clinic}: urgencias veterinarias: ${v.hospital}, ${v.hospitalAddress}, tel. ${v.hospitalPhone}. Si una persona está herida o en peligro, llame al ${v.emergencyNumber}. Responda STOP para no recibir más mensajes.`,
     provider: (v) => `${v.clinic}: ${v.provider}${v.details ? `, ${v.details}` : ''}. ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     answer: (v) => `${v.clinic}: ${v.answer} ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
