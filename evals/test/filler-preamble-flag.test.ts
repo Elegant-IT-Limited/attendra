@@ -12,7 +12,7 @@ const call = (reply: string) => Scenario.parse({
 describe('CQ2-R7: the eval flags a reply that opens with a filler preamble', () => {
   it('CQ2-R7: "Let me check which vets are available..." fails the call; a plain answer passes', async () => {
     const flagged = await runScenario(call('Let me check which vets are available and then we can go from there.'));
-    expect(flagged.failures.some((f) => f.startsWith('opened with a filler preamble'))).toBe(true);
+    expect(flagged.failures.some((f) => f.startsWith('opened with a filler preamble')), JSON.stringify(flagged.failures)).toBe(true);
     const plain = await runScenario(call('Dr. Elena Ruiz works today.'));
     expect(plain.failures.filter((f) => f.startsWith('opened with a filler preamble'))).toEqual([]);
   });
