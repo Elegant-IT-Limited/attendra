@@ -170,6 +170,7 @@ export const en: LanguagePack = {
     const missing = credentialsAsked && vets.some((v) => !v.credentials.length) ? ' The team can tell you more about their training.' : '';
     return `Our ${pets ? 'vets' : 'doctors'} ${vets.length === 1 ? 'is' : 'are'} ${list}.${missing}`;
   },
+  vetsOnDay: ({ day, vets, pets }) => (vets.length ? `On ${day}, ${vets.length === 1 ? `${vets[0]} is in` : `${vets.slice(0, -1).join(', ')} and ${vets.at(-1)} are in`}.` : `None of our ${pets ? 'vets' : 'doctors'} is in on ${day}.`),
   forWhichPet: ({ names }) => `For ${names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} or ${names.at(-1)}`} or another pet?`,
   confirmPetName: ({ name }) => `${name} is the pet's name, right?`,
   readbackSwap: ({ when: w, provider, visit, from, to }) => `move the ${visit.toLowerCase()} on ${w} with ${provider} from ${from} to ${to}`,

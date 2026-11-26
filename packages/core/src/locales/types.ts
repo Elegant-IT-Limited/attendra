@@ -181,6 +181,8 @@ export interface LanguagePack {
    * 2026-11-24: "I can't provide additional doctor names or their qualifications right now", then the vets listed).
    */
   vetsAnswer: (v: { vets: { name: string; specialty: string | null; credentials: string[] }[]; credentialsAsked: boolean; pets: boolean }) => string;
+  /** The vets in on a day the caller named, by their hours and time off (T6 review). */
+  vetsOnDay: (v: { day: string; vets: string[]; pets: boolean }) => string;
   /** "For Tango or another pet?": a second visit on the call, with the household already known (T7). */
   forWhichPet: (v: { names: string[] }) => string;
   /** "Sunny is the pet's name, right?": a name heard in a fragment or another language, confirmed before it is used (T11). */
