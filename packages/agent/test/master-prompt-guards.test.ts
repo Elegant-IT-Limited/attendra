@@ -89,4 +89,46 @@ describe('LIVE: the adversarial live run', () => {
     await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: 'Biscuit' } }, { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: '2026-09-29', part_of_day: 'morning' } }]);
     expect(lines(c.agent.onAgentTranscript("I can't finalize the booking from here. Please contact the clinic directly.", 99_000, 99_900))).toMatch(/can be booked on this call/);
   });
+
+  // the paid-run review (2026-11-26): two guard misfires
+  it('LIVE-review: a refill request that names a dose is not a medical question; a dose or which-medicine question still is (EN/ES)', async () => {
+    let n = 0;
+    const said = async (text: string, language: 'en' | 'es' = 'en') => {
+      const c = await w.call(`+130355502${String(n++).padStart(2, '0')}`, { clinic });
+      c.state.language = language;
+      return lines(c.caller(text));
+    };
+    for (const refill of ['I need a refill of her Apoquel 16 mg.', 'Can I get a refill of Carprofen 75 mg for Biscuit?', 'She takes 5 mg of prednisone, I need more.']) {
+      expect(await said(refill), refill).not.toContain('medical advice');
+    }
+    expect(await said('Necesito una recarga de Carprofen 75 mg para Biscuit.', 'es')).not.toContain('consejo médico');
+    expect(await said('How much Benadryl can I give my dog?')).toContain("I can't give medical advice, but I can have someone from the care team call you back.");
+    expect(await said('What medicine should I give my cat for fleas?')).toContain("I can't give medical advice, but I can have someone from the care team call you back.");
+  });
+
+  const afterOffer = async (line: string, language: 'en' | 'es' = 'en') => {
+    const c = await w.call('+17205550172', { clinic });
+    c.caller('Hi, Linh Nguyen. Can Biscuit come in tomorrow morning for a sick visit?');
+    await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: 'Biscuit' } }, { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: '2026-09-29', part_of_day: 'morning' } }]);
+    c.state.language = language;
+    return lines(c.agent.onAgentTranscript(line, 99_000, 99_900));
+  };
+
+  it('LIVE-review: with times on offer, an ordinary closing line ("call us directly if anything changes") is not corrected (EN/ES)', async () => {
+    for (const closing of ['You can call us directly if anything changes.', 'If you need to change it later, just call us directly.', 'Call the clinic directly if you need to change it later.']) {
+      expect(await afterOffer(closing), closing).not.toMatch(/can be booked on this call/);
+    }
+    for (const closing of ['Llame directamente a la clínica si algo cambia.', 'Si necesita cambiarla más adelante, comuníquese directamente con la clínica.']) {
+      expect(await afterOffer(closing, 'es'), closing).not.toMatch(/can be booked on this call/);
+    }
+  });
+
+  it('LIVE-review: with times on offer, a line that sends the caller elsewhere instead of booking is corrected (EN/ES)', async () => {
+    for (const elsewhere of ['Please contact the clinic directly to book.', 'You can call the clinic to finalize that.', "You'll need to call the front desk to schedule it.", 'Please contact the clinic directly.']) {
+      expect(await afterOffer(elsewhere), elsewhere).toMatch(/can be booked on this call/);
+    }
+    for (const elsewhere of ['Llame a la clínica para confirmar la cita.', 'Comuníquese directamente con la clínica para reservar.']) {
+      expect(await afterOffer(elsewhere, 'es'), elsewhere).toMatch(/can be booked on this call/);
+    }
+  });
 });

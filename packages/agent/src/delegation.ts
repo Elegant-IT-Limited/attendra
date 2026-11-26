@@ -974,7 +974,7 @@ export class CallAgent {
     // a dose or treatment question in the caller's own words: the clinic's medical line, word for word, before any tool
     // (adversarial live run: the voice refused in its own words and never called the tool that holds the line). Never
     // while an emergency is being asked about or handled: the emergency script decides then
-    if (isMedicalQuestion(said) && !s.emergencyLocked && !s.emergencyCase && !detectEmergencies(said).length && once(`medical:${i}`)) {
+    if (isMedicalQuestion(said, { quantities: false }) && !s.emergencyLocked && !s.emergencyCase && !detectEmergencies(said).length && once(`medical:${i}`)) {
       out.push(say(`That is a medical question. Do not answer it. Say, word for word: "${PACKS[lang].medicalRefusal}" Then offer a visit or that callback.`));
     }
     if (askedAboutRecording(said) && once(`recording:${i}`)) out.push(say(`Answer truthfully, from the clinic's setting, word for word: "${recordingLine(clinic, lang)}" Then carry on.`));
