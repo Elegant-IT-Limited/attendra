@@ -506,6 +506,8 @@ export class CallRunner {
     try {
       // at most two: the pet found, then the times their words ask for ("Yes, for Rocky, is Friday free?")
       const ran = new Set<string>();
+      // the pets on the caller ID first, so a pet the caller named goes with the lookup (at most a moment)
+      await this.agent.householdReady();
       for (let i = 0; i < LOOKUPS_AHEAD_MAX && !this.closed; i++) {
         const spec = this.agent.speculate();
         if (!spec || ran.has(spec.name)) break;

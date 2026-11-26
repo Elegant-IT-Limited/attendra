@@ -531,6 +531,8 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
     act(s, s.agent.onCallerTranscript(words, at, at + 1));
     s.events.add({ type: 'vapi.transcript.final' });
     const ran = new Set<string>();
+    // the pets on the caller ID first, so a pet the caller named goes with the lookup (at most a moment)
+    await s.agent.householdReady();
     for (let i = 0; i < LOOKUPS_AHEAD_MAX && !s.closed; i++) {
       const spec = s.agent.speculate();
       if (!spec || ran.has(spec.name)) break;

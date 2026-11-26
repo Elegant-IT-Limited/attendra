@@ -200,3 +200,28 @@ describe('ES-CALLERID: the profile said to be on the number they call from, up f
   }
 });
 
+// the owner's final live run (2026-11-26): the household on the caller ID was not read yet when the first turn came, so
+// the lookup-ahead ran verify_caller with no pet although Biscuit was named in that turn, and the voice asked "Is this for
+// Biscuit or Mochi?" again. The lookup-ahead now waits for the household (at most a moment); unknown, it runs nothing
+describe('CALLERID-PET: the pet named in the turn goes with the calling number, never a pet-less lookup', () => {
+  const LINES = [
+    ["834", "Hi, Linh Nguyen, on the number I'm calling from. Can Biscuit come in tomorrow morning for a sick visit?"],
+    ["835", 'Hola, soy Linh Nguyen, desde el número del que llamo. ¿Puede venir Biscuit mañana por la mañana para una consulta por enfermedad?'],
+    ["912", "Hi, Linh Nguyen, on the number I'm calling from. Biscuit needs a sick visit. Can he come in on Friday? No wait, Thursday."],
+    ["913", 'Hola, soy Linh Nguyen, con el número desde el que llamo. Biscuit necesita una consulta por enfermedad. ¿Puede venir el viernes? No, mejor el jueves.'],
+    ["936/910", "Hi, Linh Nguyen, on the number I'm calling from. Can Biscuit come in tomorrow morning for a sick visit?"],
+    ["937/911", 'Hola, soy Linh Nguyen, con el número desde el que llamo. ¿Puede venir Biscuit mañana por la mañana a una consulta por enfermedad?'],
+  ] as const;
+  for (const [id, line] of LINES) {
+    it(`CALLERID-PET: the ${id} first line looks up Biscuit on the calling number once the household is read, and nothing before`, async () => {
+      const c = await w.call(PHONE, { clinic });
+      if (/[¿áéíóúñ]/.test(line)) c.state.language = 'es';
+      c.caller(line);
+      // the household not read yet: nothing is run ahead, never a lookup without the pet
+      expect(c.agent.speculate()?.name).not.toBe('verify_caller');
+      await c.agent.householdReady();
+      expect(c.agent.speculate()).toEqual({ name: 'verify_caller', args: { phone: null, pet_name: 'Biscuit', owner_name: null, phone_last4: null } });
+    });
+  }
+});
+

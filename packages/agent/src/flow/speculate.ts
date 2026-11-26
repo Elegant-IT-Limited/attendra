@@ -119,7 +119,10 @@ function identityLookup(state: CallState, clinic: ClinicConfig, said: string, ct
   // none named, the number's pets to pick from ("Is this for Biscuit or Max, or a new pet?"), as the voice would call it
   if (yes && !state.memory.verified && !state.phonesConfirmed.size && askedCallerIdNumber(askedLast(state), ctx.callerNumber)) return verify(null, petSaid(state, ctx));
   // said without being asked ("Hola, soy Linh Nguyen, desde el número del que llamo"): the same yes, before the question
+  // only once the household on the caller ID is known: a pet named in the turn ("Can Biscuit come in…") is passed, never
+  // a pet-less lookup that asks "Biscuit or Mochi?" again (the owner's final live run); unknown, nothing is run ahead
   if (!state.memory.verified && !state.phonesConfirmed.size && callerIdOf(ctx.callerNumber) && saysCallingNumber(said)) {
+    if (!(state.memory.pets.length || ctx.petsOnCallerId?.length)) return null;
     const pet = petSaid(state, ctx);
     if (pet || ABOUT_THE_PET.test(said)) return verify(null, pet);
   }
