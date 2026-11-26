@@ -69,3 +69,14 @@ export const INTERNAL_TALK = /\b(?:in the background|lookups?\b|still waiting on
 export function talksAboutInternals(line: string): boolean {
   return INTERNAL_TALK.test(line.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
 }
+
+/**
+ * The filler preambles a reply never opens with (call quality R7, 2026-11-19; PR #191), named in every voice's prompt
+ * from this one list (CQ2-R7), and the check on a reply's opening words: a scripted eval's reply, or a live transcript.
+ */
+export const FILLER_PREAMBLES = ['Let me…', 'Okay, let me…', 'Sure, I can help with that', 'Let me think this through', "I'll set that up and confirm"] as const;
+/** The list as the prompts quote it: "Let me…", "Okay, let me…", ... */
+export const FILLER_PREAMBLE_LIST = FILLER_PREAMBLES.map((p) => `"${p}"`).join(', ');
+const OPENS_WITH_FILLER = /^\s*(?:(?:okay|ok|so|alright|all right|sure|bueno|vale|claro)[,.]?\s+)?(?:let me\b|d[eé]jeme\b|perm[ií]tame\b)|^\s*sure,? i can help with that\b|^\s*i'?ll set that up and confirm\b|^\s*claro,? (?:le|lo|la) (?:puedo )?ayud(?:o|ar) con eso\b/i;
+/** Whether a reply opens with a filler preamble ("Let me check...", "Okay, let me...", "Déjeme ver..."). */
+export const opensWithFillerPreamble = (line: string) => OPENS_WITH_FILLER.test(line);

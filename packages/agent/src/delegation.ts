@@ -511,8 +511,12 @@ export class CallAgent {
     const backup = c.route?.backup;
     const line = EMERGENCY_LINES.transferFailed(language, c.route?.number ?? null);
     this.emergencyScript = { content: line, number: language === 'es' ? 'urgente' : 'urgent', sentAt: this.ctx.now().getTime(), said: false, heard: '' };
+    // no backup hospital: the emergency line just said can be texted, offered once (RPT-batch-1b-9)
+    const texting = textingOf(this.ctx.clinic);
+    const offerText = !backup && !!c.route?.number && texting.enabled && texting.kinds.emergency_hospital && !!this.ctx.callerNumber;
     return this.emergencyLine(c, `Say calmly, in ${PACKS[language].name}, word for word: "${line}"`
       + (backup ? ` Only if they say they can't wait, say: "${EMERGENCY_LINES.cantWait(language, backup)}"` : '')
+      + (offerText ? ` Then offer once to text that number to the phone they are calling from; on a yes, call send_text with kind emergency_hospital.` : '')
       + ' Say each of these once. Do not give medical advice.');
   }
 

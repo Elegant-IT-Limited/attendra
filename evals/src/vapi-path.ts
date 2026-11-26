@@ -66,6 +66,10 @@ export const VAPI_PATH_SCENARIOS = [
   'vet-T11-fragment-confirmed', 'vet-es-T11-fragment-confirmed', 'vet-T12-slot-args-shapes', 'vet-es-T12-slot-args-shapes',
   'vet-T13-verified-on-calling-number', 'vet-es-T13-verified-on-calling-number',
   'vet-T8-swap-wrong-vet', 'vet-es-T8-swap-wrong-vet',
+  // "move it" / "cancel it" right after a booking, and "move that one": played since the Vapi script reads $booked and
+  // $put_forward from the call itself (CQ2-VAPI8)
+  'vet-move-it-after-booking', 'vet-es-move-it-after-booking', 'vet-cancel-it-after-booking', 'vet-es-cancel-it-after-booking',
+  'vet-move-cancel-move-two-visits', 'vet-es-move-cancel-move-two-visits', 'vet-same-visit-move-that-one', 'vet-es-same-visit-move-that-one',
 ] as const;
 
 export interface VapiPathResult { id: string; passed: boolean; failures: string[]; outcome: string; ms: number }
@@ -74,7 +78,7 @@ const SECRET = 'scripted-eval-location-secret-0123456789abcdef';
 const CONTROL = 'https://phone-call-websocket.eval.vapi.ai/eval-call/control';
 
 /** Replaces "$offered[0]", "$appointments[0]" and "$next_week" as the planner path's script does, from the results heard so far. */
-function resolve(args: Record<string, unknown>, offered: string[], results: Record<string, unknown>[], clinic: ClinicConfig, now: Date) {
+function resolve(args: Record<string, unknown>, offered: string[], results: Record<string, unknown>[], clinic: ClinicConfig, now: Date, ids: { booked: string | null; putForward: string | null } = { booked: null, putForward: null }) {
   const appointments = results.flatMap((d) => (Array.isArray(d.appointments) ? (d.appointments as { appointment_id: string }[]) : []));
   return Object.fromEntries(Object.entries(args).map(([k, v]) => {
     if (typeof v !== 'string') return [k, v];
@@ -89,6 +93,11 @@ function resolve(args: Record<string, unknown>, offered: string[], results: Reco
       return [k, (latest?.slots as { slot_id: string }[] | undefined)?.[Number(f[1])]?.slot_id ?? v];
     }
     if (v === '$next_week') { const today = localDateOf(now, clinic.timezone); return [k, addDays(today, 7 - ((weekdayOf(today) + 6) % 7))]; }
+    // the visit booked or moved to on this call, and the one the backend put forward to move: the ids a Vapi model has
+    // from the call itself (the visit it just booked, and the id the tool result gave with "move that one?"), as the
+    // planner path's script reads them from the call state (CQ2-VAPI8: these 8 scenarios could not be played)
+    if (v === '$booked') return [k, ids.booked ?? v];
+    if (v === '$put_forward') return [k, ids.putForward ?? v];
     return [k, v];
   }));
 }
@@ -111,6 +120,7 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
     const sms: string[] = [];
     const messenger: Messenger = { async sendTemplate(_c, m) { sms.push(m.template); return { status: 'sent', messageId: `sms-${sms.length}` }; } };
     const calls = new CallRepository(t.db, cipher);
+    let callRowId: string | null = null;
     const controls: { type: string; body: Record<string, unknown>; onCallerWords: boolean }[] = [];
     let onCallerWords = false;
     registerVapi(app, {
@@ -121,7 +131,7 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
       // scripted call (run at once, they ended every demo call before its first turn)
       later: (ms, fn) => { if (ms < 60_000) fn(); },
       clinicById: async (id) => (id === clinic.id ? clinic : null),
-      openCall: (clinicId, sessionId, from, channel, startedBy, last4, how) => calls.open(clinicId, sessionId, from, channel, startedBy, last4, how),
+      openCall: async (clinicId, sessionId, from, channel, startedBy, last4, how) => (callRowId = await calls.open(clinicId, sessionId, from, channel, startedBy, last4, how)),
       recorderFor: (clinicId, callId) => ({ appendSegment: (s) => calls.appendSegment(clinicId, callId, s), close: (c) => calls.close(clinicId, callId, c) }),
       actionsFor: (clinicId, callId) => ({ record: (a) => calls.recordAction(clinicId, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, taskRevision: a.revision, patientId: a.patientId }) }),
       backend: {
@@ -150,6 +160,7 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
 
     const outputs: { ok: boolean; outcome: string; spoken?: string; say?: string; data: Record<string, unknown> }[] = [];
     const offered: string[] = [];
+    const searches: unknown[] = [];
     let lastReadback: string | null = null;
     let n = 0;
     const over = () => controls.some((c) => c.type === 'transfer' || c.type === 'end-call');
@@ -164,12 +175,20 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
       for (const step of turn.delegate ?? []) {
         if (over()) break;
         const [tool, raw] = Object.entries(step)[0]! as [string, Record<string, unknown>];
-        const args = resolve(raw, offered, outputs.map((o) => o.data), clinic, now);
+        // the visit this call last booked (or moved to) and is still booked, and the last visit a result put forward to move
+        const booked = callRowId && Object.values(raw).includes('$booked')
+          ? (await withClinic(t.db, clinic.id, (tx) => tx.select({ id: schema.appointments.id, status: schema.appointments.status, createdAt: schema.appointments.createdAt }).from(schema.appointments).where(eq(schema.appointments.createdByCallId, callRowId!))))
+            .filter((a) => a.status === 'booked').sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0]?.id ?? null
+          : null;
+        const putForward = [...JSON.stringify(searches).matchAll(/replaces_appointment_id ([\w-]+)/g)].at(-1)?.[1] ?? null;
+        const args = resolve(raw, offered, outputs.map((o) => o.data), clinic, now, { booked, putForward });
         const res = await post({ type: 'tool-calls', toolCallList: [{ id: `tc_${++n}`, function: { name: tool, arguments: JSON.stringify(args) } }], artifact: { messages: [...lines] } });
         const r = res.results?.[0];
         if (!r?.result) throw new Error(r?.error ?? 'no result');
         const out = JSON.parse(r.result) as (typeof outputs)[number];
         outputs.push(out);
+        // the slot searches' own results: where a visit is put forward to move ("move that one, or book another?")
+        if (tool === 'find_slots') searches.push(out);
         for (const slot of Array.isArray(out.data.slots) ? out.data.slots as { slot_id: string }[] : []) if (!offered.includes(slot.slot_id)) offered.push(slot.slot_id);
         if (out.ok && out.spoken && (tool.startsWith('propose_') || (out as { stage?: string }).stage === 'readback_pending')) proposed = lastReadback = out.spoken;
       }

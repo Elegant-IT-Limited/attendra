@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { voiceToolDefinitions } from '@attendra/agent';
-import { callFacts, type CallEventInput, type ClinicConfig, DEFAULT_VOICE, fragmentKey, industryPack, type Language, languageAfterTurn, PACKS, providerEvent, REALTIME_VOICES, strayFragment, type VoiceFlow } from '@attendra/core';
+import { callFacts, type CallEventInput, FILLER_PREAMBLE_LIST, type ClinicConfig, DEFAULT_VOICE, fragmentKey, industryPack, type Language, languageAfterTurn, PACKS, providerEvent, REALTIME_VOICES, strayFragment, type VoiceFlow } from '@attendra/core';
 
 /**
  * What a caller's line becomes when the transcriber wrote it in a script none of the clinic's languages is written in
@@ -183,9 +183,9 @@ export const HOLD_AGAIN_LINE = 'Say only "Thanks for waiting." in the caller\'s 
 // we can go from there", "Okay, sounds good, let me set that up and confirm the details for you"), and calls ran long
 // call speed (2026-11-19): with no words before a tool call, a turn that needed a lookup was silent for two model rounds
 // (path A p90 2.6-3.0 s before the first word): a 1 to 3 word acknowledgement may now go first, in the same reply
-export const TURN_NOTE = 'Reply now. When you need a tool, you may first say one acknowledgement of one to three words ("Sure.", "Okay.", "One moment."), then call the tool in the same reply. Never a longer preamble: not "Let me…", "Okay, let me…", "Sure, I can help with that", "Let me think this through", "I\'ll set that up and confirm". No acknowledgement when you already have the answer, or when a result for the caller\'s words is already in the conversation: answer from it. Then say what the tool gives you, in the caller\'s language. Ask only what a tool result asks for, or a detail a tool needs.';
+export const TURN_NOTE = `Reply now. When you need a tool, you may first say one acknowledgement of one to three words ("Sure.", "Okay.", "One moment."), then call the tool in the same reply. Never a longer preamble: not ${FILLER_PREAMBLE_LIST}. No acknowledgement when you already have the answer, or when a result for the caller\'s words is already in the conversation: answer from it. Then say what the tool gives you, in the caller\'s language. Ask only what a tool result asks for, or a detail a tool needs.`;
 /** The same note for a clinic that turned acknowledgements off (talk.acknowledgements false): a tool is called first, with no words before it. */
-export const TURN_NOTE_NO_ACK = 'Reply now. A tool you need is called first, with no words before it. Never open with a preamble: not "Let me…", "Okay, let me…", "Sure, I can help with that", "Let me think this through", "I\'ll set that up and confirm". Then say what the tool gives you, in the caller\'s language. Ask only what a tool result asks for, or a detail a tool needs.';
+export const TURN_NOTE_NO_ACK = `Reply now. A tool you need is called first, with no words before it. Never open with a preamble: not ${FILLER_PREAMBLE_LIST}. Then say what the tool gives you, in the caller\'s language. Ask only what a tool result asks for, or a detail a tool needs.`;
 /**
  * While a lookup run ahead of the reply has not answered yet (the turn waits for the caller's words, then the lookup):
  * a short acknowledgement, so the caller hears something within about a second. Never what is happening, never the answer.

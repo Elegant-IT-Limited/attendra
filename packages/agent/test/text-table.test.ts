@@ -116,9 +116,23 @@ describe('the texts table, row by row, in English and Spanish (batch 1e)', () =>
         expect((await ask('transfer_failed_backup', language, ASKS.hours)).refused).toBe('emergency_in_progress');
       });
 
-      it('the transfer failed with no backup hospital: there is no hospital to text', async () => {
-        for (const kind of [ASKS.address, ASKS.hospital]) expect((await ask('transfer_failed', language, kind)).refused).toBe('no_hospital');
+      it('RPT-batch-1b-9: the transfer failed with no backup hospital: the clinic\'s emergency number is texted, after a yes', async () => {
+        for (const kind of [ASKS.address, ASKS.hospital]) {
+          const t = await ask('transfer_failed', language, kind);
+          expect(t.refused).toBeNull();
+          expect(t.text).toMatchObject({ template: 'emergency_hospital', vars: { hospitalPhone: TEAM } });
+        }
         expect((await ask('transfer_failed', language, ASKS.hours)).refused).toBe('emergency_in_progress');
+      });
+
+      it('RPT-batch-1b-9: with no emergency number either, there is still nothing to text', async () => {
+        const none = ClinicConfig.parse({ ...base, emergencies: { mode: 'handle', number: TEAM } });
+        const c = await w.call('+13035550147', { clinic: none });
+        c.state.language = language;
+        escalated(c.state, none, 'failed');
+        c.state.emergencyCase!.route = { ...c.state.emergencyCase!.route!, number: null } as never;
+        const out = await c.delegate([{ tool: 'send_text', args: { kind: ASKS.hospital, ref: null, to: null } }]);
+        expect(out.errors[0]).toBe('no_hospital');
       });
     });
   }

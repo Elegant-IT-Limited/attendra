@@ -1632,6 +1632,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       }
       if (state.textsSent >= MAX_TEXTS_PER_CALL) return refuse('rate_limited', 'You have sent what can be sent by text on this call. Read it out instead.');
       const content = textContent(kind, ref, clinic, state, ctx.now(), lang, route.source);
+      if (!content && route.source === 'clinic_emergency') return refuse('no_hospital', TEXT_REFUSALS.no_hospital);
       if (!content) return refuse('nothing_to_send', 'Say you can\'t text that one, and say it out loud instead.');
 
       // consent, in the caller's own words, after the question was spoken: like a booking
@@ -2197,6 +2198,12 @@ export function textContent(
     case 'emergency_hospital': {
       // the table's source: the route's hospital, its backup after a transfer nobody took, or the one a script named
       const r = state.emergencyCase?.route;
+      // the clinic's own emergency line, the number the caller just heard after a transfer nobody took (RPT-batch-1b-9)
+      if (source === 'clinic_emergency') {
+        const line = r?.number ?? null;
+        if (!line) return null;
+        return { template: 'emergency_hospital', vars: { hospital: lang === 'es' ? `línea de emergencias de ${clinic.name}` : `${clinic.name} emergency line`, hospitalAddress: clinic.address ?? '', hospitalPhone: line, emergencyNumber: emergencyNumberFor(clinic, lang) } };
+      }
       const h = source === 'route_hospital' ? r?.hospital ?? null : source === 'route_backup' ? r?.backup ?? null : hospitalNow(clinic, now);
       if (!h) return null;
       return { template: 'emergency_hospital', vars: { hospital: h.name, hospitalAddress: h.address, hospitalPhone: h.phone, emergencyNumber: emergencyNumberFor(clinic, lang) } };
