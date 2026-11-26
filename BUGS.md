@@ -4,7 +4,7 @@ Every bug reported for Attendra, from every source, one row each. Built 2026-11-
 
 Status is one of: **open**; **fixed** + the test that proves it; **fix not merged**; **cannot reproduce** + evidence; **not a bug** + reason; **manual check** (cannot be automated, or fixed before the test-first rule and has no own test); **duplicate of** an ID. Original IDs are kept; an ID that would clash gets its source as a prefix (`CQ2-R1` = call quality 2, `DF2-K1` = demo findings 2, `N26.3` = note 26 item 3, `N49-B1` = note 49 item B1, `RPT-…` = a results report, `FND-…` = a foundation review, `QA-…` = a daily QA file).
 
-Counts: duplicate 29, fixed 243, manual check 27, not a bug 20, open 29; requests 65 (listed separately below, not built in fix batches).
+Counts: duplicate 29, fixed 243, manual check 27, not a bug 21, open 29; requests 65 (listed separately below, not built in fix batches).
 
 ## Bugs
 
@@ -106,7 +106,7 @@ Counts: duplicate 29, fixed 243, manual check 27, not a bug 20, open 29; request
 | SMALL-2 | Today shows "35 not sent" (3 days) while Texts shows "37" (7 days) | Compare Today's not-sent item and Texts' not-sent count | fixed in engine #198 (merge pending): apps/api/test/text-problems.test.ts "SMALL-2…", e2e dashboard-counts-and-hints "SMALL-2…" | BATCH-2026-11-26 small items |
 | SMALL-3 | picomatch advisory with no fixed version released | pnpm audit | open: picomatch 4.0.7 advisory, no fixed version released upstream; dev tooling only; re-check each build | BATCH-2026-11-26 small items |
 | SPEED | Call speed targets: reply start median <1.5 s, p90 <2.5 s per path | pnpm db:call-speed on test calls | duplicate of CQ2-R12 | BATCH-2026-11-26 small items |
-| GH-43 | Record SMS delivery status from Twilio status callbacks | — | fixed: built by DF4-1 / TX items (sms_messages delivered_at, failure reasons; apps/api/test/texts-polish.test.ts); issue still open on GitHub → the owner can close it | GitHub issue attendra#43 |
+| GH-43 | Record SMS delivery status from Twilio status callbacks | — | fixed: built by DF4-1 / TX items (apps/api/test/texts-polish.test.ts); issue closed 26 Nov | GitHub issue attendra#43 |
 | MP | Master prompt not robust: scope, truth rules, boundary questions, privacy, callers testing it, style were spread over per-bug rules | Adversarial calls (jailbreak, prompt request, abuse, medical, privacy, nonsense, topic switching) | fixed in engine #197 (merge pending): packages/voice-engine/test/master-prompt.test.ts (one block on every path), evals 900–939 adversarial (EN+ES, both paths); prompt-only rules need a live judged run (paid, owner's OK) | BATCH-2026-11-26 step 4 (note 53) |
 | MP-HEAR | Repeated "can you hear me?" not answered at once | Say "Can you hear me?" mid-call | fixed in engine #197 (merge pending): packages/agent/test/master-prompt-guards.test.ts "MP-HEAR…" | BATCH-2026-11-26 step 4 |
 | MP-INTERNAL | Internal state words spoken in live replies were not corrected | A reply says "pending change"/"lookup" | fixed in engine #197 (merge pending): master-prompt-guards "MP-INTERNAL…" | BATCH-2026-11-26 step 4 |
@@ -121,6 +121,7 @@ Counts: duplicate 29, fixed 243, manual check 27, not a bug 20, open 29; request
 | REV-7 | 13/02 (not a month in month-first order) gets the full vet list | Who is the vet on 13/02? | open (low) | review 2026-11-26 |
 | REV-8 | Scripted evals cannot test prompt-only behaviour (confirm once after a contradiction, decline wording, joke tone, answer-then-settle order, fragment confirmation wording) | — | manual check: needs a live judged run (paid, owner's OK) | review 2026-11-26 |
 | REV-9 | A mixed sentence asking for dosing advice next to a named-pill refill slips past the medical check | What meds should I give him? His heart pill refill ran out and he is coughing, what else can I give? | open (low): the prompt still forbids medical advice; code check misses this mix | review 2026-11-26 |
+| YES-ANY-LANG | A Spanish speaker at a Spanish-off clinic could not book: "sí" was not a clear yes there | Corpus 201-vet-es-pets-on-number-books with languages [en] | fixed in engine #197 (merge pending): packages/core/test/yes-any-language.test.ts "YES-ANY-LANG…/YES-ANY-LANG-review…"; evals 832/833 (both paths) | corpus run 2026-11-26 (owner decision) |
 | N1 | A vet's specialty (and other list values) could be typed freely; typed value never reached the clinic list or the filter | — | fixed: #118; apps/api/test/doctors.test.ts, apps/web/e2e/doctors.spec.ts (picked from list, Add a specialty, Not on your list, API 422) | notes 1 |
 | N1.a | Stand-in "our veterinarian" still listed next to a real vet | — | fixed: #118; doctors.test.ts "lets the stand-in a new clinic starts with go once a real doctor is added"; schedule-lanes.test.ts | notes 1 (also) |
 | N2.1 | Bad test calls could not be explained: no info logs for delegations, planner requests, sideband reconnects, replies | — | fixed: #118; packages/voice-engine/test/call-runner.test.ts "logs the call's moments at info, with ids and times" | notes 2 fix plan 1 |
@@ -265,7 +266,7 @@ Counts: duplicate 29, fixed 243, manual check 27, not a bug 20, open 29; request
 | RPT-batch-1b-5 | A tool's offer ending in a question ("Shall I look with them?") was paraphrased and the question dropped | — | fixed: packages/voice-engine/test/tools-path.test.ts "says a tool's own question as written, with no tools in that reply" (#140) | batch-1b / Path A on the 30 hard cases |
 | RPT-batch-1b-6 | Voice claimed a vet "isn't in / isn't available" on a day before any lookup | — | fixed: packages/agent/test/call-guards.test.ts "a vet's day said before any lookup is a claim" (#140, extended #142) | batch-1b / Path A on the 30 hard cases |
 | RPT-batch-1b-7 | After the 911 line for a person in danger, the model gave its own advice instead of code-given lines | — | fixed: packages/agent/test/emergency-signs.test.ts "after the 911 line, what the caller says next gets a line from code" (#140) | batch-1b / Path A on the 30 hard cases |
-| RPT-batch-1b-9 | After a failed transfer the clinic's emergency number is said but not texted | — | fixed in engine #196 (merge pending): packages/core/test/text-table.test.ts "RPT-batch-1b-9…" (EN+ES). New text wording emergency_line: the owner must check it against the registered A2P samples before deploy | batch-1b / Limitations |
+| RPT-batch-1b-9 | After a failed transfer the clinic's emergency number is said but not texted | — | not a bug: owner decision 26 Nov, no new text wording; the number is said, not texted (behaviour pinned by packages/core/test/text-table.test.ts "RPT-batch-1b-9: no new text wording…", engine #196) | batch-1b / Limitations |
 | RPT-batch-1b-10 | Filler is down to 1 in 10 calls but broader narration on calls is not zero | — | manual check: #191 "no preambles" (R7) built but no R7 test found; needs real calls (evals/test/real-audio.test.ts counts filler) | batch-1b / Limitations |
 | RPT-batch-1b-11 | First audio under 2 s on production phones is an estimate, not a measurement | — | manual check: Needs real calls; call-speed-2026-11-19 "Next: measure" (db:call-speed) still pending | batch-1b / Limitations |
 | RPT-batch-1b-12 | In the eval harness the simulated caller sometimes hangs up at the read-back (counted as not booked) | — | not a bug: Eval-harness artefact (simulated caller), not product behaviour | batch-1b / Limitations |
@@ -367,7 +368,7 @@ Counts: duplicate 29, fixed 243, manual check 27, not a bug 20, open 29; request
 | GH-41 | Eval scenarios for the October test call fixes | request: community issue (good first issue); evals for those fixes exist (evals/scenarios 1xx–3xx) | GitHub issue attendra#41 |
 | GH-42 | Docs: troubleshooting browser test calls | request: docs (community issue) | GitHub issue attendra#42 |
 | GH-40 | FHIR R4 scheduler adapter | request: feature (community issue) | GitHub issue attendra#40 |
-| GH-39 | Vapi voice engine adapter | request: built in practice (apps/voice/src/vapi.ts); issue still open → the owner can close it | GitHub issue attendra#39 |
+| GH-39 | Vapi voice engine adapter | request: built (apps/voice/src/vapi.ts); issue closed 26 Nov | GitHub issue attendra#39 |
 | GH-38 | Docs: route a Telnyx number over SIP | request: docs (community issue) | GitHub issue attendra#38 |
 | GH-37 | Telnyx SMS sender | request: feature (community issue) | GitHub issue attendra#37 |
 | GH-36 | Brazilian Portuguese language pack | request: feature (community issue) | GitHub issue attendra#36 |
