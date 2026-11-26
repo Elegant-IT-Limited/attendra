@@ -73,3 +73,13 @@ describe('DOSE: a dose question with an amount or a dosing verb, EN and ES', () 
   });
 });
 
+describe('DOSE2: amounts only for a medicine, and the dose questions the first pass missed (review)', () => {
+  const callerWords = (t: string) => isMedicalQuestion(t, { quantities: false });
+  it.each(['Is half an hour OK?', 'Can she have half an hour with the vet?', 'Is a half day OK for boarding?', '¿Puede tomar media hora?', 'Can he have a quarter of an hour with Dr. Bell?', 'Is half a day enough for the dental?', '¿Le puedo dar media hora más a la cita?'])('DOSE2: "%s" is not medical', (t) => {
+    expect(callerWords(t)).toBe(false);
+  });
+  it.each(['Can I give her her usual 25 mg tonight?', 'Is it safe to give 2 tablets?', 'Can I give him two pills?', '¿Le doy dos pastillas?', 'Can she have half a tablet?', 'Can I give him half a pill of Benadryl?', '¿Puede tomar media pastilla?'])('DOSE2: "%s" is medical', (t) => {
+    expect(callerWords(t)).toBe(true);
+  });
+});
+

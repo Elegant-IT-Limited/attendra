@@ -86,8 +86,9 @@ const WRITE_TOOLS = new Set<ToolName>(['register_patient', 'propose_booking', 'p
 const EMERGENCY_ALLOWED = new Set<ToolName>(['transfer_call', 'create_callback', 'end_call', 'get_clinic_info', 'send_text']);
 /** What waits for the caller's answer to the emergency question, for the pet it is about: looking for times and booking. */
 const WAITS_FOR_ANSWER = new Set<ToolName>(['find_slots', 'propose_booking', 'commit_pending']);
-/** A request or a booking: after the medical line, only once the caller has answered it. */
-const ASK_FIRST = new Set<ToolName>(['create_callback', 'create_refill_request', 'propose_booking', 'commit_pending']);
+/** A request or a new booking: after the medical line, only once the caller has answered it. */
+// (never commit_pending: it makes only a change already read back, on the caller's yes to it; review)
+const ASK_FIRST = new Set<ToolName>(['create_callback', 'create_refill_request', 'propose_booking']);
 
 /** The note on a booking for the team: who booked it (when not the owner on file), and what an emergency the caller cleared reported. */
 function bookingNote(state: CallState, byCaller: string | null, clinic: ClinicConfig): { note?: string } {
@@ -1517,11 +1518,14 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const pending = state.pending;
       if (!pending) return refuse('nothing_pending', 'There is nothing to confirm. Propose the change first.');
       if (pending.readbackAtMs === null) return refuse('not_read_back', `Read it back first: ${pending.readback}.`);
-      // "yes, but no text": a yes to the change, and no confirmation text
-      const answer = state.answerToReadback();
-      const noText = declinesText(answer);
       // an answer naming the time offered is a yes too ("okay, 9:20 is fine"; call quality Q3)
       const at = pending.kind === 'cancel' ? pending.start : pending.slot.start;
+      // a yes said with a medical question ("Yes. Also, how much Benadryl can I give her?") is the read-back's answer,
+      // whatever answers the medical offer after it ("No thanks"; review)
+      const before = state.answerBeforeMedicalOffer();
+      // "yes, but no text": a yes to the change, and no confirmation text
+      const answer = before && isClearYesTo(declinesText(before) ? withoutTextRefusal(before) : before, clinic.languages, { start: at, timeZone: clinic.timezone }) ? before : state.answerToReadback();
+      const noText = declinesText(answer);
       if (!isClearYesTo(noText ? withoutTextRefusal(answer) : answer, clinic.languages, { start: at, timeZone: clinic.timezone })) {
         // never a set phrase to repeat: a test call asked four times for "yes, move it" (2026-11-16). A plain yes,
         // okay or sí is enough; a question is answered first

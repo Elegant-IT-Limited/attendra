@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { answerAcrossPieces, type CallOutcome, type CallPatient, isClearYes, type Language, LANGUAGES, newToClinic, normalise, redactSensitive, saysSlot, type Slot, spacedSentences, spokenWords } from '@attendra/core';
+import { answerAcrossPieces, type CallOutcome, type CallPatient, isClearYes, isMedicalQuestion, type Language, LANGUAGES, newToClinic, normalise, redactSensitive, saysSlot, type Slot, spacedSentences, spokenWords } from '@attendra/core';
 import { CallMemory } from './call-memory';
 import type { EmergencyCase, EmergencyResult } from './flow/emergency';
 
@@ -176,6 +176,21 @@ export class CallState {
    */
   medicalOfferAt: number | null = null;
   markMedicalOffer() { this.medicalOfferAt = this.turns.length - 1; }
+  /**
+   * The caller's words before a medical question in the turn that brought the medical line, when that turn came after
+   * the read-back: "Yes. Also, how much Benadryl can I give her?" answers the read-back with "Yes." (review). Empty
+   * otherwise.
+   */
+  answerBeforeMedicalOffer(): string {
+    const at = this.pending?.readbackAtMs;
+    const m = this.medicalOfferAt;
+    if (at === null || at === undefined || m === null) return '';
+    const turn = this.turns.slice(0, m + 1).reverse().find((t) => t.speaker === 'caller');
+    if (!turn || turn.startMs <= at) return '';
+    const lead: string[] = [];
+    for (const part of turn.text.split(/(?<=[.!?,;])\s+/)) { if (isMedicalQuestion(part, { quantities: false })) break; lead.push(part); }
+    return lead.length === turn.text.split(/(?<=[.!?,;])\s+/).length ? '' : lead.join(' ').trim();
+  }
   get medicalOfferOpen() { const at = this.medicalOfferAt; return at !== null && !this.turns.slice(at + 1).some((t) => t.speaker === 'caller'); }
   /** Staff pressed End call: the record says so, not that the assistant hung up on its own. */
   endedByStaff = false;

@@ -16,22 +16,33 @@ const CHILD = 'child|kid|kids|baby|infant|toddler|son|daughter|newborn';
 const DRUGS_ES = 'ibuprofeno|paracetamol|acetaminofen|aspirina|naproxeno|difenhidramina|amoxicilina|antibioticos?|prednisona|insulina|melatonina|omeprazol|gabapentina|codeina|pastillas?|tabletas?|capsulas?|pildoras?|medicinas?|medicamentos?|remedios?|jarabe|gotas|calmantes?|analgesicos?|antiinflamatorios?|antialergicos?';
 const ANY_DRUG = `${DRUGS}|${DRUGS_ES}`;
 
-/** An amount of a medicine: "25 mg", "half a", "a quarter of", "media", "un cuarto de". */
-const AMOUNT = '\\d+(?:[.,]\\d+)? ?(?:mg|milligrams?|miligramos?|ml|mililitros?|cc|units?|unidades|tablets?|tabletas?|pills?|pastillas?|capsules?|capsulas?)|half (?:a|an|of)|a half|(?:a )?quarter (?:of )?(?:a|an)|medi[oa]|un cuarto de';
 /** Pet medicines, for the dose questions only: named in a refill ("a refill of Apoquel for Bella") they ask nothing. */
 const VET_DRUGS = 'rimadyl|carprofen|metacam|meloxicam|galliprant|apoquel|cerenia|trazodone';
+/** What a dose is counted in: "two pills", "half a tablet", "dos pastillas". */
+const DOSE_UNIT = 'tablets?|pills?|capsules?|doses?|teaspoons?|drops|tabletas?|pastillas?|capsulas?|pildoras?|dosis|gotas|cucharaditas?';
+/**
+ * An amount of a medicine: "25 mg", "two pills", "dos pastillas", or a part ("half a", "a quarter of", "media") only when a
+ * medicine, a pill or a dose word follows: "half an hour", "a half day" and "media hora" are no amount (review).
+ */
+const AMOUNT = `\\d+(?:[.,]\\d+)? ?(?:mg|milligrams?|miligramos?|ml|mililitros?|cc|units?|unidades|${DOSE_UNIT})`
+  + `|(?:one|two|three|four|five|a couple of|a few|una?|dos|tres|cuatro|cinco) (?:${DOSE_UNIT})`
+  + `|(?:half (?:a|an|of (?:a|an|the|his|her|my|its))|a half(?: of)?(?: a| an)?|(?:a )?quarter (?:of )?(?:a|an)|medi[oa]|un cuarto de(?: una?)?) (?:\\w+ )?(?:${DOSE_UNIT}|${DRUGS}|${DRUGS_ES}|${VET_DRUGS})`;
 const SOMEONE = 'him|her|it|them|my \\w+|the \\w+|our \\w+|his \\w+';
+/** A pet's own amount, said as theirs: "her usual 25 mg", "his normal dose". */
+const OWN = '(?:(?:her|his|its|their|the|my|our) )?(?:usual |normal |regular |daily |same )?';
 /**
  * A dose asked with an amount or a dosing verb, whatever the amount (the owner's decision, 2026-11-26: a dosing answer
  * is a safety risk): "can I give him 25 mg of Benadryl?", "is 50 mg OK?", "can she have half a Tylenol?", "how many mg",
  * "¿le puedo dar 25 mg?", "¿puede tomar media pastilla?". A refill naming its own dose asks none of these.
  */
 const DOSE = [
-  words(`(?:should|can|could|may) (?:i|we) give (?:${SOMEONE})? ?(?:${AMOUNT})`),
+  words(`(?:should|can|could|may) (?:i|we) give (?:${SOMEONE})? ?${OWN}(?:${AMOUNT})`),
+  words(`is it (?:ok|okay|safe|fine|alright|bad) to give (?:(?:${SOMEONE}) )?${OWN}(?:${AMOUNT})`),
   words(`(?:is|are|would|will) (?:${AMOUNT})(?: of)?(?: \\w+)? (?:ok|okay|safe|fine|alright|too much|enough|right)`),
   words('how (?:much|many) (?:mg|milligrams?|ml|cc|units?|tablets?|pills?|capsules?)'),
   words(`(?:can|could|should|may) (?:he|she|it|they|${SOMEONE}) (?:have|take|get|eat) (?:(?:${AMOUNT})|(?:some |a |an |any )?(?:of )?(?:my |his |her |the |our )?(?:${DRUGS}|${VET_DRUGS}))`),
   words(`(?:le |les )?(?:puedo|podemos|debo|deberia) dar(?:le|les)? (?:${AMOUNT})`),
+  words(`(?:le|les) (?:doy|damos|di) (?:${AMOUNT})`),
   words(`(?:puede|pueden|podria|deberia|debe) (?:tomar|tomarse|comer|recibir) (?:(?:${AMOUNT})|(?:un poco de |algo de |una? )?(?:${ANY_DRUG}|${VET_DRUGS}))`),
   words(`(?:es|son|seria) (?:${AMOUNT})(?: de)?(?: \\w+)? (?:mucho|demasiado|seguro|suficiente|bien|ok)`),
   words('cuant(?:o|a|os|as) (?:mg|miligramos?|ml|mililitros?|pastillas?|tabletas?|capsulas?|gotas)'),

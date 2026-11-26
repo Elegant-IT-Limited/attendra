@@ -179,4 +179,49 @@ describe('LIVE: the adversarial live run', () => {
       expect(await said(refill), refill).not.toMatch(/medical advice|consejo médico/);
     }
   });
+
+  // review: "Yes. Also, how much Benadryl can I give her?" right after a read-back lost the booking
+  it('ASK-edge: a yes to the read-back said with a medical question still books, and the "no thanks" to the medical offer does not undo it', async () => {
+    const c = await w.call('+17205550172', { clinic });
+    c.caller('Hi, Linh Nguyen. Can Biscuit come in tomorrow for a sick visit?');
+    await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: 'Biscuit' } }]);
+    const found = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: '2026-09-29', part_of_day: 'any' } }]);
+    const slot = (found.results[0]!.data.slots as { slot_id: string }[])[0]!.slot_id;
+    await c.delegate([{ tool: 'propose_booking', args: { slot_id: slot, replaces_appointment_id: null } }]);
+    c.readBack('Shall I book it?');
+    expect(lines(c.caller('Yes. Also, how much Benadryl can I give her?'))).toContain("I can't give medical advice. Would you like a visit with one of our vets, or a call back from our team?");
+    // the model books in the same turn: it goes through
+    const done = await c.delegate([{ tool: 'commit_pending', args: {} }]);
+    expect(done.errors).toEqual([null]);
+    c.assistant("You're booked. I can't give medical advice. Would you like a visit with one of our vets, or a call back from our team?");
+    c.caller('No thanks.');
+    const visits = await w.backend.scheduler.upcoming(clinic.id, c.state.verifiedPatient!.id, new Date('2026-09-28T00:00:00Z'));
+    expect(visits.map((v) => v.id)).toContain(done.results[0]!.data.appointment_id);
+  });
+
+  it('ASK-edge: the yes survives when the model books only after the caller answered the medical offer with "no thanks"', async () => {
+    const c = await w.call('+17205550172', { clinic });
+    c.caller('Hi, Linh Nguyen. Can Mochi come in tomorrow for a sick visit?');
+    await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: 'Mochi' } }]);
+    const found = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: '2026-09-29', part_of_day: 'any' } }]);
+    const slot = (found.results[0]!.data.slots as { slot_id: string }[])[0]!.slot_id;
+    await c.delegate([{ tool: 'propose_booking', args: { slot_id: slot, replaces_appointment_id: null } }]);
+    c.readBack('Shall I book it?');
+    c.caller('Yes. Also, how much Benadryl can I give her?');
+    c.assistant("I can't give medical advice. Would you like a visit with one of our vets, or a call back from our team?");
+    c.caller('No thanks.');
+    expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual([null]);
+    // without a yes, a medical question after a read-back still books nothing
+    const d = await w.call('+17205550174', { clinic });
+    d.caller('Hi, Carmen Ortiz. Can Luna come in tomorrow for a sick visit?');
+    await d.delegate([{ tool: 'verify_caller', args: { owner_name: 'Carmen Ortiz', pet_name: 'Luna' } }]);
+    const f2 = await d.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: '2026-09-29', part_of_day: 'any' } }]);
+    await d.delegate([{ tool: 'propose_booking', args: { slot_id: (f2.results[0]!.data.slots as { slot_id: string }[])[0]!.slot_id, replaces_appointment_id: null } }]);
+    d.readBack('Shall I book it?');
+    d.caller('How much Benadryl can I give her?');
+    d.assistant("I can't give medical advice. Would you like a visit with one of our vets, or a call back from our team?");
+    d.caller('No thanks.');
+    expect((await d.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual(['no_clear_yes']);
+  });
 });
+
