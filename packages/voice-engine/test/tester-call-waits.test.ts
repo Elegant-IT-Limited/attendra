@@ -3,7 +3,7 @@ import { DEMO_CLINIC, RIVERBEND_CLINIC, zonedInstant } from '@attendra/core';
 import { createLogger } from '@attendra/observability';
 import { Writable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
-import { CallRunner, HOLD_LINE, RealtimeEngine, type RealtimeSocket, type Sideband, type SidebandEvent, type VoiceEngine } from '../src';
+import { CallRunner, HOLD_LINE, NOT_UNDERSTOOD, RealtimeEngine, type RealtimeSocket, type Sideband, type SidebandEvent, type VoiceEngine } from '../src';
 
 // A tester's 14-minute call on the demo clinic (2026-11-24): silences of 13, 17 and 20 s that the call page showed as
 // "Longest wait 2.6 s", an opening reply that started "Sorry for the wait. One If ..." and said a sentence twice, and
@@ -218,13 +218,33 @@ describe('T4 review: a held reply never starts over a caller still talking; the 
 });
 
 describe('T4-vad: a caller turn the VAD kept open long after the words is a wait', () => {
-  it('T4-vad: 3 words over 11.1 s (speech_started 102995 → speech_stopped 114085) counts as a wait of 9 s or more; the reply within 1 ms adds none', async () => {
+  it('T4-vad: 3 words over 11.1 s (speech_started 102995 → speech_stopped 114085) counts as a wait of about 7 s; the reply within 1 ms adds none', async () => {
     const h = harness();
     await h.runner.handle(said('out', 'o1', 'Thanks for calling. How can I help?', 0, 1500));
     await h.runner.handle(said('in', 'i1', 'Are you there?', 102_995, 114_085 - 102_995));
     await h.runner.handle(said('out', 'o2', 'Yes, I can hear you.', 114_086));
     await h.runner.handle({ type: 'session.closed', event_id: 'c1', reason: 'remote_hangup', usage: { seconds: 120 } });
-    expect(h.closes.at(-1)!.quality.maxGapMs).toBeGreaterThanOrEqual(9000);
+    expect(h.closes.at(-1)!.quality.maxGapMs).toBe(7090);
+  });
+
+  it('T4-vad-review: a redacted card number or the not-understood placeholder held open 10 s adds no wait', async () => {
+    const h = harness();
+    await h.runner.handle(said('out', 'o1', 'Thanks for calling. How can I help?', 0, 1500));
+    await h.runner.handle(said('in', 'i1', '4111 1111 1111 1111', 2000, 10_000));
+    await h.runner.handle(said('out', 'o2', 'I never take card numbers on the phone.', 12_001, 1500));
+    await h.runner.handle(said('in', 'i2', NOT_UNDERSTOOD, 14_000, 10_000));
+    await h.runner.handle(said('out', 'o3', 'Sorry, could you say that again?', 24_001, 1500));
+    await h.runner.handle({ type: 'session.closed', event_id: 'c1', reason: 'remote_hangup', usage: { seconds: 30 } });
+    expect(h.closes.at(-1)!.quality.maxGapMs).toBe(1);
+  });
+
+  it('T4-vad-review: a phone number "720-555-0162" over 5 s adds no wait', async () => {
+    const h = harness();
+    await h.runner.handle(said('out', 'o1', 'What is the best number for you?', 0, 1500));
+    await h.runner.handle(said('in', 'i1', '720-555-0162', 2000, 5000));
+    await h.runner.handle(said('out', 'o2', 'Thank you.', 7200));
+    await h.runner.handle({ type: 'session.closed', event_id: 'c1', reason: 'remote_hangup', usage: { seconds: 10 } });
+    expect(h.closes.at(-1)!.quality.maxGapMs).toBe(200);
   });
 
   it('T4-vad: a normal 3-word turn of 1.5 s answered at once adds no wait', async () => {
