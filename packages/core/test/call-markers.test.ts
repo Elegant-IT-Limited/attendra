@@ -50,3 +50,15 @@ describe('the call markers kept on the call row (CALL-3)', () => {
     ])).toHaveLength(1);
   });
 });
+
+describe('T4-vad: late turn ends', () => {
+  it('T4-vad: the excess of a caller turn kept open past its words (0.5 s a word plus 0.5 s), as the longest wait', async () => {
+    const { lateTurnEndMs, longestWaitMs } = await import('../src/call-markers');
+    const kept = [{ speaker: 'agent' as const, text: '', startMs: 0, endMs: 1500 }, { speaker: 'caller' as const, text: '', words: 3, startMs: 102_995, endMs: 114_085 }, { speaker: 'agent' as const, text: '', startMs: 114_086, endMs: 115_000 }];
+    expect(lateTurnEndMs(kept)).toBe(114_085 - 102_995 - 2000);
+    expect(longestWaitMs(kept)).toBeGreaterThanOrEqual(9000);
+    const normal = [{ speaker: 'caller' as const, text: '', words: 3, startMs: 0, endMs: 1500 }, { speaker: 'agent' as const, text: '', startMs: 1700, endMs: 2000 }];
+    expect(lateTurnEndMs(normal)).toBeNull();
+    expect(longestWaitMs(normal)).toBe(200);
+  });
+});

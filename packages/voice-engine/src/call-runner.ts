@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type CallAgent, callStateNote, type Outbound } from '@attendra/agent';
-import { addTokens, askedToHangUp, type CallEventInput, type CallQuality, EMPTY_CALL_MIN_MS, maxGapMs, type ModelTokens, recordedOutcome, repeatedQuestions, saidGoodbye, STALL_MS } from '@attendra/core';
+import { addTokens, askedToHangUp, type CallEventInput, type CallQuality, EMPTY_CALL_MIN_MS, lateTurnEnds, longestWaitMs, type ModelTokens, recordedOutcome, repeatedQuestions, saidGoodbye, STALL_MS } from '@attendra/core';
 import { isOpenAiQuotaError, type Logger } from '@attendra/observability';
 import { randomUUID } from 'node:crypto';
 import type { Sideband, SidebandConnection, SidebandEvent, VoiceEngine } from './engine';
@@ -727,7 +727,8 @@ export class CallRunner {
     if (this.silentStartHandled && !note) reason = 'silent_start';
     // with the two markers of how the call went for the caller, from its turns (CALL-3): the longest wait after they
     // spoke, and the questions asked again
-    const quality: CallQuality = { ...this.quality(), maxGapMs: maxGapMs(state.speech), repeatedQuestions: repeatedQuestions(state.turns).length };
+    // the longest wait: a silence after the caller's words, or a turn the detector kept open past them (T4)
+    const quality: CallQuality = { ...this.quality(), maxGapMs: longestWaitMs(state.speech), repeatedQuestions: repeatedQuestions(state.turns).length };
     // the caller never heard the assistant: recorded as such, and said when the line was up long enough to matter
     const outcome = recordedOutcome(state.outcome, quality);
     const lasted = Date.now() - this.startedAt;
@@ -735,7 +736,7 @@ export class CallRunner {
       this.alerts?.alert('empty_call', `A caller was on the line ${Math.round(lasted / 1000)} s and never heard the assistant (${note ?? reason}).${this.alerts.where ? '' : ` Session ${this.sessionId}.`}`);
     }
     await this.recorder.close({ reason: note ?? reason, voiceSeconds, outcome, emergency: !!state.emergency, emergencyResult: state.emergencyResult, language: state.language, quality, usage: { models: state.modelTokens, fastTier: state.fastTier } });
-    this.log.info({ session_id: this.sessionId, reason, outcome, voice_seconds: voiceSeconds, first_audio_ms: quality.firstAudioMs, stalls: quality.stalls, answer_timeouts: quality.answerTimeouts, max_gap_ms: quality.maxGapMs, repeated_questions: quality.repeatedQuestions,
+    this.log.info({ session_id: this.sessionId, reason, outcome, voice_seconds: voiceSeconds, first_audio_ms: quality.firstAudioMs, stalls: quality.stalls, answer_timeouts: quality.answerTimeouts, max_gap_ms: quality.maxGapMs, late_turn_ends: lateTurnEnds(state.speech), repeated_questions: quality.repeatedQuestions,
       // the tokens each model used (counts only), the same numbers call_costs prices: a cost can be read off the logs
       model_tokens: state.modelTokens }, 'call finished');
     this.sideband.close();

@@ -619,12 +619,12 @@ describe('noise before the caller\'s first words (call bugs, 2026-11-17)', () =>
     }
   });
 
-  it('ends turns at low eagerness and takes the room\'s noise out first (call quality Q4, Q5)', async () => {
+  it('T4-vad: ends turns at auto eagerness (the server\'s default), replies only on our go, the caller still stops a reply, and takes the room\'s noise out first', async () => {
     const accept = vi.fn(async () => {});
     const e = new RealtimeEngine({ realtime: { calls: { accept } } } as never, 'gpt-realtime-2.1', () => realtimeSocket().ws);
     await e.accept('rtc_cfg', vet, NOW, undefined, { flow: 'tools' });
-    const session = (accept.mock.calls[0] as unknown[])[1] as { audio: { input: { turn_detection: { eagerness: string }; noise_reduction: { type: string } } } };
-    expect(session.audio.input.turn_detection.eagerness).toBe('low');
+    const session = (accept.mock.calls[0] as unknown[])[1] as { audio: { input: { turn_detection: { eagerness: string; create_response: boolean; interrupt_response: boolean }; noise_reduction: { type: string } } } };
+    expect(session.audio.input.turn_detection).toMatchObject({ type: 'semantic_vad', eagerness: 'auto', create_response: false, interrupt_response: true });
     expect(session.audio.input.noise_reduction).toEqual({ type: 'near_field' });
   });
 });
