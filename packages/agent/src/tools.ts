@@ -1401,6 +1401,12 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const found = from.phone ? await backend.patients.findPet(clinic.id, toName, from.phone, ctx.callId) : { status: 'not_found' as const };
       if (found.status !== 'found') return refuse('pet_not_on_number', `Say first, in these words: "${PACKS[lang].notSeenPet({ pet: toName })}" If ${toName} is new, add it with register_patient, then call move_visit_to_pet again.`);
       const to = found.patient;
+      // the clinic's "match the kind of animal" rule (K1): a visit goes only to a pet its vet sees, else the vets who do
+      const vet = clinic.providers.find((p) => p.id === appt.providerId);
+      if (vet && to.species && bookingOf(clinic).matchAnimal && !seesAnimal(vet, to.species)) {
+        const others = bookableProviders(clinic.providers).filter((p) => p.id !== vet.id && p.visitTypeIds.includes(appt.visitTypeId) && seesAnimal(p, to.species!)).map((p) => providerName(p, lang));
+        return refuse('vet_not_for_animal', `Say, in these words: "${pack.swapWrongVet({ vet: providerName(vet, lang), animals: seesAnimals(vet, lang), pet: to.firstName, others })}" Nothing was changed. On a yes, find_slots for ${to.firstName} with that vet after verify_caller with ${to.firstName}.`);
+      }
       const visitType = clinic.visitTypes.find((v) => v.id === appt.visitTypeId);
       const readback = pack.readbackSwap({ when: when(appt.start), provider: nameOf(appt.providerId) ?? 'the vet', visit: visitType ? localName(visitType, lang) : 'visit', from: from.firstName, to: to.firstName });
       const slot: Slot = { id: `swap:${appt.id}`, providerId: appt.providerId, visitTypeId: appt.visitTypeId, start: appt.start, end: appt.end };

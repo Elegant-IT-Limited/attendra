@@ -172,3 +172,27 @@ describe('T13: a pet added on the calling number makes the call verified', () =>
     expect(added.results[0]!.data).toMatchObject({ registered: true, verified: true });
   });
 });
+
+describe('T8: a visit moved to another pet keeps to the vets who see that animal (K1)', () => {
+  it('T8: moving a visit with a dogs-and-cats vet to a rabbit is refused plainly, with the vet who sees rabbits offered', async () => {
+    const c = await w.call('+17205550172', { clinic });
+    c.caller("Hi, Linh Nguyen. I want to add my new rabbit Clover, she's one year old.");
+    const added = await c.delegate([{ tool: 'register_patient', args: { pet_name: 'Clover', owner_name: 'Linh Nguyen', species: 'rabbit', sex: 'female', birthday_or_age: 'one year', phone: null } }]);
+    expect(added.errors).toEqual([null]);
+    c.assistant('Clover is registered.');
+    c.caller('And Biscuit, can he see Dr. Bell on Friday?');
+    await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: 'Biscuit' } }]);
+    const found = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: 'prov_bell', from_date: '2026-10-02', part_of_day: 'any' } }]);
+    await c.delegate([{ tool: 'propose_booking', args: { slot_id: (found.results[0]!.data.slots as { slot_id: string }[])[0]!.slot_id, replaces_appointment_id: null } }]);
+    c.readBack('Shall I book it?');
+    c.caller('Yes.');
+    expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual([null]);
+    const [visit] = await w.backend.scheduler.upcoming(clinic.id, c.state.verifiedPatient!.id, new Date('2026-10-02T00:00:00Z'));
+    c.caller('Actually, give that visit to Clover.');
+    const out = await c.delegate([{ tool: 'move_visit_to_pet', args: { appointment_id: visit!.id, pet_name: 'Clover' } }]);
+    expect(out.errors).toEqual(['vet_not_for_animal']);
+    expect(said(out)).toContain('Dr. Marcus Bell');
+    expect(said(out)).toContain('Dr. Hana Sato');
+    expect(c.state.pending).toBeNull();
+  });
+});

@@ -65,6 +65,7 @@ export const VAPI_PATH_SCENARIOS = [
   'vet-T8-visit-to-another-pet', 'vet-es-T8-visit-to-another-pet', 'vet-T10-one-question', 'vet-es-T10-one-question',
   'vet-T11-fragment-confirmed', 'vet-es-T11-fragment-confirmed', 'vet-T12-slot-args-shapes', 'vet-es-T12-slot-args-shapes',
   'vet-T13-verified-on-calling-number', 'vet-es-T13-verified-on-calling-number',
+  'vet-T8-swap-wrong-vet', 'vet-es-T8-swap-wrong-vet',
 ] as const;
 
 export interface VapiPathResult { id: string; passed: boolean; failures: string[]; outcome: string; ms: number }

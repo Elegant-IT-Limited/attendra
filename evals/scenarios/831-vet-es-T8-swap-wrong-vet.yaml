@@ -1,0 +1,38 @@
+id: vet-es-T8-swap-wrong-vet
+title: "T8 with K1 in Spanish: a visit with a dogs-and-cats vet is never moved to a rabbit; the caller hears why in one line and the vet who sees rabbits is offered (a tester's call, 2026-11-24)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, tester-call, call-bugs, es]
+turns:
+  - caller: Hola, soy Linh Nguyen. Quiero registrar a mi coneja nueva Clover, tiene un año.
+    reply: "{registered}"
+    delegate:
+      - register_patient: { pet_name: Clover, owner_name: Linh Nguyen, species: conejo, sex: female, birthday_or_age: un año, phone: null }
+  - caller: Y Biscuit, ¿puede ver al doctor Bell el viernes por una consulta por enfermedad?
+    reply: "{offered.0}"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: prov_bell, from_date: "2026-10-02", part_of_day: any }
+  - caller: La primera.
+    reply: "{readback}?"
+    delegate:
+      - propose_booking: { slot_id: "$found[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "{done}"
+    delegate:
+      - commit_pending: {}
+  - caller: En realidad, pásele esa cita a Clover.
+    reply: "{the vet line}"
+    delegate:
+      - list_appointments: {}
+      - move_visit_to_pet: { appointment_id: "$appointments[0]", pet_name: Clover }
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  refusals: [vet_not_for_animal]
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["Dra. Hana Sato puede atender a Clover"]
+  visits_after:
+    - { on: "2026-10-02", at: "08:00", visit: vt_sick }

@@ -187,6 +187,8 @@ export interface LanguagePack {
   confirmPetName: (v: { name: string }) => string;
   /** The read-back of a visit moved from one pet to another (T8). */
   readbackSwap: (v: { when: string; provider: string; visit: string; from: string; to: string }) => string;
+  /** A visit not moved to a pet its vet does not see (K1), with the vets who do offered. */
+  swapWrongVet: (v: { vet: string; animals: string | null; pet: string; others: string[] }) => string;
   /** The owner's first name, asked on its own (T10). */
   askOwnerName: string;
   askPetSex: (v: { pet: string }) => string;

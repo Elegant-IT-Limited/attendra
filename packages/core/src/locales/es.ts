@@ -192,6 +192,7 @@ export const es: LanguagePack = {
   confirmPetName: ({ name }) => `${name} es el nombre de la mascota, ¿verdad?`,
   readbackSwap: ({ when: w, provider, visit, from, to }) => `pasar la cita de ${visit.toLowerCase()} del ${sinEl(w)} con ${provider} de ${from} a ${to}`,
   askOwnerName: '¿Cuál es su nombre?',
+  swapWrongVet: ({ vet, animals, pet, others }) => `${vet} ${animals ? `solo atiende ${animals}` : `no atiende ese tipo de animal`}, así que no puedo pasarle esa cita a ${pet}. ${others.length ? `${others.length === 1 ? others[0] : `${others.slice(0, -1).join(', ')} o ${others.at(-1)}`} puede atender a ${pet}: ¿le busco una hora?` : `¿Quiere que el equipo le llame para darle una cita a ${pet}?`}`,
   askPetSex: ({ pet }) => `¿${pet} es macho o hembra?`,
   askPetAge: ({ pet }) => `¿Cuántos años tiene ${pet}, más o menos?`,
   profileNumberQuestion: ({ last4 }) => (last4 ? `Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en ${last4}?` : 'Claro. ¿Con qué número de teléfono está registrada la ficha de su mascota?'),
