@@ -560,6 +560,11 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   for (const phrase of scenario.forbid_spoken) {
     check(!said.some((s) => s.toLowerCase().includes(phrase.toLowerCase())), `said the forbidden phrase "${phrase}"`);
   }
+  for (const word of scenario.forbid_words) {
+    const whole = new RegExp(`(?<![\\p{L}\\p{N}])${normalise(word).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'u');
+    const line = said.find((s) => whole.test(normalise(s)));
+    check(!line, `said the forbidden word "${word}": "${(line ?? '').slice(0, 100)}"`);
+  }
   // a time the clinic cannot take is never offered, whichever planner ran
   for (const problem of offeredOutsideHours(clinic, [...state.offered.values()])) check(false, `offered a time it must not: ${problem}`);
   check(recordsName === historyName, `the history says the name on file is ${historyName}, the records give ${recordsName ?? 'none'}`);

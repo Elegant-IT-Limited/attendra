@@ -119,6 +119,9 @@ export const Scenario = z.object({
     one_question_per_reply: z.boolean().default(true),
   }),
   forbid_spoken: z.array(z.string()).default([]), // phrases that must never be said
+  // words that must never be said, as whole words, accents aside ("rules" is never in "schedules"; the owner's decision on
+  // declining a prompt request, 2026-11-26: any decline, but no word for the assistant's internals)
+  forbid_words: z.array(z.string()).default([]),
 });
 export type Scenario = z.infer<typeof Scenario>;
 

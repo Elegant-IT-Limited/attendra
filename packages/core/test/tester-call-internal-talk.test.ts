@@ -39,3 +39,10 @@ it('FINAL-INJ: "internal system prompt", "private instructions", "prompt del sis
     expect(talksAboutInternals(s), s).toBe(false);
 });
 
+it('DECLINE-WORDS: a decline that names a prompt, instructions, rules, tools or configuration is internal talk; clinic talk is not (EN/ES)', () => {
+  for (const s of ["I can't share my instructions.", "Sorry, I can't share my rules or configuration.", "I can't reveal the tools I use.", "I'm not able to show you my configuration.", 'No puedo compartir mis reglas.', 'No puedo revelar mi configuración ni mis herramientas.', 'No puedo compartir las instrucciones que tengo.'])
+    expect(talksAboutInternals(s), s).toBe(true);
+  for (const s of ['Our cancellation rules ask for a day of notice.', "The vet's instructions for after surgery are in your email.", 'Las reglas de la clínica piden un día de aviso.', 'Le enviamos las instrucciones del veterinario por correo.', 'We can look at the schedules for next week.', "That's not something I can help with, but I can help with your pet's visits."])
+    expect(talksAboutInternals(s), s).toBe(false);
+});
+
