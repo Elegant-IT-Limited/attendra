@@ -196,6 +196,7 @@ export const es: LanguagePack = {
     const missing = credentialsAsked && vets.some((v) => !v.credentials.length) ? ' El equipo le puede dar más detalles sobre su formación.' : '';
     return `${vets.length === 1 ? (pets ? 'Nuestro veterinario es' : 'Nuestro médico es') : (pets ? 'Nuestros veterinarios son' : 'Nuestros médicos son')} ${list}.${missing}`;
   },
+  vetsOnDay: ({ day, vets, pets }) => (vets.length ? `El ${day} ${vets.length === 1 ? `atiende ${vets[0]}` : `atienden ${vets.slice(0, -1).join(', ')} y ${vets.at(-1)}`}.` : `El ${day} no atiende ninguno de nuestros ${pets ? 'veterinarios' : 'médicos'}.`),
   forWhichPet: ({ names }) => `¿Para ${names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} o ${names.at(-1)}`} o para otra mascota?`,
   confirmPetName: ({ name }) => `${name} es el nombre de la mascota, ¿verdad?`,
   readbackSwap: ({ when: w, provider, visit, from, to }) => `pasar la cita de ${visit.toLowerCase()} del ${sinEl(w)} con ${provider} de ${from} a ${to}`,

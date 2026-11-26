@@ -17,7 +17,7 @@ import { householdNames } from './flow/voice-tools';
 import type { CallState } from './call-state';
 import { answerForAsked, answersFromFaqs, asksIfOffered } from './knowledge';
 import { askedVisitWords, asksWhatVisits, bookableVisits, closestVisits, visitChoicesIn, visitSharesTopic } from './visit-offer';
-import { asksAboutVets, asksEmergencyHandling, asksWhichVet, saysTextsNotArriving, textsNotArrivingNote, withoutMeaningAsk } from './flow/guards';
+import { asksAboutTraining, asksAboutVets, asksEmergencyHandling, asksWhichVet, saysTextsNotArriving, textsNotArrivingNote, withoutMeaningAsk } from './flow/guards';
 import { visitMeant, whichVisitLine } from './flow/visit-pick';
 import { outOfScopeLine } from '@attendra/knowledge/scope';
 
@@ -294,6 +294,13 @@ const MONTH_WORDS: Record<string, number> = Object.fromEntries([
   ...['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'].map((m, i) => [m, i + 1]),
   ...['jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec'].map((m) => [m, MONTH_LIST.findIndex((x) => x.startsWith(m.slice(0, 3))) + 1]),
 ]);
+/** The day a question names in words ("on Friday", "tomorrow", "October 2"), as a date on the clinic's clock; null when none. */
+function dayWordIn(text: string, clinic: Pick<ClinicConfig, 'timezone' | 'phoneNumbers'>, now: Date): string | null {
+  const t = normalise(text);
+  const m = /\b(today|tomorrow|hoy|manana|(?:(?:this|next|el|este|el proximo)\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|lunes|martes|miercoles|jueves|viernes|sabado|domingo))\b/.exec(t);
+  const d = m ? dateSaid(m[1]!, clinic, now) : null;
+  return d && d !== INVALID_DATE ? d : null;
+}
 const INVALID_DATE = 'invalid';
 const daysIn = (month: number, year: number) => new Date(Date.UTC(year, month, 0)).getUTCDate();
 /** Whether a find_slots from_date names a day no calendar has: "February 30", "02/30/2027", "2027-06-31". */
@@ -928,9 +935,16 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const offer = asksWhere(asked) ? textOfferAfter('directions', state, clinic, ctx.callerNumber) : asksHours(asked) ? textOfferAfter('hours', state, clinic, ctx.callerNumber) : null;
       // who the vets are, with their specialty and qualifications: one line of the clinic's own, said once (T6)
       // the clinic's own answer, when one fits, is never dropped for the list (reviewer, T6)
-      const vetsAsked = !answer && !vetDayAsked(clinic, asked) && asksAboutVets(asked);
+      // (a question about where the vets trained is about them, whatever a clinic answer about "where" shares with it)
+      const vetsAsked = (!answer || (asksAboutTraining(asked) && !asksAboutVets(answer.question))) && !vetDayAsked(clinic, asked) && asksAboutVets(asked);
       const people = bookableProviders(clinic.providers).filter((p) => p.kind !== 'room');
-      const vetsLine = vetsAsked && people.length
+      // a day or a date with it ("who is the vet on Friday?"): only the vets in that day, by their hours and time off,
+      // never the whole list (reviewer, T6). Whether one is fully booked is find_slots' to say
+      const dayAsked = vetsAsked ? dayWordIn(asked, clinic, ctx.now()) : null;
+      const inThatDay = dayAsked ? people.filter((p) => bookableWindows(clinic, p, dayAsked).windows.length > 0 && !awayOn(p, dayAsked)) : null;
+      const vetsLine = inThatDay
+        ? PACKS[lang].vetsOnDay({ day: PACKS[lang].fullDay(dayAsked!), vets: inThatDay.map((p) => providerName(p, lang)), pets: trade.identity === 'pet' })
+        : vetsAsked && people.length
         ? PACKS[lang].vetsAnswer({ vets: people.map((p) => ({ name: providerName(p, lang), specialty: p.specialty ?? null, credentials: p.credentials ?? [] })), credentialsAsked: /qualif|credential|certif|degree|trained|training|titulo|cualificacion|formacion/.test(normalise(asked)), pets: trade.identity === 'pet' })
         : null;
       const visitsLine = !ownOffer && bookable.length && asksWhatVisits(`${question} ${state.lastTurn('caller')}`)
