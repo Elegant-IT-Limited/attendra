@@ -131,7 +131,6 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
     const sms: string[] = [];
     const messenger: Messenger = { async sendTemplate(_c, m) { sms.push(m.template); return { status: 'sent', messageId: `sms-${sms.length}` }; } };
     const calls = new CallRepository(t.db, cipher);
-    let callRowId: string | null = null;
     const controls: { type: string; body: Record<string, unknown>; onCallerWords: boolean }[] = [];
     let onCallerWords = false;
     registerVapi(app, {
@@ -142,7 +141,7 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
       // scripted call (run at once, they ended every demo call before its first turn)
       later: (ms, fn) => { if (ms < 60_000) fn(); },
       clinicById: async (id) => (id === clinic.id ? clinic : null),
-      openCall: async (clinicId, sessionId, from, channel, startedBy, last4, how) => (callRowId = await calls.open(clinicId, sessionId, from, channel, startedBy, last4, how)),
+      openCall: (clinicId, sessionId, from, channel, startedBy, last4, how) => calls.open(clinicId, sessionId, from, channel, startedBy, last4, how),
       recorderFor: (clinicId, callId) => ({ appendSegment: (s) => calls.appendSegment(clinicId, callId, s), close: (c) => calls.close(clinicId, callId, c) }),
       actionsFor: (clinicId, callId) => ({ record: (a) => calls.recordAction(clinicId, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, taskRevision: a.revision, patientId: a.patientId }) }),
       backend: {
@@ -186,11 +185,9 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
       for (const step of turn.delegate ?? []) {
         if (over()) break;
         const [tool, raw] = Object.entries(step)[0]! as [string, Record<string, unknown>];
-        // the visit this call last booked (or moved to) and is still booked, and the last visit a result put forward to move
-        const booked = callRowId && Object.values(raw).includes('$booked')
-          ? (await withClinic(t.db, clinic.id, (tx) => tx.select({ id: schema.appointments.id, status: schema.appointments.status, createdAt: schema.appointments.createdAt }).from(schema.appointments).where(eq(schema.appointments.createdByCallId, callRowId!))))
-            .filter((a) => a.status === 'booked').sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0]?.id ?? null
-          : null;
+        // the visit this call last booked (or moved to): the id its booking's own result gave, as the Vapi model saw it; and
+        // the last visit a slot search put forward to move (CQ2-VAPI8, review 3: never from the call state or the database)
+        const booked = ([...outputs].reverse().find((o) => o.data?.booked === true && typeof o.data.appointment_id === 'string')?.data.appointment_id as string | undefined) ?? null;
         const putForward = [...JSON.stringify(searches).matchAll(/replaces_appointment_id ([\w-]+)/g)].at(-1)?.[1] ?? null;
         const args = resolve(raw, offered, outputs.map((o) => o.data), clinic, now, { booked, putForward });
         const res = await post({ type: 'tool-calls', toolCallList: [{ id: `tc_${++n}`, function: { name: tool, arguments: JSON.stringify(args) } }], artifact: { messages: [...lines] } });

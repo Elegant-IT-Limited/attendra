@@ -28,6 +28,8 @@ export const TEXT_PARTS: Record<SmsTemplateName, readonly string[]> = {
   directions: ['address', 'mapUrl'],
   hours: ['hours'],
   emergency_hospital: ['hospital', 'hospitalAddress', 'hospitalPhone', 'emergencyNumber'],
+  // after a transfer nobody took, with no backup hospital: the clinic's own emergency number, nothing else
+  emergency_line: ['emergencyLine', 'emergencyNumber'],
   provider: ['provider', 'details', 'clinicPhone'],
   answer: ['answer', 'clinicPhone'],
   link: ['label', 'url'],
@@ -47,7 +49,7 @@ export function textPreview(template: SmsTemplateName, values: Record<string, st
 export const TEXT_GROUPS = {
   visits: ['booking_confirmed', 'change_confirmed', 'cancel_confirmed', 'reminder', 'vet_changed'],
   refills: ['request_ready', 'refill_sent', 'refill_not_approved'],
-  during_call: ['directions', 'hours', 'emergency_hospital', 'provider', 'answer', 'link'],
+  during_call: ['directions', 'hours', 'emergency_hospital', 'emergency_line', 'provider', 'answer', 'link'],
 } as const satisfies Record<string, readonly SmsTemplateName[]>;
 export type TextGroup = keyof typeof TEXT_GROUPS;
 export const TEXT_GROUP_NAMES: Record<TextGroup, string> = { visits: 'Visits', refills: 'Refills', during_call: 'Sent during a call' };

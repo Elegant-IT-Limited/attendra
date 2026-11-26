@@ -22,7 +22,7 @@ const when = (hoursBefore: number): Record<SmsTemplateName, string> => ({
   reminder: `${hoursBefore === 24 ? 'The day before a visit' : `${hoursBefore} hours before a visit`} (Reminders, above), to people who said yes to texts`,
   vet_changed: 'When your team removes a vet and moves their visits to another vet, only if the team says yes to texting the owners',
   request_ready: refillWhen('refill_ready'), refill_sent: `${refillWhen('refill_sent')}, when a pharmacy is named (picked up at the clinic: no text)`, refill_not_approved: refillWhen('refill_declined'),
-  directions: DURING_CALL, hours: DURING_CALL, emergency_hospital: 'In an animal emergency, after the emergency advice', provider: DURING_CALL, answer: DURING_CALL,
+  directions: DURING_CALL, hours: DURING_CALL, emergency_hospital: 'In an animal emergency, after the emergency advice', emergency_line: 'In an animal emergency, when the team could not be reached and there is no backup hospital: your emergency number, after a yes', provider: DURING_CALL, answer: DURING_CALL,
   link: 'During a call, when one of your links fits and the caller says yes',
 });
 

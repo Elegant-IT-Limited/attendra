@@ -8,7 +8,7 @@ import { TEXT_NOT_SENT } from './format';
  */
 export const TEXT_KINDS: Record<SmsTemplateName, string> = {
   booking_confirmed: 'Booking confirmed', change_confirmed: 'Visit moved', cancel_confirmed: 'Visit cancelled', reminder: 'Reminder before a visit', vet_changed: 'Visit handed to another vet',
-  directions: 'Address and directions', hours: 'Opening hours', emergency_hospital: 'Emergency hospital', provider: 'A vet\'s details',
+  directions: 'Address and directions', hours: 'Opening hours', emergency_hospital: 'Emergency hospital', emergency_line: 'Your emergency line', provider: 'A vet\'s details',
   answer: 'An answer to a common question', link: 'One of your links',
   request_ready: 'Refill ready to pick up', refill_sent: 'Refill sent to the pharmacy', refill_not_approved: 'Refill: please call us',
 };

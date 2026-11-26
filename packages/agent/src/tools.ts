@@ -297,8 +297,11 @@ const MONTH_WORDS: Record<string, number> = Object.fromEntries([
 /** The day a question names in words ("on Friday", "tomorrow", "October 2"), as a date on the clinic's clock; null when none. */
 function dayWordIn(text: string, clinic: Pick<ClinicConfig, 'timezone' | 'phoneNumbers'>, now: Date): string | null {
   const t = normalise(text);
-  const m = /\b(today|tomorrow|hoy|manana|(?:(?:this|next|el|este|el proximo)\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|lunes|martes|miercoles|jueves|viernes|sabado|domingo))\b/.exec(t);
-  const d = m ? dateSaid(m[1]!, clinic, now) : null;
+  // a weekday or today/tomorrow, else a date ("October 2", "2 de octubre", "10/02/2026"): read by dateSaid (reviewer, T6)
+  const months = Object.keys(MONTH_WORDS).join('|');
+  const m = /\b(today|tomorrow|hoy|manana|(?:(?:this|next|el|este|el proximo)\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|lunes|martes|miercoles|jueves|viernes|sabado|domingo))\b/.exec(t)
+    ?? new RegExp(`\\b((?:${months})\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?|\\d{1,2}(?:st|nd|rd|th)?\\s+(?:de\\s+|of\\s+)?(?:${months})(?:\\s+(?:de\\s+)?\\d{4})?|\\d{1,4}[/-]\\d{1,2}[/-]\\d{1,4})\\b`).exec(t);
+  const d = m ? dateSaid(m[1]!.replace(/(\d)(?:st|nd|rd|th)\b/, '$1'), clinic, now) : null;
   return d && d !== INVALID_DATE ? d : null;
 }
 const INVALID_DATE = 'invalid';
@@ -814,7 +817,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
     state.outcome = 'booked';
     const textTo = booked.status === 'booked' ? await confirmByText('booking_confirmed', a.start, a.id, { providerId: a.providerId, visitTypeId: a.visitTypeId }, noText) : null;
     state.done.push(`moved to another pet: ${pending.readback}`);
-    return { ok: true, data: { booked: true, when: pending.readback, confirmation_text: textNote(textTo), spoken: pack.spoken.done({ kind: 'rescheduled', textTo, then: pack.spoken.anythingElse }), ...(oldGone ? { say: `${swap.toPatient.firstName} now has the visit; ${swap.fromPatient.firstName}'s was no longer booked. Say both in a few words.` } : {}) } };
+    return { ok: true, data: { booked: true, appointment_id: a.id, when: pending.readback, confirmation_text: textNote(textTo), spoken: pack.spoken.done({ kind: 'rescheduled', textTo, then: pack.spoken.anythingElse }), ...(oldGone ? { say: `${swap.toPatient.firstName} now has the visit; ${swap.fromPatient.firstName}'s was no longer booked. Say both in a few words.` } : {}) } };
   };
 
   switch (name) {
@@ -947,6 +950,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         : vetsAsked && people.length
         ? PACKS[lang].vetsAnswer({ vets: people.map((p) => ({ name: providerName(p, lang), specialty: p.specialty ?? null, credentials: p.credentials ?? [] })), credentialsAsked: /qualif|credential|certif|degree|trained|training|titulo|cualificacion|formacion/.test(normalise(asked)), pets: trade.identity === 'pet' })
         : null;
+      const ownAnswer = vetsLine && answer && !asksAboutVets(answer.question) ? null : answer;
       const visitsLine = !ownOffer && bookable.length && asksWhatVisits(`${question} ${state.lastTurn('caller')}`)
         ? PACKS[lang].spoken.visitsWeBook({ visits: bookable.slice(0, 6).map((v) => localName(v, lang)), more: bookable.length > 6 }) : null;
       // "Do you do laser therapy?" with no answer of the clinic's own, no document and none of its visits about it: the
@@ -965,12 +969,13 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
           closed_days_ahead: closedDaysAhead(clinic, today),
           // and its shorter days after this week, for "are you open on Christmas Eve?"
           ...(specialHoursAhead(clinic, today).length ? { special_hours_ahead: specialHoursAhead(clinic, today) } : {}),
-          answer: answer?.answer ?? null, source: answer?.id ?? null,
+          // one answer: a clinic answer that only shared a word with a question about the vets' training is not given
+          answer: ownAnswer?.answer ?? null, source: ownAnswer?.id ?? null,
           // the clinic's own answer, said by the clinic: "we ...", never "they ..." (a test call, 2026-11-16)
-          ...(answer ? { answer_voice: 'This is the clinic\'s own answer and you speak for the clinic: say it as "we" and "our" ("Yes, we offer ..."), never "they" or "the clinic".' } : {}),
+          ...(ownAnswer ? { answer_voice: 'This is the clinic\'s own answer and you speak for the clinic: say it as "we" and "our" ("Yes, we offer ..."), never "they" or "the clinic".' } : {}),
           ...(offer ? { text_offer: offer.note } : {}),
           // more than one thing asked ("boarding and grooming?"): each has its own answer, and each is said
-          ...(found.length > 1 ? { answers: found.map((f) => ({ question: f.question, answer: f.answer, source: f.id })), answers_note: 'The clinic\'s own answers, one for each thing they asked: answer each from its own answer. Never answer one from another\'s answer or from the visit types.' } : {}),
+          ...(ownAnswer && found.length > 1 ? { answers: found.map((f) => ({ question: f.question, answer: f.answer, source: f.id })), answers_note: 'The clinic\'s own answers, one for each thing they asked: answer each from its own answer. Never answer one from another\'s answer or from the visit types.' } : {}),
           ...(clinic.address ? { address: clinic.address } : {}), ...(clinic.website ? { website: clinic.website } : {}),
           // the clinic's own line, the one its clients know, for "what's your number?"
           phone: callUsNumber(clinic),
@@ -1531,6 +1536,8 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         ok: true,
         data: {
           booked: true, when: pending.readback, confirmation_text: textNote(textTo),
+          // the visit booked (or moved to), by its id, so "move it" or "cancel it" next can name it (CQ2-VAPI8)
+          ...(result.status === 'booked' || result.status === 'already_done' ? { appointment_id: result.appointment.id } : {}),
           done: `This visit is booked. Say so once${textTo ? `, and that you'll text a confirmation to ${textTo === 'calling' ? 'the number they are calling from' : 'the number on file'}, in the future tense: nobody on the call can see a text arrive (asked about it, say where it goes and that you can't see when it arrives)` : ''}; do not look for times again or check it, and never say it was not completed. If the caller says goodbye, call end_call.`,
           ...(oldStillActive ? { old_appointment_still_active: true, say: 'The new time is booked, but the old appointment could not be cancelled; offer a callback to sort it out.' } : {}),
           ...(askReminder && !oldStillActive ? { say: `Say it is booked, then ask once: "${pack.reminderOffer}" and call set_reminder_consent with their answer.` } : {}),
@@ -2229,7 +2236,8 @@ export function textContent(
       if (source === 'clinic_emergency') {
         const line = r?.number ?? null;
         if (!line) return null;
-        return { template: 'emergency_hospital', vars: { hospital: lang === 'es' ? `línea de emergencias de ${clinic.name}` : `${clinic.name} emergency line`, hospitalAddress: clinic.address ?? '', hospitalPhone: line, emergencyNumber: emergencyNumberFor(clinic, lang) } };
+        // the number alone, in its own words: never the clinic's address (it may be closed after hours) or "emergency vet:"
+        return { template: 'emergency_line', vars: { emergencyLine: line, emergencyNumber: emergencyNumberFor(clinic, lang) } };
       }
       const h = source === 'route_hospital' ? r?.hospital ?? null : source === 'route_backup' ? r?.backup ?? null : hospitalNow(clinic, now);
       if (!h) return null;

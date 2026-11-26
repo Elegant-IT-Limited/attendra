@@ -80,6 +80,9 @@ export function talksAboutInternals(line: string): boolean {
 export const FILLER_PREAMBLES = ['Let me…', 'Okay, let me…', 'Sure, I can help with that', 'Let me think this through', "I'll set that up and confirm"] as const;
 /** The list as the prompts quote it: "Let me…", "Okay, let me…", ... */
 export const FILLER_PREAMBLE_LIST = FILLER_PREAMBLES.map((p) => `"${p}"`).join(', ');
-const OPENS_WITH_FILLER = /^\s*(?:(?:okay|ok|so|alright|all right|sure|bueno|vale|claro)[,.]?\s+)?(?:let me\b|d[eé]jeme\b|perm[ií]tame\b)|^\s*sure,? i can help with that\b|^\s*i'?ll set that up and confirm\b|^\s*claro,? (?:le|lo|la) (?:puedo )?ayud(?:o|ar) con eso\b/i;
+// an opening acknowledgement or two ("Okay,", "One moment,", "Sure, one moment,") then "let me…" / "déjeme…" / "déjame…";
+// never "let me know" (an offer, not a preamble): CQ2-R7, review 3
+const ACKS = String.raw`(?:(?:okay|ok|so|alright|all right|sure|got it|right|one moment|one sec(?:ond)?|just a moment|bueno|vale|claro|un momento|un segundo|listo)[,.]?\s+){0,2}`;
+const OPENS_WITH_FILLER = new RegExp(String.raw`^\s*${ACKS}(?:let me\b(?!\s+know\b)|d[eé]j[ae]me\b|perm[ií]t[ae]me\b)|^\s*sure,? i can help with that\b|^\s*i'?ll set that up and confirm\b|^\s*claro,? (?:le|lo|la) (?:puedo )?ayud(?:o|ar) con eso\b`, 'i');
 /** Whether a reply opens with a filler preamble ("Let me check...", "Okay, let me...", "Déjeme ver..."). */
 export const opensWithFillerPreamble = (line: string) => OPENS_WITH_FILLER.test(line);

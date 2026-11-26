@@ -119,12 +119,12 @@ const VETS_WORD = /\b(?:vets?|veterinarians?|doctors?|drs?|doctoras?|doctores|ve
 const ABOUT_VETS = /\b(?:who|which|names?|how many|other|others|additional|list|qualif\w*|credentials?|specialt\w*|speciali[sz]\w*|trained|training|certified|degrees?|background|quien(?:es)?|cual(?:es)?|nombres?|cuantos|cuantas|otros?|otras?|titulos?|cualificaciones|formacion|especialidad(?:es)?)\b/;
 const NOT_ABOUT_WHO = /\b(?:address|where|located|location|hours?|open|opens|close|closes|charge|charges|cost|costs|price|prices|fee|fees|pay|insurance|parking|direccion|donde|hora|horas|horario|abre|abren|cierra|cierran|precio|precios|cuesta|cuestan|cobra|cobran|pagar|seguro)\b/;
 /** Their training or schooling: "where did they train?", "¿dónde estudiaron?" is still about who they are. */
-const TRAINING = /\b(?:train|trained|training|school|schooling|studied|study|qualif\w*|credentials?|degrees?|certified|estudiaron|estudio|se formaron|formacion|titulos?|cualificaciones)\b/;
+const TRAINING = /\b(?:train|trained|training|school|schooling|college|university|studied|study|qualif\w*|credentials?|degrees?|certified|estudiaron|estudio|se formaron|formacion|titulos?|cualificaciones)\b/;
 export const asksAboutTraining = (question: string) => VETS_WORD.test(normalise(question)) && TRAINING.test(normalise(question));
 export const asksAboutVets = (question: string) => {
   const t = normalise(question);
   if (NOT_ABOUT_WHO.test(t) && !TRAINING.test(t)) return false;
-  return (VETS_WORD.test(t) && ABOUT_VETS.test(t)) || /\b(?:qualifications?|credentials?|cualificaciones)\b/.test(t);
+  return (VETS_WORD.test(t) && (ABOUT_VETS.test(t) || TRAINING.test(t))) || /\b(?:qualifications?|credentials?|cualificaciones)\b/.test(t);
 };
 /**
  * A question about how the clinic handles emergencies ("what does 'on call' mean?", "¿qué significa que atienden
