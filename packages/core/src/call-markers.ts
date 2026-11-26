@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { redactSensitive } from './security';
 /**
  * Two markers of how a call felt to the caller, worked out from its turns when it closes (CALL-3, batch 4b) and kept on
  * the call row (migration 0055): the longest wait after they spoke, and how often the assistant asked something again.
@@ -45,30 +46,43 @@ export function maxGapMs(turns: readonly MarkedTurn[]): number | null {
   return answered ? max : null;
 }
 
-/** How long a caller's words take, at most, before the turn detector should have ended the turn: 0.5 s a word, plus 0.5 s. */
-export const WORD_MS = 500;
-export const TURN_END_GRACE_MS = 500;
-/** A turn kept open past its words by at least this much is counted as a late turn end. */
-export const LATE_TURN_END_MS = 2000;
+/** How long a caller's words take, at most, before the turn detector should have ended the turn: 1 s a word, plus 1 s. */
+export const WORD_MS = 1000;
+export const TURN_END_GRACE_MS = 1000;
+/** Only a turn kept open past its words by more than this is a late turn end: ordinary slow talk stays under it. */
+export const LATE_TURN_END_MS = 4000;
+
+/**
+ * How many words a caller's piece had, for the late turn end: each digit and each spelled letter is a word
+ * ("720-555-0162" is ten, "B-E-L-L-A, Bella." six). Undefined for a piece whose words were not kept as said: a card or
+ * social security number (redacted on the call), a "[... removed]" marker or the not-understood placeholder.
+ */
+export function spokenWords(said: string): number | undefined {
+  if (/\[[^\]]*removed\]|\(not understood\)/i.test(said) || redactSensitive(said) !== said) return undefined;
+  const parts = said.split(/[^\p{L}\p{N}']+/u).filter(Boolean);
+  const words = parts.reduce((n, part) => n + (/^\d+$/.test(part) ? part.length : 1), 0);
+  return words || undefined;
+}
+
+const lateBy = (p: MarkedTurn) => (p.speaker === 'caller' && p.words ? Math.round(p.endMs - p.startMs - p.words * WORD_MS - TURN_END_GRACE_MS) : 0);
 
 /**
  * The longest a caller turn stayed open after its words, as the turn detector kept it (T4, 2026-11-26: a test call's
  * event log showed "can you hear me?" held open 11 s, and two turns of a few words 16 and 18 s; every reply went within
  * a millisecond of the turn's end, so the call page's wait from the turn's end showed none of it). For each caller
- * piece with a word count: its length less 0.5 s a word and 0.5 s. Null when no piece ran over.
+ * piece with a word count: its length less 1 s a word and 1 s, counted only above 4 s. Null when no piece ran over.
  */
 export function lateTurnEndMs(pieces: readonly MarkedTurn[]): number | null {
   let max: number | null = null;
   for (const p of pieces) {
-    if (p.speaker !== 'caller' || !p.words) continue;
-    const excess = Math.round(p.endMs - p.startMs - p.words * WORD_MS - TURN_END_GRACE_MS);
-    if (excess > 0 && (max === null || excess > max)) max = excess;
+    const excess = lateBy(p);
+    if (excess > LATE_TURN_END_MS && (max === null || excess > max)) max = excess;
   }
   return max;
 }
 
-/** The caller turns kept open past their words by LATE_TURN_END_MS or more. */
-export const lateTurnEnds = (pieces: readonly MarkedTurn[]) => pieces.filter((p) => p.speaker === 'caller' && !!p.words && p.endMs - p.startMs - p.words * WORD_MS - TURN_END_GRACE_MS >= LATE_TURN_END_MS).length;
+/** The caller turns kept open past their words by more than LATE_TURN_END_MS. */
+export const lateTurnEnds = (pieces: readonly MarkedTurn[]) => pieces.filter((p) => lateBy(p) > LATE_TURN_END_MS).length;
 
 /**
  * The call's longest wait, the one number the call page shows: the longest silence after the caller's words (maxGapMs)

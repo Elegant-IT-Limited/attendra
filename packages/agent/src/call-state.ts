@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { answerAcrossPieces, type CallOutcome, type CallPatient, isClearYes, type Language, LANGUAGES, newToClinic, normalise, redactSensitive, saysSlot, type Slot, spacedSentences } from '@attendra/core';
+import { answerAcrossPieces, type CallOutcome, type CallPatient, isClearYes, type Language, LANGUAGES, newToClinic, normalise, redactSensitive, saysSlot, type Slot, spacedSentences, spokenWords } from '@attendra/core';
 import { CallMemory } from './call-memory';
 import type { EmergencyCase, EmergencyResult } from './flow/emergency';
 
@@ -280,7 +280,7 @@ export class CallState {
     const piece = this.speech.at(-1);
     if (speaker === 'agent' && piece?.speaker === 'agent') piece.endMs = Math.max(piece.endMs, endMs);
     // a caller's piece keeps how many words it had (never the words), for a turn kept open past them (T4)
-    else this.speech.push({ speaker, text: '', startMs, endMs, ...(speaker === 'caller' ? { words: delta.split(/\s+/).filter(Boolean).length } : {}) });
+    else this.speech.push({ speaker, text: '', startMs, endMs, ...(speaker === 'caller' ? { words: spokenWords(delta) } : {}) });
     const last = this.turns.at(-1);
     // The read-back is said when the assistant's words since the proposal carry the slot's day and time, across
     // fragments and turns (batch 1c): "I found Biscuit" after a proposal is not a read-back, and a yes to it books nothing
