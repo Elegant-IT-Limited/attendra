@@ -57,8 +57,24 @@ export const LATE_TURN_END_MS = 4000;
  * ("720-555-0162" is ten, "B-E-L-L-A, Bella." six). Undefined for a piece whose words were not kept as said: a card or
  * social security number (redacted on the call), a "[... removed]" marker or the not-understood placeholder.
  */
+/**
+ * A "[… removed]" redaction marker or the not-understood placeholder, by plain search: the regex for it ran in polynomial
+ * time on many '[' (CodeQL js/polynomial-redos).
+ */
+function hasMarker(said: string): boolean {
+  const t = said.toLowerCase();
+  if (t.includes('(not understood)')) return true;
+  // each "removed]" with its "[" at most 60 characters before it and no "]" between: bounded work per occurrence
+  for (let end = t.indexOf('removed]'); end >= 0; end = t.indexOf('removed]', end + 1)) {
+    const before = t.slice(Math.max(0, end - 60), end);
+    const open = before.lastIndexOf('[');
+    if (open >= 0 && !before.slice(open).includes(']')) return true;
+  }
+  return false;
+}
+
 export function spokenWords(said: string): number | undefined {
-  if (/\[[^\]]*removed\]|\(not understood\)/i.test(said) || redactSensitive(said) !== said) return undefined;
+  if (hasMarker(said) || redactSensitive(said) !== said) return undefined;
   const parts = said.split(/[^\p{L}\p{N}']+/u).filter(Boolean);
   const words = parts.reduce((n, part) => n + (/^\d+$/.test(part) ? part.length : 1), 0);
   return words || undefined;
