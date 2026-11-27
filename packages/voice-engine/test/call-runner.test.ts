@@ -39,7 +39,7 @@ describe('the tools path: the call state for the voice model (batch 1d)', () => 
     await h.runner.handle({ type: 'session.tool_call', event_id: 't1', call_id: 'fc_1', name: 'clinic_now', arguments: '{}' });
     await h.runner.handle({ type: 'session.tool_call', event_id: 't2', call_id: 'fc_2', name: 'clinic_now', arguments: '{}' });
     expect(h.sent.slice(1).map((e) => (e as { type: string }).type)).toEqual(['context.note', 'tool.result', 'tool.result']);
-    expect(h.sent[1]).toMatchObject({ type: 'context.note', content: 'Call state. found: Biscuit.' });
+    expect(h.sent[1]).toMatchObject({ type: 'context.note', content: 'Call state. found: Biscuit. Number confirmed; pets on it: Biscuit. For another visit ask only "For Biscuit or another pet?", never the number again.' });
   });
 });
 

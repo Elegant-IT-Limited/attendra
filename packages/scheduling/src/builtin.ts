@@ -36,7 +36,7 @@ export class BuiltinScheduler implements SchedulerAdapter {
    * who already has a visit then, with any provider, is refused as the front desk
    * refuses them: "patient_busy".
    */
-  async book(clinicId: string, input: { patientId: string; slot: Slot; callId: string; idempotencyKey: string; replacesAppointmentId?: string | null; note?: string | null }): Promise<BookingResult> {
+  async book(clinicId: string, input: { patientId: string; slot: Slot; callId: string; idempotencyKey: string; replacesAppointmentId?: string | null; replacesPatientId?: string | null; note?: string | null }): Promise<BookingResult> {
     const existing = await byKey(this.db, clinicId, input.idempotencyKey);
     if (existing) return { status: 'already_done', appointment: summary(existing) };
     const busy = await withClinic(this.db, clinicId, async (tx) => (await tx.select({ id: appointments.id }).from(appointments).where(and(
@@ -55,7 +55,7 @@ export class BuiltinScheduler implements SchedulerAdapter {
       noteEnc: input.note?.trim() && this.cipher ? this.cipher.encrypt(input.note.trim(), phiContext(clinicId, 'appointments.note')) : null,
     }, { actor: this.actor, action: 'appointment.booked', callId: input.callId }, replaces ? async (tx) => {
       const done = await tx.update(appointments).set({ status: 'cancelled', cancelKey: `replaced:${input.idempotencyKey}`, cancelledByCallId: input.callId, updatedAt: new Date(), cancelledAt: new Date() })
-        .where(and(eq(appointments.clinicId, clinicId), eq(appointments.id, replaces), eq(appointments.patientId, input.patientId), eq(appointments.status, 'booked')))
+        .where(and(eq(appointments.clinicId, clinicId), eq(appointments.id, replaces), eq(appointments.patientId, input.replacesPatientId ?? input.patientId), eq(appointments.status, 'booked')))
         .returning({ id: appointments.id });
       if (done.length) await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'appointment.cancelled', entity: 'appointment', entityId: replaces, callId: input.callId });
       replaced = done.length > 0;

@@ -1,0 +1,15 @@
+id: vet-es-T6-vets-answered-once
+title: "T6 in Spanish: '¿Qué otros doctores tienen y qué títulos tienen?' gets every vet once, with their specialty, in the backend's words (a tester's call, 2026-11-24)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, tester-call, info, es]
+turns:
+  - caller: ¿Qué otros doctores tienen y qué títulos tienen?
+    reply: "{the vets line}"
+    delegate:
+      - get_clinic_info: { question: "¿Qué otros doctores tienen y qué títulos tienen?" }
+expect:
+  outcome: info
+  language: es
+  returned: ["Nuestros veterinarios son Dra. Elena Ruiz, medicina general", "Dra. Hana Sato, animales exóticos"]
+  never_returned: ["I don't have that information"]

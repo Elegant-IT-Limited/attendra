@@ -2,6 +2,7 @@
 import { callerIdOf, type ClinicConfig, industryPack, localName, PACKS } from '@attendra/core';
 import type { CallState } from '../call-state';
 import { NOT_OFFERED_VISIT } from '../visit-offer';
+import { householdNames } from './voice-tools';
 
 /**
  * Where a visit stands on this call, read from the call state itself (never kept apart from it, so it cannot drift):
@@ -59,8 +60,11 @@ export function nextStep(stage: FlowStage, state: CallState, clinic: ClinicConfi
       return 'Offer at most three of the times returned, with the weekday and date. When the caller picks one, call propose_booking with its slot_id; when they want another day or time, call find_slots again.';
     case 'readback_pending':
       return `Read the change back as a question, in these words: "${state.pending!.readback}?" Then wait. On a clear yes, call commit_pending at once, before anything else; on a no or a change, ask what to change.`;
-    case 'done':
-      return `It is done: say so in the words given, then ask "${pack.spoken.anythingElse}"`;
+    case 'done': {
+      // another visit on the same call keeps the household: never the number question again (T7)
+      const names = pets && state.verifiedPatient ? householdNames(state) : [];
+      return `It is done: say so in the words given, then ask "${pack.spoken.anythingElse}"${names.length ? ` If they want another visit, ask only "${pack.forWhichPet({ names })}", never the number again.` : ''}`;
+    }
     default:
       return null;
   }

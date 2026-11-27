@@ -107,7 +107,7 @@ describe('a caller is never asked to repeat for a mistake of ours', () => {
   it('arguments that do not fit a tool go back to the planner to fix, not to the caller to repeat', async () => {
     const c = await w.call('+17205550172', { clinic });
     c.caller('Can I bring Biscuit in?');
-    const out = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: 'tomorrow', part_of_day: 'any' } }]);
+    const out = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: 'when he is better', part_of_day: 'any' } }]);
     expect(out.errors).toEqual(['invalid_arguments']);
     expect(say(out)).toContain('from_date');
     expect(say(out)).not.toMatch(/ask the caller to repeat/i);

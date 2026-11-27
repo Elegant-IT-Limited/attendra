@@ -106,6 +106,24 @@ export function sideTalkLine(clinic: Pick<ClinicConfig, 'languages'>): string {
 const WHICH_VET = /\b(?:which|what|who(?:'?s| is)?) (?:of your )?(?:vet|vets|veterinarian|veterinarians|doctor|doctors|dr)\b|\b(?:best|good) (?:vet|doctor) for\b|\b(?:que|cual|quien) (?:veterinari[oa]|doctor[a]?|medic[oa])\b/;
 export const asksWhichVet = (question: string) => WHICH_VET.test(normalise(question));
 /**
+ * A question about who the vets or doctors are: their names, how many, what they specialise in, their qualifications
+ * (T6, a tester's call 2026-11-24). Answered once, from the clinic's own list, never "I don't have that".
+ */
+const VETS_WORD = /\b(?:vets?|veterinarians?|doctors?|drs?|doctoras?|doctores|veterinari[oa]s?|medic[oa]s?)\b/;
+// who the vets are: their names, how many, the others, their qualifications or specialties; never where they are, when
+// they open or what they charge (reviewer, T6: "What is the vet's address?" got the list of vets)
+const ABOUT_VETS = /\b(?:who|which|names?|how many|other|others|additional|list|qualif\w*|credentials?|specialt\w*|speciali[sz]\w*|trained|certified|degrees?|background|quien(?:es)?|cual(?:es)?|nombres?|cuantos|cuantas|otros?|otras?|titulos?|cualificaciones|formacion|especialidad(?:es)?)\b/;
+const NOT_ABOUT_WHO = /\b(?:address|where|located|location|hours?|open|opens|close|closes|charge|charges|cost|costs|price|prices|fee|fees|pay|insurance|parking|direccion|donde|hora|horas|horario|abre|abren|cierra|cierran|precio|precios|cuesta|cuestan|cobra|cobran|pagar|seguro)\b/;
+/** Their training or schooling: "where did they train?", "¿dónde estudiaron?" is still about who they are. */
+// ("training classes" is a service, never their qualifications: reviewer, T6)
+const TRAINING = /\b(?:train|trained|school|schooling|college|university|studied|study|qualif\w*|credentials?|degrees?|certified|estudiaron|estudio|se formaron|formacion|titulos?|cualificaciones)\b/;
+export const asksAboutTraining = (question: string) => VETS_WORD.test(normalise(question)) && TRAINING.test(normalise(question));
+export const asksAboutVets = (question: string) => {
+  const t = normalise(question);
+  if (NOT_ABOUT_WHO.test(t) && !TRAINING.test(t)) return false;
+  return (VETS_WORD.test(t) && (ABOUT_VETS.test(t) || TRAINING.test(t))) || /\b(?:qualifications?|credentials?|cualificaciones)\b/.test(t);
+};
+/**
  * A question about how the clinic handles emergencies ("what does 'on call' mean?", "¿qué significa que atienden
  * emergencias a cualquier hora?"): clinic information, never a medical question (note 49 B3: Spanish "¿qué significa?"
  * read as one). The animal's own condition still is.

@@ -114,7 +114,8 @@ export interface SchedulerAdapter {
   busy(clinicId: string, providerIds: string[], from: Date, to: Date): Promise<{ providerId: string; start: Date; end: Date; visitTypeId?: string }[]>;
   /** `replacesAppointmentId`: the visit this booking moves, which does not count as a clash. */
   /** `note`: a line for the team on the appointment ("booked by caller: Alex"), kept encrypted like a staff note. */
-  book(clinicId: string, input: { patientId: string; slot: Slot; callId: string; idempotencyKey: string; replacesAppointmentId?: string | null; note?: string | null }): Promise<BookingResult>;
+  /** `replacesPatientId`: whose visit that is, when it is another pet's of the household (a visit given to another pet, T8). */
+  book(clinicId: string, input: { patientId: string; slot: Slot; callId: string; idempotencyKey: string; replacesAppointmentId?: string | null; replacesPatientId?: string | null; note?: string | null }): Promise<BookingResult>;
   cancel(clinicId: string, input: { patientId: string; appointmentId: string; callId: string; idempotencyKey: string }): Promise<{ status: 'cancelled' | 'already_done' | 'not_found' }>;
   upcoming(clinicId: string, patientId: string, now: Date): Promise<AppointmentSummary[]>;
   /** Past visits, for the patient's usual provider. Without it, nobody counts as usual. */

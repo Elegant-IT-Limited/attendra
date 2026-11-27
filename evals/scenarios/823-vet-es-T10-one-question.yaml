@@ -1,0 +1,26 @@
+id: vet-es-T10-one-question
+title: "T10 in Spanish: a new pet's registration asks one thing at a time, in the backend's words, never the whole list (a tester's call, 2026-11-24)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550167"
+tags: [no-demo, tester-call, identity, es]
+turns:
+  - caller: Hola, soy Corin Vale. Quiero registrar a mi perro nuevo, Pixel.
+    reply: "{la siguiente pregunta}"
+    delegate:
+      - verify_caller: { owner_name: Corin Vale, pet_name: Pixel, phone: null }
+  - caller: Es macho.
+    reply: "{la siguiente pregunta}"
+    delegate:
+      - register_patient: { pet_name: Pixel, owner_name: Corin Vale, species: perro, sex: male, birthday_or_age: null, phone: null }
+  - caller: Tiene tres años.
+    reply: "Pixel quedó registrado."
+    delegate:
+      - register_patient: { pet_name: Pixel, owner_name: Corin Vale, species: perro, sex: male, birthday_or_age: tres años, phone: null }
+expect:
+  outcome: abandoned
+  verified: true
+  language: es
+  refusals: [pet_is_new, unclear_age]
+  returned: ["¿Pixel es macho o hembra?", "¿Cuántos años tiene Pixel, más o menos?"]
+  never_returned: ["the kind of animal, its sex"]

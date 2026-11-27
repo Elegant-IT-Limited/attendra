@@ -22,5 +22,5 @@ expect:
   verified: true
   language: es
   refusals: [pet_species, ask_species]
-  spoken_contains: ["¿Qué tipo de animal es Tango?"]
+  returned: ["¿Qué tipo de animal es Tango?"]
   pet_on_file: { phone: "+17205550161", name: Tango, species: gato }

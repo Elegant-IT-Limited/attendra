@@ -1,0 +1,14 @@
+id: vet-T6-vets-answered-once
+title: "T6: 'What other doctors do you have, and their qualifications?' gets every vet once, with their specialty, in the backend's words, never 'I don't have that information' (a tester's call, 2026-11-24)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, tester-call, info]
+turns:
+  - caller: What other doctors do you have, and what are their qualifications?
+    reply: "{the vets line}"
+    delegate:
+      - get_clinic_info: { question: "What other doctors do you have, and what are their qualifications?" }
+expect:
+  outcome: info
+  returned: ["Our vets are Dr. Elena Ruiz, general practice", "Dr. Hana Sato, exotic pets"]
+  never_returned: ["I don't have that information"]

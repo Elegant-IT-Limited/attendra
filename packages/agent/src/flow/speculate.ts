@@ -69,6 +69,37 @@ export function askedCallerIdNumber(asked: string, callerNumber: string | null):
   return digits.endsWith(id.last4) || (['en', 'es'] as const).some((l) => asked.includes(normalise(digitsAsWords(id.last4, l))));
 }
 
+/**
+ * The caller said the pet's profile is on the number they are calling from, without being asked: "on the number I'm
+ * calling from", "desde el número del que llamo", "con este número", "el mismo número" (a live run, 2026-11-26: the
+ * Spanish caller still got the caller-ID question). A "not this number" or "another number" never is.
+ */
+const CALLING_NUMBER = new RegExp([
+  "(?:the|this) (?:same )?number (?:i'?m|i am) calling (?:from|on)",
+  '(?:on|under|with|from) this (?:same |very )?number',
+  "(?:it'?s|its|it is) (?:the same|this) number",
+  '(?:el|este) (?:mismo )?numero (?:del|desde el|con el) que (?:le )?(?:llamo|estoy llamando)',
+  'del numero (?:del|desde el) que (?:le )?llamo',
+  'con este (?:mismo )?numero',
+  'este mismo numero',
+  'el mismo numero',
+  '(?:con|desde) el que (?:le )?estoy llamando',
+].map((p) => `\\b${p}\\b`).join('|'));
+const OTHER_NUMBER = /\b(?:not (?:on |under )?(?:this|the same|that) number|isn'?t (?:this|the same) number|(?:a |another |different |other )number|no (?:es|esta (?:con|en)) (?:este|el mismo|ese) numero|otro numero|numero (?:diferente|distinto))\b/;
+// a "no" or "not" in the few words before the phrase: "No, no con este número", "Not the number I am calling from" (review)
+const NEGATED = /\b(?:no|not|nope|isn'?t|is not|aren'?t|nunca)\b/;
+export function saysCallingNumber(text: string): boolean {
+  const t = normalise(text);
+  const m = CALLING_NUMBER.exec(t);
+  if (!m || OTHER_NUMBER.test(t)) return false;
+  return !NEGATED.test(t.slice(0, m.index).split(/\s+/).slice(-4).join(' '));
+}
+/**
+ * A turn about the pet, its profile or a visit: the calling number said in it is where the profile is. "Text me the
+ * hours on this number" or "call me back on this number" asks for no profile (review).
+ */
+const ABOUT_THE_PET = /\b(?:book(?:ing)?|appointment|visit|check-?up|exam|vaccin\w*|schedule|reschedule|cancel\w*|profile|file|account|records?|my (?:pet|dog|cat|puppy|kitten|rabbit|bunny|bird)'?s?|citas?|visitas?|consultas?|turno|reserv\w*|agendar|cancelar|ficha|perfil|expediente|mi (?:mascota|perr[oa]|perrit[oa]|gat[oa]|gatit[oa]|cachorr[oa]|conej[oa]))\b/;
+
 function identityLookup(state: CallState, clinic: ClinicConfig, said: string, ctx: SpeculationContext): Speculation | null {
   if (industryPack(clinic.industry).identity !== 'pet' || state.verifiedPatient || state.saidNew() === 'new' || /\b(new|nuev[oa])\b/.test(said)) return null;
   const yes = isClearYes(said, clinic.languages);
@@ -87,6 +118,14 @@ function identityLookup(state: CallState, clinic: ClinicConfig, said: string, ct
   // a clear yes to the caller-ID question: the caller ID's number, with the pet when they named one that is on it; with
   // none named, the number's pets to pick from ("Is this for Biscuit or Max, or a new pet?"), as the voice would call it
   if (yes && !state.memory.verified && !state.phonesConfirmed.size && askedCallerIdNumber(askedLast(state), ctx.callerNumber)) return verify(null, petSaid(state, ctx));
+  // said without being asked ("Hola, soy Linh Nguyen, desde el número del que llamo"): the same yes, before the question
+  // only once the household on the caller ID is known: a pet named in the turn ("Can Biscuit come in…") is passed, never
+  // a pet-less lookup that asks "Biscuit or Mochi?" again (the owner's final live run); unknown, nothing is run ahead
+  if (!state.memory.verified && !state.phonesConfirmed.size && callerIdOf(ctx.callerNumber) && saysCallingNumber(said)) {
+    if (!(state.memory.pets.length || ctx.petsOnCallerId?.length)) return null;
+    const pet = petSaid(state, ctx);
+    if (pet || ABOUT_THE_PET.test(said)) return verify(null, pet);
+  }
   return null;
 }
 

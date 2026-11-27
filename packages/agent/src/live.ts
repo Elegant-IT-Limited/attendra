@@ -23,6 +23,7 @@ export const DOING: Record<ToolName, string> = {
   search_knowledge: 'searching the clinic\'s documents',
   find_slots: 'finding open times',
   list_appointments: 'looking up appointments',
+  move_visit_to_pet: 'moving a visit to another pet',
   visit_summary: 'looking up visits',
   propose_booking: 'reading back a booking',
   propose_cancellation: 'reading back a cancellation',

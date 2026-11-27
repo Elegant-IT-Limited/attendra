@@ -104,6 +104,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   visit_summary: 'Only once the patient is verified, and only when they ask about their visits: the next visits, the last visit booked or recorded here, and the usual provider. Nothing medical.',
   propose_booking: 'Stage a booking (or reschedule) of an offered slot and get the read-back sentence.',
   propose_cancellation: 'Stage cancelling one of the caller\'s appointments and get the read-back sentence.',
+  move_visit_to_pet: 'Stage giving one of the found pet\'s visits (appointment_id, from list_appointments) to another pet of the same household (pet_name), at the same time with the same vet: one read-back, then commit_pending on a clear yes cancels it for the first pet and books it for the other, with one text. Use it when the caller asks to swap or move a visit to another of their pets.',
   commit_pending: 'Perform the staged change. Only after the caller clearly said yes to the read-back.',
   create_refill_request: 'Log a prescription refill request for the care team. Never approve or promise a refill. callback_number: the number they give, or null when the number they are calling from is fine. text_updates: their answer when you asked whether they want a text when the team decides (true or false), or null if you did not ask; the tool tells you when to ask.',
   create_callback: 'Ask staff to call the caller back. callback_number: the number they give, or null when the number they are calling from is fine. When the request matches one of the clinic\'s request_topics from get_clinic_info, ask for what that topic says and pass its name as topic; otherwise topic is null.',
@@ -124,7 +125,7 @@ export function toolDefinitions(clinic: ClinicConfig) {
   const reminders = textingOf(clinic).reminders;
   return TOOL_NAMES.filter((name) => (name !== 'send_text' || textingOf(clinic).enabled)
     && (name !== 'set_reminder_consent' || (reminders.enabled && reminders.askOnBooking))
-    && (name !== 'visit_summary' || trade.identity === 'pet')).map((name) => ({
+    && (name !== 'visit_summary' || trade.identity === 'pet') && (name !== 'move_visit_to_pet' || trade.identity === 'pet')).map((name) => ({
     type: 'function' as const, name, description: trade.planner.descriptions?.[name] ?? DESCRIPTIONS[name], strict: true,
     parameters: z.toJSONSchema(args[name]) as Record<string, unknown>,
   }));

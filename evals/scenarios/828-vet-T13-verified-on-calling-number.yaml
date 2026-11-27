@@ -1,0 +1,15 @@
+id: vet-T13-verified-on-calling-number
+title: "T13: a pet added on the number calling makes the call verified, as the calls list reads the call's actions (a tester's call, 2026-11-24: three pets added, 'Not verified')"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550169"
+tags: [no-demo, tester-call, identity]
+turns:
+  - caller: Hi, I'm Corin Vale. I want to register my new cat Tango, she's two years old.
+    reply: "Tango is registered."
+    delegate:
+      - register_patient: { pet_name: Tango, owner_name: Corin Vale, species: cat, sex: female, birthday_or_age: two years, phone: null }
+expect:
+  outcome: abandoned
+  verified: true
+  returned: ['"registered":true,"verified":true']

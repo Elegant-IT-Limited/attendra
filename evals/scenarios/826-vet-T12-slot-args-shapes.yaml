@@ -1,0 +1,18 @@
+id: vet-T12-slot-args-shapes
+title: "T12: find_slots as voice models really send it (a vet's name for provider_id, 'tomorrow' for from_date, part_of_day left out, 'noon') is read as meant, never invalid_arguments (a tester's call, 2026-11-24; CB10, Q8)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, tester-call, booking]
+turns:
+  - caller: Hi, Linh Nguyen. Can Biscuit see Dr. Ruiz tomorrow after noon for a sick visit?
+    reply: "{offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: Dr. Ruiz, from_date: tomorrow, from_time: after noon }
+expect:
+  outcome: task_created
+  verified: true
+  refusals: []
+  offered_with: [prov_ruiz]
+  booked_on: "2026-09-29"
+  never_returned: ["invalid_arguments"]

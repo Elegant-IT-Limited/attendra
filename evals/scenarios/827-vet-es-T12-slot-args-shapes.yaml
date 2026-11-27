@@ -1,0 +1,18 @@
+id: vet-es-T12-slot-args-shapes
+title: "T12 in Spanish: find_slots as voice models really send it (a vet's name, 'mañana', part_of_day left out, 'mediodía') is read as meant, never invalid_arguments (a tester's call, 2026-11-24)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, tester-call, booking, es]
+turns:
+  - caller: Hola, soy Linh Nguyen. ¿Puede ver Biscuit a la doctora Ruiz mañana después del mediodía por una consulta por enfermedad?
+    reply: "{offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: Dra. Ruiz, from_date: mañana, from_time: después de las 12 }
+expect:
+  outcome: task_created
+  verified: true
+  language: es
+  refusals: []
+  offered_with: [prov_ruiz]
+  never_returned: ["invalid_arguments"]

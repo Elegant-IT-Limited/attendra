@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, localName, TOOL_NAMES, type ToolName } from '@attendra/core';
+import { type ClinicConfig, localName, PACKS, TOOL_NAMES, type ToolName } from '@attendra/core';
 import { toolDefinitions } from '../planner';
 import type { ToolResult } from '../tools';
 import type { FlowStage } from './booking';
@@ -91,9 +91,21 @@ const okOutcome = (name: string, data: Record<string, unknown>) => {
  * a yes, what is done. Added to its conversation when it changes, so it is still there once the oldest turns are cut.
  * Null before anything happened. No record data beyond the pet's first name the caller already heard.
  */
-export function callStateNote(state: Pick<CallState, 'verifiedPatient' | 'pending' | 'done'>): string | null {
+/** The household's pets this call knows: those on the number, and the one found or added, first names only. */
+export function householdNames(state: Pick<CallState, 'verifiedPatient' | 'memory'>): string[] {
+  const names = [...state.memory.pets];
+  const pet = state.verifiedPatient?.firstName;
+  if (pet && !names.some((n) => n.toLowerCase() === pet.toLowerCase())) names.push(pet);
+  return names;
+}
+
+export function callStateNote(state: Pick<CallState, 'verifiedPatient' | 'pending' | 'done'> & Partial<Pick<CallState, 'memory' | 'language'>>): string | null {
+  // the household stays known on the call: another visit is "For Tango or another pet?", never the number again (T7, a
+  // tester's call 2026-11-24: "Can you make another appointment?" got the profile number question again)
+  const pets = state.verifiedPatient && state.memory ? householdNames(state as CallState) : [];
   const parts = [
     state.verifiedPatient ? `found: ${state.verifiedPatient.firstName}${state.verifiedPatient.isNew ? ' (new)' : ''}` : null,
+    pets.length ? `Number confirmed; pets on it: ${pets.join(', ')}. For another visit ask only "${PACKS[state.language ?? 'en'].forWhichPet({ names: pets })}", never the number again` : null,
     state.pending ? `waiting for a yes to: ${state.pending.readback}` : null,
     state.done.length ? `done: ${state.done.join('; ')}` : null,
   ].filter(Boolean);

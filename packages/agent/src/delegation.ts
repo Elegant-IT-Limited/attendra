@@ -1187,6 +1187,23 @@ export class CallAgent {
    * first identity lookup answers from memory and the lookup-ahead knows the pets' names. Never fails the call.
    */
   preloadHousehold(): Promise<void> {
+    return this.household ??= this.readHousehold();
+  }
+  private household: Promise<void> | null = null;
+  /**
+   * Before a lookup-ahead: the household on the caller ID, read now if it is not yet, waited for at most `maxMs`, so the
+   * pets the caller named are known (the owner's final live run: a first turn came before it and the pet was dropped).
+   */
+  async householdReady(maxMs = 800): Promise<void> {
+    // a read that did not answer in time is not waited for again on this call: lookups go on as with no household (review)
+    if (this.householdLate) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = await Promise.race([this.preloadHousehold().then(() => false), new Promise<boolean>((done) => { timer = setTimeout(() => done(true), maxMs); })]);
+    clearTimeout(timer);
+    if (late) this.householdLate = true;
+  }
+  private householdLate = false;
+  private readHousehold(): Promise<void> {
     const phone = this.ctx.callerNumber;
     const p = this.backend.patients;
     if (!phone || !p.petsOnNumber || industryPack(this.ctx.clinic.industry).identity !== 'pet') return Promise.resolve();

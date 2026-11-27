@@ -1,0 +1,38 @@
+id: vet-es-T8-visit-to-another-pet
+title: "T8 in Spanish: a visit given to another pet of the household: one read-back, one yes, one text; the first pet's visit is cancelled and the other pet has the same time (a tester's call, 2026-11-24)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, tester-call, call-bugs, es]
+turns:
+  - caller: Hola, soy Linh Nguyen, para Biscuit. ¿Puede ver al doctor Bell el jueves por una consulta por enfermedad?
+    reply: "{offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: prov_bell, from_date: "2026-10-01", part_of_day: any }
+  - caller: La primera.
+    reply: "{readback}?"
+    delegate:
+      - propose_booking: { slot_id: "$found[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo."
+    delegate:
+      - commit_pending: {}
+  - caller: En realidad, ¿puede pasarle esa cita a Mochi?
+    reply: "Entonces, quiere {readback}. ¿Hago el cambio?"
+    delegate:
+      - list_appointments: {}
+      - move_visit_to_pet: { appointment_id: "$appointments[0]", pet_name: Mochi }
+  - caller: Sí, por favor.
+    reply: "Listo."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  bookings_created: 2
+  sms_sent: 2
+  sms_vars: [{ pet: Biscuit }, { pet: Mochi }]
+  returned: ["de Biscuit a Mochi"]
+  visits_after:
+    - { on: "2026-10-01", at: "08:00", visit: vt_sick }

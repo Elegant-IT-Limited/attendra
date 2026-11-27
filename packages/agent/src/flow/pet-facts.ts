@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { isClearYes, LANGUAGES, normalise, PACKS } from '@attendra/core';
+import { isClearYes, type Language, languageAfterTurn, LANGUAGES, normalise, PACKS } from '@attendra/core';
 import type { CallState } from '../call-state';
 
 /**
@@ -80,9 +80,9 @@ function saidSpecies(said: string[], species: string): boolean {
   return normalise(species).split(/\s+/).filter((w) => w.length > 2).every((w) => plural(w).some((x) => has(text, x)));
 }
 
-// in Spanish a pet's sex is also in the word said of it: "es nueva", "está chiquita" (a female), "es nuevo" (a male)
-const FEMALE = /\b(?:female|girl|she|her|hers|she's|spayed|hembra|nina|ella|perra|perrita|gata|gatita|coneja|cachorra|esterilizada|(?:es|esta) (?:nueva|chiquita|pequena|viejita|una nina))\b/;
-const MALE = /\b(?:male|boy|he|him|his|he's|neutered|macho|nino|castrado|perrito|gatito|(?:es|esta) (?:nuevo|chiquito|pequeno|viejito|un nino))\b/;
+// the pronouns; in Spanish a pet's sex is also in the word said of it ("es nueva", "es nuevo"): FEMALE_WORD, MALE_WORD
+const FEMALE = /\b(?:she|her|hers|she's|ella)\b/;
+const MALE = /\b(?:he|him|his|he's)\b/;
 /** Words for the sex that say it whoever they are about ("a girl", "macho"); "she" and "he" only about the pet. */
 const FEMALE_WORD = /\b(?:female|girl|spayed|hembra|nina|perra|perrita|gata|gatita|coneja|cachorra|esterilizada|(?:es|esta) (?:nueva|chiquita|pequena|viejita|una nina))\b/;
 const MALE_WORD = /\b(?:male|boy|neutered|macho|nino|castrado|perrito|gatito|(?:es|esta) (?:nuevo|chiquito|pequeno|viejito|un nino))\b/;
@@ -155,4 +155,31 @@ export function petFactNotSaid(state: CallState, args: { species?: unknown; sex?
   if (typeof args.sex === 'string' && args.sex && !saidSex(said, args.sex, pet)) return 'sex';
   if (typeof args.birthday_or_age === 'string' && args.birthday_or_age.trim() && !saidAge(said, args.birthday_or_age, evidenceRaw(state))) return 'age';
   return null;
+}
+
+/** Words that mark a short answer as one language or the other ("Es Sunny", "It's Sunny"). */
+const MARKS: Record<Language, Set<string>> = {
+  en: new Set(['is', "it's", 'its', 'name', 'named', 'called', 'my', 'the', 'yes', 'sorry', 'that', 'her', 'his', 'she', 'he']),
+  es: new Set(['es', 'se', 'llama', 'llamo', 'nombre', 'perdon', 'si', 'eso', 'su', 'mi', 'la', 'el', 'ella', 'el']),
+};
+
+/**
+ * Whether a pet's name was heard only in a short answer in another language than the one the assistant was speaking
+ * ("Es Sunny." on an English call): confirmed with the caller before it is used (T11, a tester's call 2026-11-24: "Es
+ * Sunny", "Perdón" and "Sí, eso" were all taken as answers). A name said in a sentence of the call's own language is not.
+ */
+export function nameHeardInFragment(state: CallState, name: string): boolean {
+  const want = normalise(name).trim();
+  if (!want) return false;
+  const turns = state.turns.slice(state.newFromTurn);
+  const carrying = turns.map((t, i) => ({ t, i })).filter(({ t }) => t.speaker === 'caller' && ` ${normalise(t.text).replace(/[^\p{L}\p{N}' ]+/gu, ' ')} `.includes(` ${want} `));
+  if (!carrying.length) return false;
+  return carrying.every(({ t, i }) => {
+    const words = normalise(t.text).replace(/[^\p{L}\p{N}' ]+/gu, ' ').split(/\s+/).filter((w) => w && !want.split(' ').includes(w));
+    if (words.length > 3) return false;
+    const asked = turns.slice(0, i).reverse().find((x) => x.speaker === 'agent');
+    const spoken = asked ? languageAfterTurn(asked.text, LANGUAGES, state.language) : state.language;
+    const other = LANGUAGES.find((l) => l !== spoken && words.some((w) => MARKS[l]?.has(w)));
+    return !!other && !words.some((w) => MARKS[spoken]?.has(w));
+  });
 }

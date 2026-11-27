@@ -2,7 +2,7 @@
 import { PACKS, RIVERBEND_CLINIC } from '@attendra/core';
 import { seedRiverbend } from '@attendra/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { askedCallerIdNumber, petNamedIn } from '../src';
+import { askedCallerIdNumber, petNamedIn, saysCallingNumber } from '../src';
 import { world } from './support';
 
 // Call speed (2026-11-19): the lookup the caller's words make plain runs before the voice replies (lookup-ahead), so the
@@ -138,3 +138,116 @@ describe('the words lookup-ahead reads', () => {
     expect(petNamedIn('a new one', ['Biscuit'])).toBeNull();
   });
 });
+
+// a live run (2026-11-26): "Hola, soy Linh Nguyen, desde el número del que llamo. ¿Puede venir Biscuit…?" still got the
+// caller-ID question, where "on the number I'm calling from" in English did not. Said up front, it is the caller-ID yes
+describe('ES-CALLERID: the profile said to be on the number they call from, up front, EN and ES', () => {
+  const ES = ['desde el número del que llamo', 'del número del que llamo', 'con este número', 'este mismo número', 'el número desde el que llamo', 'el mismo número', 'con el que estoy llamando'];
+  const EN = ["on the number I'm calling from", 'the number I am calling from', 'on this number', 'under this same number', "it's the same number"];
+  it.each([...ES, ...EN])('ES-CALLERID: "%s" is the number they are calling from', (phrase) => {
+    expect(saysCallingNumber(phrase)).toBe(true);
+  });
+  it.each(['no es este número', 'es otro número', "it's not this number", 'a different number', 'Can Biscuit come in tomorrow?', 'Llámeme a otro número',
+    // review: a "no" or "not" a few words before the phrase
+    'No, no con este número.', 'Not the number I am calling from.', 'No, not on this number.', "It isn't the number I'm calling from.", 'No es el número del que llamo.', 'No está con este número.', 'Nope, not under this same number.',
+  ])('ES-CALLERID: "%s" is not', (phrase) => {
+    expect(saysCallingNumber(phrase)).toBe(false);
+  });
+
+  for (const [lang, line] of [
+    ['es', 'Hola, soy Linh Nguyen, desde el número del que llamo. ¿Puede venir Biscuit mañana por la mañana para una consulta por enfermedad?'],
+    ['es', 'Hola, quiero una cita para Biscuit, con este número.'],
+    ['en', "Hi, Linh Nguyen, on the number I'm calling from. Can Biscuit come in tomorrow morning for a sick visit?"],
+  ] as const) {
+    it(`ES-CALLERID: said in the first turn, the caller ID's number is looked up at once, with the pet (${lang})`, async () => {
+      const c = await w.call(PHONE, { clinic });
+      await c.agent.preloadHousehold();
+      if (lang === 'es') c.state.language = 'es';
+      c.caller(line);
+      expect(c.agent.speculate()).toEqual({ name: 'verify_caller', args: { phone: null, pet_name: 'Biscuit', owner_name: null, phone_last4: null } });
+    });
+  }
+
+  it('ES-CALLERID: "no es este número" or a new pet runs no caller-ID lookup', async () => {
+    const c = await w.call(PHONE, { clinic });
+    await c.agent.preloadHousehold();
+    c.state.language = 'es';
+    c.caller('Hola, quiero una cita para Biscuit, pero no es este número.');
+    expect(c.agent.speculate()?.name).not.toBe('verify_caller');
+    const d = await w.call(PHONE, { clinic });
+    await d.agent.preloadHousehold();
+    d.caller("Hi, on the number I'm calling from, I want to book for my new puppy.");
+    expect(d.agent.speculate()?.name).not.toBe('verify_caller');
+  });
+
+  // review: the phrase counts only in a turn about the pet, its profile or a visit
+  for (const line of ['Can you text me the hours on this number?', 'Call me back on this number.', '¿Me puede mandar el horario a este mismo número?', 'Llámeme al mismo número, por favor.']) {
+    it(`ES-CALLERID-review: "${line}" asks for no profile, so no caller-ID lookup runs`, async () => {
+      const c = await w.call(PHONE, { clinic });
+      await c.agent.preloadHousehold();
+      if (/[¿áéíóúñ]|llámeme/i.test(line)) c.state.language = 'es';
+      c.caller(line);
+      expect(c.agent.speculate()?.name).not.toBe('verify_caller');
+    });
+  }
+  for (const [line, pet] of [['I want to book a visit, on this number.', null], ["My dog's profile is under this number.", null], ['Mi mascota está con este número.', null], ['Quiero una cita, con el mismo número.', null], ['Biscuit, on the number I am calling from.', 'Biscuit']] as const) {
+    it(`ES-CALLERID-review: "${line}" is about the pet or a visit, so the caller ID's number is looked up`, async () => {
+      const c = await w.call(PHONE, { clinic });
+      await c.agent.preloadHousehold();
+      c.caller(line);
+      expect(c.agent.speculate()).toEqual({ name: 'verify_caller', args: { phone: null, pet_name: pet, owner_name: null, phone_last4: null } });
+    });
+  }
+});
+
+// the owner's final live run (2026-11-26): the household on the caller ID was not read yet when the first turn came, so
+// the lookup-ahead ran verify_caller with no pet although Biscuit was named in that turn, and the voice asked "Is this for
+// Biscuit or Mochi?" again. The lookup-ahead now waits for the household (at most a moment); unknown, it runs nothing
+describe('CALLERID-PET: the pet named in the turn goes with the calling number, never a pet-less lookup', () => {
+  const LINES = [
+    ["834", "Hi, Linh Nguyen, on the number I'm calling from. Can Biscuit come in tomorrow morning for a sick visit?"],
+    ["835", 'Hola, soy Linh Nguyen, desde el número del que llamo. ¿Puede venir Biscuit mañana por la mañana para una consulta por enfermedad?'],
+    ["912", "Hi, Linh Nguyen, on the number I'm calling from. Biscuit needs a sick visit. Can he come in on Friday? No wait, Thursday."],
+    ["913", 'Hola, soy Linh Nguyen, con el número desde el que llamo. Biscuit necesita una consulta por enfermedad. ¿Puede venir el viernes? No, mejor el jueves.'],
+    ["936/910", "Hi, Linh Nguyen, on the number I'm calling from. Can Biscuit come in tomorrow morning for a sick visit?"],
+    ["937/911", 'Hola, soy Linh Nguyen, con el número desde el que llamo. ¿Puede venir Biscuit mañana por la mañana a una consulta por enfermedad?'],
+  ] as const;
+  for (const [id, line] of LINES) {
+    it(`CALLERID-PET: the ${id} first line looks up Biscuit on the calling number once the household is read, and nothing before`, async () => {
+      const c = await w.call(PHONE, { clinic });
+      if (/[¿áéíóúñ]/.test(line)) c.state.language = 'es';
+      c.caller(line);
+      // the household not read yet: nothing is run ahead, never a lookup without the pet
+      expect(c.agent.speculate()?.name).not.toBe('verify_caller');
+      await c.agent.householdReady();
+      expect(c.agent.speculate()).toEqual({ name: 'verify_caller', args: { phone: null, pet_name: 'Biscuit', owner_name: null, phone_last4: null } });
+    });
+  }
+});
+
+// review: a household read that never answers held every later lookup-ahead turn 800 ms; after one timeout, no more waits
+describe('HOUSEHOLD-TIMEOUT: a hung household read is waited for once', () => {
+  it('HOUSEHOLD-TIMEOUT: the first turn waits at most 800 ms, a later turn not at all, and nothing is run ahead without the pets', async () => {
+    const patients = w.backend.patients as { petsOnNumber?: unknown; householdOnNumber?: unknown };
+    const [pets, household] = [patients.petsOnNumber, patients.householdOnNumber];
+    patients.petsOnNumber = () => new Promise(() => undefined);
+    patients.householdOnNumber = () => new Promise(() => undefined);
+    try {
+      const c = await w.call(PHONE, { clinic });
+      c.caller("Hi, Linh Nguyen, on the number I'm calling from. Can Biscuit come in tomorrow morning for a sick visit?");
+      let at = Date.now();
+      await c.agent.householdReady();
+      const first = Date.now() - at;
+      expect(first).toBeGreaterThanOrEqual(700);
+      expect(first).toBeLessThan(1200);
+      expect(c.agent.speculate()?.name).not.toBe('verify_caller');
+      at = Date.now();
+      await c.agent.householdReady();
+      expect(Date.now() - at).toBeLessThan(50);
+    } finally {
+      patients.petsOnNumber = pets;
+      patients.householdOnNumber = household;
+    }
+  });
+});
+

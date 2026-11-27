@@ -42,7 +42,9 @@ const DANGER_NO = /^(?:no(?! (?:se|estoy segur[oa]|lo se)\b)|nope|nah|not (?:rea
 const DANGER_YES = /^(?:yes|yeah|yep|yup|i think so|it is|(?:she|he|it|they) (?:is|are)|right now|si|claro|creo que si|ahora mismo)\b/;
 
 export type PendingChange =
-  | (PendingBase & { kind: 'book'; slot: Slot; replacesAppointmentId: string | null; replacesStart?: Date | null })
+  | (PendingBase & { kind: 'book'; slot: Slot; replacesAppointmentId: string | null; replacesStart?: Date | null;
+    /** A visit given to another pet of the household: cancelled for one, booked for the other, at once (T8). */
+    swap?: { fromAppointmentId: string; fromPatient: CallPatient; toPatient: CallPatient } })
   | (PendingBase & { kind: 'cancel'; appointmentId: string; start: Date });
 
 /**

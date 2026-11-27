@@ -176,6 +176,25 @@ export interface LanguagePack {
    * tester's call 2026-11-24: "Can you hear me?" was taken for "a cat"). One question, in the caller's language.
    */
   askPetSpecies: (v: { pet: string }) => string;
+  /**
+   * The clinic's vets or doctors, once, each with the specialty and the qualifications on file (T6, a tester's call
+   * 2026-11-24: "I can't provide additional doctor names or their qualifications right now", then the vets listed).
+   */
+  vetsAnswer: (v: { vets: { name: string; specialty: string | null; credentials: string[] }[]; credentialsAsked: boolean; pets: boolean }) => string;
+  /** The vets in on a day the caller named, by their hours and time off (T6 review). */
+  vetsOnDay: (v: { day: string; vets: string[]; pets: boolean }) => string;
+  /** "For Tango or another pet?": a second visit on the call, with the household already known (T7). */
+  forWhichPet: (v: { names: string[] }) => string;
+  /** "Sunny is the pet's name, right?": a name heard in a fragment or another language, confirmed before it is used (T11). */
+  confirmPetName: (v: { name: string }) => string;
+  /** The read-back of a visit moved from one pet to another (T8). */
+  readbackSwap: (v: { when: string; provider: string; visit: string; from: string; to: string }) => string;
+  /** A visit not moved to a pet its vet does not see (K1), with the vets who do offered. */
+  swapWrongVet: (v: { vet: string; animals: string | null; pet: string; others: string[] }) => string;
+  /** A day no calendar has ("February 30"), never moved to another (T12 review). */
+  invalidDate: (v: { said: string }) => string;
+  /** The owner's first name, asked on its own (T10). */
+  askOwnerName: string;
   askPetSex: (v: { pet: string }) => string;
   askPetAge: (v: { pet: string }) => string;
   /** Said with a read-back when a confirmation text will follow, so the caller's yes covers it and they can say no to the text alone. */

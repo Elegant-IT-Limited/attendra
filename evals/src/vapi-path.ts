@@ -61,6 +61,11 @@ export const VAPI_PATH_SCENARIOS = [
   'vet-T1-second-pet-own-details', 'vet-es-T1-second-pet-own-details', 'vet-T2-stale-change-replaced-silently', 'vet-es-T2-stale-change-replaced-silently',
   'vet-T3-cancel-by-vet-name', 'vet-es-T3-cancel-by-vet-name', 'vet-T5-no-internal-state', 'vet-es-T5-no-internal-state',
   'vet-T9-said-once', 'vet-es-T9-said-once', 'vet-tester-call-whole', 'vet-es-tester-call-whole',
+  'vet-T6-vets-answered-once', 'vet-es-T6-vets-answered-once', 'vet-T7-household-kept', 'vet-es-T7-household-kept',
+  'vet-T8-visit-to-another-pet', 'vet-es-T8-visit-to-another-pet', 'vet-T10-one-question', 'vet-es-T10-one-question',
+  'vet-T11-fragment-confirmed', 'vet-es-T11-fragment-confirmed', 'vet-T12-slot-args-shapes', 'vet-es-T12-slot-args-shapes', 'vet-T12-day-with-part', 'vet-es-T12-day-with-part',
+  'vet-T13-verified-on-calling-number', 'vet-es-T13-verified-on-calling-number',
+  'vet-T8-swap-wrong-vet', 'vet-es-T8-swap-wrong-vet',
 ] as const;
 
 export interface VapiPathResult { id: string; passed: boolean; failures: string[]; outcome: string; ms: number }

@@ -1,5 +1,5 @@
 id: vet-tester-call-whole
-title: "The tester's whole call (2026-11-24) with made-up data: a new cat registered as said, a sick visit with Dr. Ruiz, vaccines with Dr. Bell, the Dr. Ruiz visit cancelled by the vet's name, then two more pets added with their own details"
+title: "The tester's whole call (2026-11-24) with made-up data: a new cat registered as said, a sick visit with Dr. Ruiz, vaccines with Dr. Bell, the Dr. Ruiz visit cancelled by the vet's name, then two more pets added with their own details, and the vaccines visit given to one of them (T8)"
 clinic: riverbend
 local_time: "10:00"
 caller_number: "+17205550165"
@@ -51,13 +51,25 @@ turns:
     reply: "Juno is registered."
     delegate:
       - register_patient: { pet_name: Juno, owner_name: null, species: rabbit, sex: female, birthday_or_age: six months, phone: null }
+  - caller: And can you give Tango's vaccines visit to Pico instead?
+    reply: "So I'd {readback}. Shall I go ahead?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Tango, phone: null }
+      - list_appointments: {}
+      - move_visit_to_pet: { appointment_id: "$appointments[2]", pet_name: Pico }
+  - caller: Yes, do that.
+    reply: "All set."
+    delegate:
+      - commit_pending: {}
 expect:
-  outcome: cancelled
+  outcome: booked
   verified: true
   refusals: [which_visit]
-  bookings_created: 2
-  sms_sent: 3
+  bookings_created: 3
+  sms_sent: 4
   returned: ["the caller means"]
   never_returned: ["booked on this call", "This replaces the change", "tentative"]
   household: { phone: "+17205550165", names: [Tango, Pico, Juno] }
   pet_on_file: { phone: "+17205550165", name: Juno, species: rabbit }
+  visits_after:
+    - { on: "2026-09-30", at: "08:00", visit: vt_vaccines }
