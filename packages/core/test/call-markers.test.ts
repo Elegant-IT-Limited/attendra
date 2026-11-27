@@ -127,3 +127,20 @@ describe('T4-vad-review: ordinary talk is never a late turn end', () => {
     expect(await late('Are you there?', 8001)).toEqual({ ms: 4001, count: 1 });
   });
 });
+
+// CodeQL js/polynomial-redos (CI on #194–#197): the redaction marker check ran in polynomial time on many '['
+describe('REDOS: spokenWords stays fast on hostile input', () => {
+  it('REDOS: "[" repeated 50,000 times then "x" is counted in under 50 ms, and the markers are still found', async () => {
+    const { spokenWords } = await import('../src/call-markers');
+    const t0 = performance.now();
+    spokenWords('['.repeat(50_000) + 'x');
+    spokenWords('removed]'.repeat(10_000));
+    expect(performance.now() - t0).toBeLessThan(50);
+    expect(spokenWords('removed] then [SSN removed]')).toBeUndefined();
+    expect(spokenWords('It is [card number removed], thanks')).toBeUndefined();
+    expect(spokenWords('[SSN removed]')).toBeUndefined();
+    expect(spokenWords('(Not Understood)')).toBeUndefined();
+    expect(spokenWords('I removed the collar [laughs]')).toBe(5);
+  });
+});
+
