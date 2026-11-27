@@ -1,0 +1,35 @@
+id: vet-es-T5-no-internal-state
+title: "T5 in Spanish: a read-back waiting for a yes, then another question: the answer and one plain question to settle it, never the change described as state (a tester's call, 2026-11-24)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, tester-call, clear-yes, es]
+turns:
+  - caller: Hola, soy Linh Nguyen. ¿Puede venir Biscuit mañana por la mañana a una consulta por enfermedad?
+    reply: "{offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: "2026-09-29", part_of_day: morning }
+  - caller: La primera.
+    reply: "{readback}?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Espere, ¿y mañana por la tarde?
+    reply: "{offered.2}. ¿Y todavía quiere que le reserve la de la mañana?"
+    delegate:
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: "2026-09-29", part_of_day: afternoon }
+  - caller: No, la de la tarde.
+    reply: "Entonces, {readback}. ¿Le reservo la cita?"
+    delegate:
+      - propose_booking: { slot_id: "$found[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["¿Y todavía quiere"]
+  never_returned: ["Still waiting", "waiting for their yes", "waiting to confirm", "tentative", "This replaces the change"]

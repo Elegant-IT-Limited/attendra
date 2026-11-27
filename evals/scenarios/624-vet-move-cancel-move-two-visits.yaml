@@ -36,7 +36,7 @@ turns:
     delegate:
       - propose_cancellation: { appointment_id: "$booked" }
   - caller: Hang on, what about Friday? Could it go to Friday?
-    reply: "Okay, I won't cancel it. So I'd {readback}. Shall I go ahead?"
+    reply: "So I'd {readback}. Shall I go ahead?"
     delegate:
       - propose_booking: { slot_id: "$found[0]", replaces_appointment_id: "$put_forward" }
       - propose_booking: { slot_id: "$found[0]", replaces_appointment_id: "$booked" }
@@ -54,4 +54,6 @@ expect:
   visits_after:
     - { on: "2026-09-28", at: "14:00", visit: vt_wellness }
     - { on: "2026-10-02", at: "16:00", visit: vt_wellness }
-  returned: ["the visit booked on this call", "the one the caller named", "This replaces the change that was waiting for a yes"]
+  returned: ["the caller means"]
+  # a change replaced by a newer one is dropped silently, and the which-visit refusal explains nothing (T2, T3, T5)
+  never_returned: ["This replaces the change", "booked on this call", "the one the caller named", "will not be done"]

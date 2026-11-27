@@ -1,0 +1,29 @@
+id: vet-T1-second-pet-own-details
+title: "T1: a second pet on the call never gets the first pet's kind, sex or age from the call memory ('Sorry?' is no answer); its own are asked for (a tester's call, 2026-11-24)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550163"
+tags: [no-demo, tester-call, identity]
+turns:
+  - caller: Hi, I'm Corin Vale. I have a new cat, Tango. She's two years old.
+    reply: "Tango is registered."
+    delegate:
+      - register_patient: { pet_name: Tango, owner_name: Corin Vale, species: cat, sex: female, birthday_or_age: two years, phone: null }
+  - caller: I want to add another pet too, Pico.
+    reply: "What kind of animal is Pico?"
+    delegate:
+      - register_patient: { pet_name: Pico, owner_name: null, species: null, sex: null, birthday_or_age: null, phone: null }
+  - caller: Sorry?
+    reply: "What kind of animal is Pico?"
+    delegate:
+      - register_patient: { pet_name: Pico, owner_name: null, species: cat, sex: female, birthday_or_age: two years, phone: null }
+  - caller: He's a dog, a boy, about four months old.
+    reply: "Pico is registered."
+    delegate:
+      - register_patient: { pet_name: Pico, owner_name: null, species: dog, sex: male, birthday_or_age: four months, phone: null }
+expect:
+  outcome: abandoned
+  verified: true
+  refusals: [pet_species, ask_species]
+  household: { phone: "+17205550163", names: [Tango, Pico] }
+  pet_on_file: { phone: "+17205550163", name: Pico, species: dog }

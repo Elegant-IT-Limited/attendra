@@ -39,4 +39,5 @@ expect:
   sms_templates: [booking_confirmed, cancel_confirmed]
   visits_after:
     - { on: "2026-09-28", at: "14:00", visit: vt_wellness }
-  returned: ["the visit booked on this call", "cancel the appointment on"]
+  returned: ["the caller means", "cancel the appointment on"]
+  never_returned: ["booked on this call", "means that one"]

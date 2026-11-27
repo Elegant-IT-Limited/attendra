@@ -44,7 +44,10 @@ export const askedWhy = (said: string) => WHY_ASKED.test(normalise(said));
  * Biscuit for Thursday" with no booking on the call is a claim; so is "I couldn't find a file under that number" when no
  * search ran (11-16, a tester clinic: verify_caller had only asked for the read-back).
  */
-export const CLAIMS: Record<'booked' | 'moved' | 'cancelled' | 'not_found' | 'vet_day' | 'texted' | 'text_arrived', RegExp> = {
+export const CLAIMS: Record<'booked' | 'moved' | 'cancelled' | 'not_found' | 'vet_day' | 'texted' | 'text_arrived' | 'sent_elsewhere', RegExp> = {
+  // the caller sent to the clinic for something this call can do (T2, a tester's call 2026-11-24: "I can't finalize the
+  // booking from here. Please contact the clinic directly" for a time read back and ready to book)
+  sent_elsewhere: /\b(?:(?:contact|call|phone|ring) (?:the clinic|us|the office|the front desk) directly|(?:can'?t|cannot|am unable to|i'?m unable to) (?:finali[sz]e|complete|confirm|make) (?:the|this|that|your) (?:booking|appointment|reservation)(?: from here)?|comuniquese (?:directamente )?con la clinica|llame directamente a la clinica|no puedo (?:finalizar|completar|confirmar) (?:la|esta|su) (?:reserva|cita))\b/,
   booked: /\b(?:i'?ve booked|i have booked|you'?re (?:all )?booked|you are (?:all )?booked|you'?re all set for|is (?:now )?booked|are (?:now )?booked|has been booked|booked (?:you|him|her|them|it) (?:in|for)|(?:le |lo |la )?he reservado|queda reservad[oa]|ya esta reservad[oa]|quedo reservad[oa])\b/,
   moved: /\b(?:i'?ve (?:moved|rescheduled)|i have (?:moved|rescheduled)|has been (?:moved|rescheduled)|is now (?:moved|on)|he cambiado|quedo cambiad[oa]|ya esta cambiad[oa])\b/,
   cancelled: /\b(?:i'?ve cancell?ed|i have cancell?ed|has been cancell?ed|is (?:now )?cancell?ed|he cancelado|queda cancelad[oa]|quedo cancelad[oa])\b/,

@@ -1,0 +1,52 @@
+id: vet-es-T3-cancel-by-vet-name
+title: 'T3 in Spanish: two visits booked on the call with two vets, then "tenía otra cita con la doctora Elena, cancélela": the one with Dr. Ruiz is cancelled, never the visit booked last (a tester''s call, 2026-11-24)'
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, tester-call, call-bugs, es]
+turns:
+  - caller: Hola, soy Linh Nguyen. ¿Puede ver Biscuit a la doctora Ruiz mañana por una consulta por enfermedad?
+    reply: "{offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: prov_ruiz, from_date: "2026-09-29", part_of_day: any }
+  - caller: La primera.
+    reply: "{readback}?"
+    delegate:
+      - propose_booking: { slot_id: "$found[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo."
+    delegate:
+      - commit_pending: {}
+  - caller: ¿Y puede ver al doctor Bell el miércoles para sus vacunas?
+    reply: "{offered.0}, o {offered.1}."
+    delegate:
+      - find_slots: { visit_type_id: vt_vaccines, provider_id: prov_bell, from_date: "2026-09-30", part_of_day: any }
+  - caller: La primera.
+    reply: "{readback}?"
+    delegate:
+      - propose_booking: { slot_id: "$found[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo."
+    delegate:
+      - commit_pending: {}
+  - caller: Tenía otra cita con la doctora Elena, cancele esa cita.
+    reply: "Entonces, quiere {readback}. ¿Es correcto?"
+    delegate:
+      - list_appointments: {}
+      - propose_cancellation: { appointment_id: "$appointments[1]" }
+      - propose_cancellation: { appointment_id: "$appointments[0]" }
+  - caller: Sí, cancélela.
+    reply: "Listo, la cita quedó cancelada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: cancelled
+  verified: true
+  language: es
+  refusals: [which_visit]
+  bookings_created: 2
+  sms_sent: 3
+  returned: ["the caller means"]
+  never_returned: ["booked on this call"]
+  visits_after:
+    - { on: "2026-09-30", at: "08:00", visit: vt_vaccines }

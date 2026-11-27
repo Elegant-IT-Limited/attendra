@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { answerAcrossPieces, type CallOutcome, type CallPatient, isClearYes, type Language, LANGUAGES, newToClinic, normalise, redactSensitive, saysSlot, type Slot } from '@attendra/core';
+import { answerAcrossPieces, type CallOutcome, type CallPatient, isClearYes, type Language, LANGUAGES, newToClinic, normalise, redactSensitive, saysSlot, type Slot, spacedSentences, spokenWords } from '@attendra/core';
 import { CallMemory } from './call-memory';
 import type { EmergencyCase, EmergencyResult } from './flow/emergency';
 
@@ -268,8 +268,19 @@ export class CallState {
     return this.turns.slice(this.newFromTurn).filter((t) => t.speaker === 'caller').map((t) => t.text).join(' ');
   }
 
+  /**
+   * Each piece of speech on the call's timeline, for the longest wait (core maxGapMs): every caller piece on its own,
+   * the assistant's words joined while it keeps talking. The turns join a speaker's pieces, which hid a silence the
+   * caller broke themselves ("Can you hear me?"; T4, a tester's call 2026-11-24). No words are kept here.
+   */
+  readonly speech: { speaker: Turn['speaker']; text: string; startMs: number; endMs: number; words?: number }[] = [];
+
   /** Transcript deltas arrive in fragments; consecutive fragments from one speaker join into one turn. */
   addTranscript(speaker: Turn['speaker'], delta: string, startMs: number, endMs: number) {
+    const piece = this.speech.at(-1);
+    if (speaker === 'agent' && piece?.speaker === 'agent') piece.endMs = Math.max(piece.endMs, endMs);
+    // a caller's piece keeps how many words it had (never the words), for a turn kept open past them (T4)
+    else this.speech.push({ speaker, text: '', startMs, endMs, ...(speaker === 'caller' ? { words: spokenWords(delta) } : {}) });
     const last = this.turns.at(-1);
     // The read-back is said when the assistant's words since the proposal carry the slot's day and time, across
     // fragments and turns (batch 1c): "I found Biscuit" after a proposal is not a read-back, and a yes to it books nothing
@@ -297,6 +308,8 @@ export class CallState {
     } else {
       this.turns.push({ speaker, text: delta.trim(), startMs, endMs });
     }
+    // the assistant's sentences, one space apart, as they were said ("smoothly.This demo call ends", T9)
+    if (speaker === 'agent') this.turns.at(-1)!.text = spacedSentences(this.turns.at(-1)!.text);
     // a card or social security number is never kept, shown or sent on, by either side
     const turn = this.turns.at(-1)!;
     turn.text = redactSensitive(turn.text);

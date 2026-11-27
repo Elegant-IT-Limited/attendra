@@ -171,6 +171,13 @@ export interface LanguagePack {
   teamBooks: (v: { visit: string; notice: string | null; related: string | null }) => string;
   /** Asked before any lookup when a caller describes a pet (its age, its sex) and has not said whether it is new. */
   petNewQuestion: (v: { pet: string }) => string;
+  /**
+   * Asked again when a new pet's kind, sex or age reached the registration without the caller having said it (T1, a
+   * tester's call 2026-11-24: "Can you hear me?" was taken for "a cat"). One question, in the caller's language.
+   */
+  askPetSpecies: (v: { pet: string }) => string;
+  askPetSex: (v: { pet: string }) => string;
+  askPetAge: (v: { pet: string }) => string;
   /** Said with a read-back when a confirmation text will follow, so the caller's yes covers it and they can say no to the text alone. */
   confirmTextNote: (v: { target: 'calling' | 'file' }) => string;
   /** The answer to a reply of C to a reminder. */

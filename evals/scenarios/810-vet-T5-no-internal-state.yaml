@@ -1,0 +1,34 @@
+id: vet-T5-no-internal-state
+title: "T5: a read-back waiting for a yes, then another question: the answer and one plain question to settle it, never the change described as state ('waiting to confirm', 'pending', 'tentative') (a tester's call, 2026-11-24)"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, tester-call, clear-yes]
+turns:
+  - caller: Hi, Linh Nguyen. Can Biscuit come in tomorrow morning for a sick visit?
+    reply: "{offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: "2026-09-29", part_of_day: morning }
+  - caller: The first one.
+    reply: "{readback}?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Wait, what about tomorrow afternoon?
+    reply: "{offered.2}. And do you still want me to book the morning one?"
+    delegate:
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: "2026-09-29", part_of_day: afternoon }
+  - caller: No, the afternoon one.
+    reply: "So I'd {readback}. Shall I book it?"
+    delegate:
+      - propose_booking: { slot_id: "$found[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "All set."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["And do you still want me to book"]
+  never_returned: ["Still waiting", "waiting for their yes", "waiting to confirm", "tentative", "This replaces the change"]

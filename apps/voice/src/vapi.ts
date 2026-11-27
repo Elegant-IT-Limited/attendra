@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, type Backend, CallAgent, CallCache, cachedBackend, CallState, type Outbound, type Planner } from '@attendra/agent';
-import { digitsAsWords, callFacts, type CallEventSink, ClinicConfig, DEMO_BUSY_LINE, DEMO_GOODBYE_LINE, DEMO_LIMITS, DEMO_WRAP_UP_LINE, type DemoLimitCode, forVapiVoice, fromVapiVoice, isDemoClinic, type Language, lastFour, spokenDigits, isVapiTestClinic, maxGapMs, repeatedQuestions, vapiAlertAt } from '@attendra/core';
+import { digitsAsWords, callFacts, type CallEventSink, ClinicConfig, DEMO_BUSY_LINE, DEMO_GOODBYE_LINE, DEMO_LIMITS, DEMO_WRAP_UP_LINE, type DemoLimitCode, forVapiVoice, fromVapiVoice, isDemoClinic, type Language, lastFour, spokenDigits, isVapiTestClinic, longestWaitMs, repeatedQuestions, vapiAlertAt } from '@attendra/core';
 import { type Alerter, isVapiCreditEnd, isVapiOpenAiQuotaEnd, type Logger } from '@attendra/observability';
 import { type CallRecorder, callFactsNote, LOOKUPS_AHEAD_MAX, VAPI_EVENTS_PATH, VAPI_SECRET_HEADER } from '@attendra/voice-engine';
 import type { FastifyInstance } from 'fastify';
@@ -622,8 +622,10 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps): { liveCalls(
       // the record from Vapi's final transcript, each line once (what the agent was fed came in windows, line by line);
       // without one, what the agent was fed
       const record = lines.some(spoken) ? vapiRecordLines(lines) : s.agent.state.turns.map((t) => ({ speaker: t.speaker, text: t.text, startMs: t.startMs, endMs: t.endMs }));
+      // the longest wait from each piece of speech, as on our own engines (T4)
+      const pieces = lines.some(spoken) ? record : s.agent.state.speech;
       for (const line of record) await recorder.appendSegment(line);
-      await recorder.close({ reason: m.endedReason ?? 'ended', voiceSeconds: typeof m.durationSeconds === 'number' ? m.durationSeconds : null, outcome: s.agent.state.outcome, emergency: !!s.agent.state.emergency, emergencyResult: s.agent.state.emergencyResult, language: s.agent.state.language, quality: { firstAudioMs: vapiFirstAudioMs(lines), stalls: 0, answerTimeouts: 0, maxGapMs: maxGapMs(record), repeatedQuestions: repeatedQuestions(record).length }, usage: { models: s.agent.state.modelTokens, ...(typeof m.cost === 'number' && m.cost >= 0 ? { engineUsd: m.cost } : {}) } });
+      await recorder.close({ reason: m.endedReason ?? 'ended', voiceSeconds: typeof m.durationSeconds === 'number' ? m.durationSeconds : null, outcome: s.agent.state.outcome, emergency: !!s.agent.state.emergency, emergencyResult: s.agent.state.emergencyResult, language: s.agent.state.language, quality: { firstAudioMs: vapiFirstAudioMs(lines), stalls: 0, answerTimeouts: 0, maxGapMs: longestWaitMs(pieces), repeatedQuestions: repeatedQuestions(record).length }, usage: { models: s.agent.state.modelTokens, ...(typeof m.cost === 'number' && m.cost >= 0 ? { engineUsd: m.cost } : {}) } });
       sessions.delete(vapiId!);
       // the call's turns on Vapi's own clock, then the rest of the log written
       for (const e of vapiTurnEvents(lines)) s.events.add(e);

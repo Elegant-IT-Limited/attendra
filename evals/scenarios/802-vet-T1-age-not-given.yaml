@@ -1,0 +1,25 @@
+id: vet-T1-age-not-given
+title: "T1: 'Yes, that.' is no age: an age the caller never gave is refused and asked again, never registered (a tester's call, 2026-11-24)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550162"
+tags: [no-demo, tester-call, identity]
+turns:
+  - caller: I'm Corin Vale, I want to add my new dog Pico, he's a boy.
+    reply: "How old is Pico?"
+    delegate:
+      - register_patient: { pet_name: Pico, owner_name: Corin Vale, species: dog, sex: male, birthday_or_age: null, phone: null }
+  - caller: Yes, that.
+    reply: "How old is Pico, roughly?"
+    delegate:
+      - register_patient: { pet_name: Pico, owner_name: Corin Vale, species: dog, sex: male, birthday_or_age: 2 years, phone: null }
+  - caller: He's about two.
+    reply: "Pico is registered."
+    delegate:
+      - register_patient: { pet_name: Pico, owner_name: Corin Vale, species: dog, sex: male, birthday_or_age: about two, phone: null }
+expect:
+  outcome: abandoned
+  verified: true
+  refusals: [unclear_age, ask_age]
+  spoken_contains: ["How old is Pico, roughly?"]
+  pet_on_file: { phone: "+17205550162", name: Pico, species: dog }
