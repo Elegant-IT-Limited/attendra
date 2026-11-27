@@ -205,8 +205,10 @@ const STAFF_DETAILS = [
 /** Someone else's: a neighbour, a friend, another client. */
 const THIRD_PARTY = /\b(?:neighbou?r|friend|coworker|roommate|ex|(?:another|other) (?:client|owner|customer)|someone else|vecin[oa]|amig[oa]|companer[oa]|otr[oa] (?:cliente|dueno|duena)|otra persona)\b/;
 /** A detail asked for: a visit, a number, an address, a record, or whether someone is a client. */
-const ASKS_A_DETAIL = /\b(?:when is|when's|what time is|what day is|what is|what's|tell me|give me|can you tell me|could you tell me|do you have|cuando es|cuando tiene|a que hora|que dia|cual es|digame|me puede decir|me dice)\b.{0,40}\b(?:visit|appointment|number|phone|address|records?|file|history|cita|visita|numero|telefono|direccion|expediente|ficha|historial)\b/;
-const IS_A_CLIENT = /\b(?:is|are) (?:\w+ ){1,3}(?:a client|a patient|clients|patients|registered|on file)\b|\bes (?:\w+ ){1,3}(?:clienta?|paciente)\b/;
+const ASKS_A_DETAIL = /\b(?:when is|when's|when it'?s|when (?:she|he)'?s|what time is|what day is|what is|what's|tell me|give me|can you tell me|could you tell me|do you have|cuando es|cuando tiene|cuando le toca|a que hora|que dia|cual es|digame|me puede decir|me dice)\b.{0,40}\b(?:visit|appointment|number|phone|address|records?|file|history|due|next (?:shot|vaccine|vaccination|booster)|shot|vaccines?|cita|visita|numero|telefono|direccion|expediente|ficha|historial|vacunas?|toca)\b|\bwhen (?:is|it'?s|(?:she|he)'?s) (?:\w+ )?due\b|\bcuando le toca\b/;
+// asked as a question about someone ("Is Carmen Ortiz a client here?", "¿Es Linh Nguyen cliente de ustedes?", "if X is a
+// patient"), never one's own pet said to be a patient ("my dog is also a patient here, I need a refill")
+const IS_A_CLIENT = /(?:^|[.?!¿]\s*)(?:is|are) (?:\w+ ){1,3}(?:a client|a patient|clients|patients|registered|on file)\b|\b(?:whether|if) (?:\w+ ){1,3}(?:is|are) (?:a client|a patient|registered|on file)\b|¿\s*(?:\w+ ){0,3}(?:es|son) (?:\w+ ){0,3}(?:client[ae]s?|pacientes?)\b|\bsi (?:\w+ ){1,3}(?:es|son) (?:client[ae]s?|pacientes?)\b/;
 export const asksPrivateDetails = (said: string) => {
   const t = normalise(said);
   return STAFF_DETAILS.some((p) => p.test(t)) || IS_A_CLIENT.test(t) || (THIRD_PARTY.test(t) && ASKS_A_DETAIL.test(t));
