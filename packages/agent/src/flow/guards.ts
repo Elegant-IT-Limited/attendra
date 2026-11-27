@@ -191,28 +191,36 @@ export function textsNotArrivingNote(state: Pick<CallState, 'verifiedPatient' | 
 
 /**
  * The caller asks for a staff member's private details ("Dr. Ruiz's home address and cell number", "el celular de la
- * doctora Ruiz") or for another client's ("I'm Linh's neighbour…", "otro cliente"). Never given; and never a request
- * for the team unless the caller asks for one (the faithful live run filed a callback unasked).
+ * doctora Ruiz") or for another client's: their visit, number, record, or whether they are a client ("I'm Linh's
+ * neighbour. When is Biscuit's next visit?"). Only a detail asked for: "I'm Linh's friend, she asked me to request a
+ * refill" or "another owner's dog bit Bella" asks for nothing (review). Never given; and never a request for the team
+ * unless the caller asks for one (the faithful live run filed a callback unasked).
  */
-const PRIVATE_DETAILS = [
+const STAFF_DETAILS = [
   /\b(?:dr|doctor|vet|nurse|receptionist|technician)\.?(?: \w+)?'s (?:home|personal|private|cell|mobile|own)\b/,
   /\b(?:where|what street) does (?:dr\.? \w+|doctor \w+|the vet|\w+) live\b/,
   /\b(?:direccion|domicilio|celular|movil|telefono personal|numero personal|telefono de casa)\b.{0,40}\b(?:del|de la|de) (?:dr|dra|doctor|doctora|veterinari[oa])\b/,
   /\bdonde vive (?:el|la) (?:dr|dra|doctor|doctora|veterinari[oa])\b/,
-  /\b(?:i'?m|i am) (?:\w+'s )?(?:neighbou?r|friend|coworker|roommate|ex)\b/,
-  /\b(?:another|other) (?:client|owner|customer)'?s?\b/,
-  /\bsoy (?:la |el |su )?(?:vecin[oa]|amig[oa]|companer[oa]|ex) de\b/,
-  /\botr[oa] (?:cliente|dueno|duena)\b/,
 ];
-export const asksPrivateDetails = (said: string) => { const t = normalise(said); return PRIVATE_DETAILS.some((p) => p.test(t)); };
+/** Someone else's: a neighbour, a friend, another client. */
+const THIRD_PARTY = /\b(?:neighbou?r|friend|coworker|roommate|ex|(?:another|other) (?:client|owner|customer)|someone else|vecin[oa]|amig[oa]|companer[oa]|otr[oa] (?:cliente|dueno|duena)|otra persona)\b/;
+/** A detail asked for: a visit, a number, an address, a record, or whether someone is a client. */
+const ASKS_A_DETAIL = /\b(?:when is|when's|what time is|what day is|what is|what's|tell me|give me|can you tell me|could you tell me|do you have|cuando es|cuando tiene|a que hora|que dia|cual es|digame|me puede decir|me dice)\b.{0,40}\b(?:visit|appointment|number|phone|address|records?|file|history|cita|visita|numero|telefono|direccion|expediente|ficha|historial)\b/;
+const IS_A_CLIENT = /\b(?:is|are) (?:\w+ ){1,3}(?:a client|a patient|clients|patients|registered|on file)\b|\bes (?:\w+ ){1,3}(?:clienta?|paciente)\b/;
+export const asksPrivateDetails = (said: string) => {
+  const t = normalise(said);
+  return STAFF_DETAILS.some((p) => p.test(t)) || IS_A_CLIENT.test(t) || (THIRD_PARTY.test(t) && ASKS_A_DETAIL.test(t));
+};
 /** The caller asks, in their own words, for a callback or a message to the team. */
-const ASKS_CALLBACK = /\b(?:call (?:me|us) back|callback|call-back|(?:have|can|could) (?:someone|somebody|the team|a vet|the vet|her|him|they|them) call|someone call me|leave (?:a|her|him) (?:message|note)|take a message|pass (?:it|that|a message) on|me (?:pueden|puede|podrian|podria) llamar|que me llamen?|me llame alguien|llamarme|devolver(?:me)? la llamada|dej(?:ar|e)(?:le)? un (?:mensaje|recado)|tom(?:ar|e) un (?:mensaje|recado))\b/;
+const ASKS_CALLBACK = /\b(?:(?:need|want|would like) (?:a vet|the vet|someone|somebody|the team|a doctor|the doctor) to call(?: me)?|que me llame (?:un veterinario|una veterinaria|alguien|el equipo|la doctora|el doctor)|necesito que (?:alguien )?me llamen?|call (?:me|us) back|callback|call-back|(?:have|can|could) (?:someone|somebody|the team|a vet|the vet|her|him|they|them) call|someone call me|leave (?:a|her|him) (?:message|note)|take a message|pass (?:it|that|a message) on|me (?:pueden|puede|podrian|podria) llamar|que me llamen?|me llame alguien|llamarme|devolver(?:me)? la llamada|dej(?:ar|e)(?:le)? un (?:mensaje|recado)|tom(?:ar|e) un (?:mensaje|recado))\b/;
 const OFFERS_CALLBACK = /\b(?:call (?:you|them) back|callback|message|note for the team|le llame|le llamen|mensaje|recado|devolver la llamada)\b/;
 /**
  * Whether a request for the team waits: the caller asked for someone's private details and has not, since, asked for a
  * callback or a message, nor said yes to the assistant's offer of one.
  */
 export function requestHeldForPrivacy(state: CallState): boolean {
+  // never while an emergency is open: a callback then is never held (review)
+  if (state.emergencyLocked || state.emergencyCase || state.emergency) return false;
   const turns = state.turns;
   let at = -1;
   for (let i = turns.length - 1; i >= 0; i--) if (turns[i]!.speaker === 'caller' && asksPrivateDetails(turns[i]!.text)) { at = i; break; }
