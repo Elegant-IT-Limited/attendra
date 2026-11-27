@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, type PlannerTiming, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
-import { addDays, awayOn, isPetEmergency, bookableWindows, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, normalise, joinSaid, longestWaitMs, questionsIn, repeatedQuestions, speakSlot, talksAboutInternals, toMinutes, type ToolName, weekdayOf, zonedInstant } from '@attendra/core';
+import { addDays, awayOn, isPetEmergency, bookableWindows, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, normalise, joinSaid, opensWithFillerPreamble, longestWaitMs, questionsIn, repeatedQuestions, speakSlot, talksAboutInternals, toMinutes, type ToolName, weekdayOf, zonedInstant } from '@attendra/core';
 import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, PatientRecords, type PhiCipher, phoneKey, PostgresAuditLog, PostgresPatientDirectory, phiContext, PostgresTaskQueue, RIVERBEND_PETS, schema, seedCedarPark, seedDemo, seedRiverbend, withClinic } from '@attendra/db';
 import { and, eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
@@ -105,7 +105,8 @@ function resolve(args: Record<string, unknown>, state: CallState, results: ToolR
       return [k, (latest?.data.slots as { slot_id: string }[] | undefined)?.[Number(found[1])]?.slot_id ?? v];
     }
     // the visit booked (or moved to) on this call, and the one the assistant put forward to move (call bugs, 2026-11-17)
-    if (v === '$booked') return [k, state.memory.visit?.appointmentId ?? v];
+    // the visit booked (or moved to) on this call: the id the last booking's own result gave, as the model saw it (CQ2-VAPI8)
+    if (v === '$booked') return [k, [...results].reverse().find((r) => r.data.booked === true && typeof r.data.appointment_id === 'string')?.data.appointment_id as string ?? v];
     if (v === '$put_forward') return [k, state.visitPutForward ?? v];
     if (v === '$next_week') {
       const today = localDateOf(now, clinic.timezone);
@@ -537,6 +538,8 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   // what the voice said
   // (live, the tools' own notes to the voice are not speech: only its transcript)
   for (const line of new Set(livePlanner ? said : spoken)) check(!talksAboutInternals(line), `talked about its own workings: "${line.slice(0, 120)}"`);
+  // a reply never opens with a filler preamble: the script's own replies, or live, what the voice said (CQ2-R7)
+  for (const line of new Set(livePlanner ? said : replies)) check(!opensWithFillerPreamble(line), `opened with a filler preamble: "${line.slice(0, 80)}"`);
   // each line handed to the voice says each sentence once, one space apart (T9, a tester's call 2026-11-24: "One moment.
   // One moment." and "smoothly.This demo call ends")
   for (const line of new Set(spoken)) { const flat = line.replace(/\s+/g, ' ').trim(); check(joinSaid(flat) === flat, `said a sentence twice, or ran two together: "${flat.slice(0, 120)}"`); }

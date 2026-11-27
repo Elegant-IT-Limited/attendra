@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type CallFacts, callerIdOf, type ClinicConfig, clinicNowLine, greetingFor, industryPack, openingWords, PACKS } from '@attendra/core';
+import { type CallFacts, callerIdOf, type ClinicConfig, FILLER_PREAMBLE_LIST, clinicNowLine, greetingFor, industryPack, openingWords, PACKS } from '@attendra/core';
 import { VISIT_TYPES_RULE } from '@attendra/agent';
 import { LISTENING, talkLines } from './prompt';
 
@@ -103,6 +103,8 @@ export function toolsVoiceStaticPrompt(clinic: ClinicConfig): string {
 export function toolsVapiPrompt(clinic: ClinicConfig): string {
   return [
     ...voiceLines(clinic),
+    // the preambles path A's turn note bans, named here too (CQ2-R7): Vapi has no turn note
+    `Never open a reply with a preamble: not ${FILLER_PREAMBLE_LIST}.`,
     'The call facts (today\'s date at the clinic, and whether there is caller ID) come as a message at the start of the call: use them, never a date of your own.',
     industryPack(clinic.industry).identity === 'pet' ? 'When the caller wants to book, move or cancel a visit, the first question is the number the pet\'s profile is under, in the words the call facts give. A question about the clinic needs no number.' : '',
   ].filter(Boolean).join('\n');

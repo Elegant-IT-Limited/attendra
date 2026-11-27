@@ -116,9 +116,11 @@ describe('the texts table, row by row, in English and Spanish (batch 1e)', () =>
         expect((await ask('transfer_failed_backup', language, ASKS.hours)).refused).toBe('emergency_in_progress');
       });
 
-      it('the transfer failed with no backup hospital: there is no hospital to text', async () => {
+      it('RPT-batch-1b-9: no new text wording, the failed transfer with no hospital still refuses no_hospital (owner decision 26 Nov)', async () => {
         for (const kind of [ASKS.address, ASKS.hospital]) expect((await ask('transfer_failed', language, kind)).refused).toBe('no_hospital');
         expect((await ask('transfer_failed', language, ASKS.hours)).refused).toBe('emergency_in_progress');
+        // no text of a new wording exists to be sent instead
+        expect(Object.keys(PACKS[language].sms)).not.toContain('emergency_line');
       });
     });
   }

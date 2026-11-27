@@ -5,7 +5,7 @@ local_time: "10:00"
 tags: [no-demo, call-bugs, language]
 turns:
   - caller: Hi, is Dr. Ruiz in today?
-    reply: "Let me look. Dr. Elena Ruiz works today."
+    reply: "Dr. Elena Ruiz works today."
     delegate:
       - get_clinic_info: { question: is Dr. Ruiz in today }
   - caller: la casa

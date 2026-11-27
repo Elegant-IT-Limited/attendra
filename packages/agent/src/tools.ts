@@ -874,7 +874,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
     state.outcome = 'booked';
     const textTo = booked.status === 'booked' ? await confirmByText('booking_confirmed', a.start, a.id, { providerId: a.providerId, visitTypeId: a.visitTypeId }, noText) : null;
     state.done.push(`moved to another pet: ${pending.readback}`);
-    return { ok: true, data: { booked: true, when: pending.readback, confirmation_text: textNote(textTo), spoken: pack.spoken.done({ kind: 'rescheduled', textTo, then: pack.spoken.anythingElse }), ...(oldGone ? { say: `${swap.toPatient.firstName} now has the visit; ${swap.fromPatient.firstName}'s was no longer booked. Say both in a few words.` } : {}) } };
+    return { ok: true, data: { booked: true, appointment_id: a.id, when: pending.readback, confirmation_text: textNote(textTo), spoken: pack.spoken.done({ kind: 'rescheduled', textTo, then: pack.spoken.anythingElse }), ...(oldGone ? { say: `${swap.toPatient.firstName} now has the visit; ${swap.fromPatient.firstName}'s was no longer booked. Say both in a few words.` } : {}) } };
   };
 
   switch (name) {
@@ -1593,6 +1593,8 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         ok: true,
         data: {
           booked: true, when: pending.readback, confirmation_text: textNote(textTo),
+          // the visit booked (or moved to), by its id, so "move it" or "cancel it" next can name it (CQ2-VAPI8)
+          ...(result.status === 'booked' || result.status === 'already_done' ? { appointment_id: result.appointment.id } : {}),
           done: `This visit is booked. Say so once${textTo ? `, and that you'll text a confirmation to ${textTo === 'calling' ? 'the number they are calling from' : 'the number on file'}, in the future tense: nobody on the call can see a text arrive (asked about it, say where it goes and that you can't see when it arrives)` : ''}; do not look for times again or check it, and never say it was not completed. If the caller says goodbye, call end_call.`,
           ...(oldStillActive ? { old_appointment_still_active: true, say: 'The new time is booked, but the old appointment could not be cancelled; offer a callback to sort it out.' } : {}),
           ...(askReminder && !oldStillActive ? { say: `Say it is booked, then ask once: "${pack.reminderOffer}" and call set_reminder_consent with their answer.` } : {}),
