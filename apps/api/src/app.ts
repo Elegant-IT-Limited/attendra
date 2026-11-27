@@ -22,6 +22,7 @@ import { DoctorsController } from './doctors/doctors.controller';
 import { LiveController } from './calls/live.controller';
 import { TestCallsController } from './calls/test-calls.controller';
 import { HealthController } from './health.controller';
+import { VersionController } from './version.controller';
 import { KnowledgeController } from './knowledge/knowledge.controller';
 import { WebhooksController } from './webhooks/webhooks.controller';
 import { clientAddress } from './http/client-address';
@@ -111,7 +112,7 @@ class ApiModule {
     if (vapi) onSettingsSaved(desk, (clinicId) => vapi.touched(clinicId));
     return {
       module: ApiModule,
-      controllers: [HealthController, MeController, UsersController, ChangesController, OverviewController, PlanController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, TextsController, AppointmentsController, PatientsController, DoctorsController, TeamController, TeamInvitationsController, MyInvitationsController, SettingsController, VoiceSamplesController, EmergencyReviewController, AuditController, ProvisioningController, HandoffsController, DemoClinicController, QaController],
+      controllers: [HealthController, VersionController, MeController, UsersController, ChangesController, OverviewController, PlanController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, TextsController, AppointmentsController, PatientsController, DoctorsController, TeamController, TeamInvitationsController, MyInvitationsController, SettingsController, VoiceSamplesController, EmergencyReviewController, AuditController, ProvisioningController, HandoffsController, DemoClinicController, QaController],
       providers: [
         { provide: DB, useValue: deps.db },
         { provide: CIPHER, useValue: deps.cipher },

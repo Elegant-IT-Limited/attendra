@@ -4,6 +4,7 @@ import localFont from 'next/font/local';
 import type { ReactNode } from 'react';
 import { THEME_SCRIPT } from '@/lib/theme-script';
 import './globals.css';
+import { VersionFooter } from '@/components/version-footer';
 import { Providers } from './providers';
 
 // Self-hosted from this app, never from a font CDN: Geist, the website's typeface, under the SIL Open Font License.
@@ -28,7 +29,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body className="min-h-dvh">
-        <Providers>{children}</Providers>
+        <Providers>{children}<VersionFooter /></Providers>
       </body>
     </html>
   );

@@ -12,11 +12,17 @@ export function rememberClinic(clinicId: string) {
   } catch { /* storage off: home opens the first clinic, as before */ }
 }
 
+/** The clinic last opened in this browser, or null (none, or storage off). */
+export function lastClinic(): string | null {
+  try {
+    return localStorage.getItem(KEY);
+  } catch {
+    return null; // storage off
+  }
+}
+
 /** The clinic to open: the last one, if it is still among the person's clinics, else the first. */
 export function clinicToOpen<T extends { id: string }>(clinics: T[]): T | undefined {
-  let last: string | null = null;
-  try {
-    last = localStorage.getItem(KEY);
-  } catch { /* storage off */ }
+  const last = lastClinic();
   return clinics.find((c) => c.id === last) ?? clinics[0];
 }

@@ -1,5 +1,6 @@
 {
   "name": "attendra",
+  "version": "0.9.0",
   "private": true,
   "description": "Open-source AI phone receptionist for medical practices: Twilio SIP, OpenAI GPT-Live, and a TypeScript backend that owns identity, scheduling and audit.",
   "license": "AGPL-3.0-only",

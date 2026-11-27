@@ -10,7 +10,7 @@ import OpenAI from 'openai';
 import type { Job, PgBoss } from 'pg-boss';
 import { type FallbackEntry, fallbackEntry, formatBalance, type SmsSender, smsStatusUrl, type SpendTrigger, type TwilioBalance, type TwilioBalanceReading, type TwilioFallback, TwilioMessenger, type TwilioSpendAlerts } from '@attendra/telephony';
 import { CallJob, DeliveryJob, DocumentJob, ensureQueues, HandoverJob, jobId, QUEUES, type RemindersJob, RequestJob, SmsStatusJob, WEBHOOK_RETRY, WebhookEventJob } from './queue';
-import { JobError, LocalSummariser, ModelSummariser, SummaryCutOff, type Summariser } from './summarise';
+import { JobError, LocalSummariser, ModelSummariser, SummaryCutOff, SummaryQuotaUsedUp, type Summariser } from './summarise';
 
 export interface WorkerDeps {
   boss: PgBoss;
@@ -42,6 +42,9 @@ export interface WorkerDeps {
   /** The Twilio balance, read every hour: under `alertUnder` (dollars) it pages, as calls and texts stop at $0. */
   balance?: { client: Pick<TwilioBalance, 'read'>; alertUnder: number };
 }
+
+/** What a summary that OpenAI refused for money says (openai_quota pages, like the voice service's). */
+export const SUMMARY_QUOTA_TEXT = 'OpenAI refused a call summary: the credit or quota is used up. Summaries and calls fail until it is topped up.';
 
 /** A low balance that stays low is said again once a day, not every hour. */
 export const BALANCE_REMIND_MS = 24 * 3_600_000;
@@ -82,7 +85,23 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
   const reminderTries = new Map<string, number>();
   /** The balance check's memory: since when it is low, when that was last said, when an unread balance was last said. */
   const money: { lowSince: number | null; lowSaidAt: number; unreadAt: number | null } = { lowSince: null, lowSaidAt: 0, unreadAt: null };
+  /** Calls whose summary last failed because OpenAI's credit or quota was used up: their dead letter says so (RPT-slack-alerts-2). */
+  const quotaFailed = new Set<string>();
   return {
+    /**
+     * A job that failed every retry: logged with ids only, and said in Slack. A summary that failed for OpenAI's quota
+     * says openai_quota again, not "a background job gave up", so the cause is what pages (RPT-slack-alerts-2).
+     */
+    async deadLetter(data: Record<string, unknown>) {
+      d.log.error({ clinic_id: data.clinicId, call_id: data.callId }, 'a job failed every retry and was dead-lettered');
+      const where = data.clinicId ? { clinicId: String(data.clinicId), callId: typeof data.callId === 'string' ? data.callId : undefined } : undefined;
+      if (typeof data.callId === 'string' && quotaFailed.delete(data.callId)) {
+        d.alerts?.alert('openai_quota', `${SUMMARY_QUOTA_TEXT} This call's summary gave up after its retries: it is written when the job runs again.`, where);
+        return;
+      }
+      d.alerts?.alert('job_failed', 'A background job gave up after its retries: a summary, a text or a webhook was not done.', where);
+    },
+
     /** A closed call: queue what every closed call needs, once each. */
     async callCompleted(job: CallJob) {
       const data = CallJob.parse(job);
@@ -102,11 +121,18 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
       // a cut-off answer is the same on every try: the summary from the call's facts instead, never no summary at all
       let model = d.summariser.model;
       const summary = await d.summariser.summarise(call).catch(async (err: unknown) => {
+        // no credit: said at once as what it is (it pages), and the queue still tries again later
+        if (err instanceof SummaryQuotaUsedUp) {
+          quotaFailed.add(callId);
+          d.alerts?.alert('openai_quota', SUMMARY_QUOTA_TEXT, { clinicId, callId });
+          throw err;
+        }
         if (!(err instanceof SummaryCutOff)) throw err;
         model = 'local (model output cut off)';
         d.log.warn({ call_id: callId, model: d.summariser.model }, 'the summary model\'s answer was cut off: the summary from the call\'s facts is saved instead');
         return new LocalSummariser().summarise(call);
       });
+      quotaFailed.delete(callId);
       const saved = await summaries.save(clinicId, callId, summary, model);
       d.log.info({ call_id: callId, model, needs_review: summary.needsReview }, 'call summarised');
       // the codes only; the summary's text stays in Attendra
@@ -573,11 +599,7 @@ export async function startWorker(d: WorkerDeps) {
       });
   }
   // nothing retries a dead letter: it is logged, with ids only, for someone to look at
-  await d.boss.work<Record<string, unknown>>(QUEUES.deadLetter, each(async (data) => {
-    d.log.error({ clinic_id: data.clinicId, call_id: data.callId }, 'a job failed every retry and was dead-lettered');
-    d.alerts?.alert('job_failed', 'A background job gave up after its retries: a summary, a text or a webhook was not done.',
-      data.clinicId ? { clinicId: String(data.clinicId), callId: typeof data.callId === 'string' ? data.callId : undefined } : undefined);
-  }));
+  await d.boss.work<Record<string, unknown>>(QUEUES.deadLetter, each((data) => h.deadLetter(data)));
   // 03:00 UTC every day
   if (d.schedulePurge !== false) {
     await d.boss.schedule(QUEUES.purgeRetention, '0 3 * * *');

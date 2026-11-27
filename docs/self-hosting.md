@@ -153,6 +153,15 @@ To switch a service back, remove `ATTENDRA_SERVICE_DATABASE_URL` from it and res
 ## 4. Check it
 
 - `GET /healthz` on the voice service and `GET /api/v1/health` on the dashboard return `ok: true`. The voice service's also says `draining` and `liveCalls`: on SIGTERM it stops taking new calls (a new phone call is rejected with SIP 503, so a Twilio trunk's disaster recovery URL answers it), lets the live calls finish, at most 10 minutes, then exits. Give its container a stop grace period above that (`stop_grace_period: 11m`, as `infra/docker-compose.yml` does), and restart it when `GET /internal/drain` (with `VOICE_INTERNAL_TOKEN`) says `liveCalls: 0`. The dashboard's check asks the database too: with Postgres down or slower than a second it answers 503 with `ok: false`.
+- `GET /api/v1/version` (no sign-in) and the small line at the foot of every dashboard page say which build runs: `v<version> · build <n> · <commit>`. The images are built without `.git` (`.dockerignore` leaves it out), so pass the build's identity when you build, or the line says `unknown`:
+
+  ```bash
+  ATTENDRA_COMMIT=$(git rev-parse --short HEAD) ATTENDRA_BUILD=$(git rev-list --count HEAD) \
+  ATTENDRA_DIRTY=$([ -n "$(git status --porcelain)" ] && echo true || echo false) \
+    docker compose -f infra/docker-compose.yml up -d --build
+  ```
+
+  `infra/docker-compose.yml` hands the three to `infra/Dockerfile` as build args (`--build-arg ATTENDRA_COMMIT=...` with plain `docker build`); they can also be set as environment variables on the containers instead. `ATTENDRA_DIRTY` takes `true`/`false` (`1`/`0`, `yes`/`no`, in any case). In a checkout without Docker, the API reads git itself.
 - A call to the number is answered with the demo greeting. The service logs `call accepted` with the session id; no caller details appear in the log.
 - After the call, it is at the top of **Calls** in the dashboard with its transcript, outcome and length, and within a few seconds its summary. If the summary never comes, check the worker's log: a job that failed every retry is logged with its ids as `dead-lettered`.
 

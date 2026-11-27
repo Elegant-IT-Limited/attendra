@@ -17,6 +17,7 @@ import { Segmented } from '@/components/ui/tabs';
 import { api, useClinic, useClinicConfig } from '@/lib/api';
 import { SAFETY_POLL_MS } from '@/lib/changes';
 import { TEXT_KINDS } from '@/lib/text-kinds';
+import { notSentWords } from '@/lib/text-problems';
 import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 
@@ -64,7 +65,8 @@ function Texts() {
   const rows = texts.data?.pages.flatMap((p) => p.texts) ?? [];
   const filtered = !!(q || status !== 'all' || kind || from || to);
   const clear = () => { setText(''); setStatus('all'); setKind(''); setFrom(''); setTo(''); };
-  const pick = (s: Status, f: string) => { setStatus(s); setFrom(f); setTo(''); };
+  // a strip count is its own filter: every kind, from its first day (a kind chosen before would hide some of them)
+  const pick = (s: Status, f: string) => { setStatus(s); setFrom(f); setTo(''); setKind(''); };
   const retention = config.data?.retentionDays;
   const s = summary.data;
 
@@ -81,7 +83,9 @@ function Texts() {
             <p data-testid="summary-week"><span className="font-medium">Last 7 days:</span>{' '}
               <StripLink onClick={() => pick('sent', s.weekFrom)} testId="week-sent">{s.week.sent} sent</StripLink> ·{' '}
               <StripLink onClick={() => pick('not_sent', s.weekFrom)} testId="week-not-sent" warn={s.week.notSent > 0}>{s.week.notSent} not sent</StripLink></p>
-            {s.needsHandling > 0 && <p><StripLink onClick={() => pick('needs_handling', '')} testId="needs-handling" warn>{countOf(s.needsHandling, 'text')} to handle</StripLink></p>}
+            {/* those nobody has handled yet, every kind: the count Today shows, in its words, over the same 7 days (SMALL-2) */}
+            {s.needsHandling > 0 && <p data-testid="summary-to-handle"><span className="font-medium">To handle:</span>{' '}
+              <StripLink onClick={() => pick('needs_handling', s.weekFrom)} testId="needs-handling" warn>{notSentWords(s.needsHandling)}</StripLink></p>}
           </>
         ) : <Skeleton className="h-5 w-72" />}
       </div>

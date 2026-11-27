@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, asE164, ClinicConfig, type EventSink, localDateOf, readCustomValues, zonedInstant } from '@attendra/core';
+import { addDays, asE164, ClinicConfig, type EventSink, readCustomValues, zonedInstant } from '@attendra/core';
 import { approvesRefills, type Database, type FrontDeskRepository, type PhiCipher, PostgresTaskQueue, requestAssignees, staffPeople, staffRole, taskFacts } from '@attendra/db';
 import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
@@ -8,7 +8,8 @@ import { CustomFieldValues, NewTask, TaskAssign, TaskAssignees, TaskCount, TaskD
 import { can } from '../access';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
-import { CIPHER, DB, EVENTS, FRONT_DESK, JOBS } from '../http/tokens';
+import { CIPHER, CLOCK, DB, EVENTS, FRONT_DESK, JOBS } from '../http/tokens';
+import { textWindow } from '../texts/window';
 import { randomUUID } from 'node:crypto';
 import type { JobQueue } from '@attendra/worker/queue';
 import { ZodPipe } from '../http/zod.pipe';
@@ -17,8 +18,6 @@ import { avatarUrl } from '../me/avatar';
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 /** Sent to the pharmacy, ready to pick up, or not approved: each one says a vet decided. */
 const REFILL_DECISIONS = new Set<string>(['refill_sent', 'refill_ready', 'refill_declined']);
-/** How far back the dashboard looks for texts about requests that were not sent. */
-const TEXT_PROBLEM_DAYS = 3;
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
 
 @ApiTags('tasks')
@@ -26,7 +25,7 @@ const isUuid = (s: string) => z.uuid().safeParse(s).success;
 @ApiParam({ name: 'clinicId', example: 'clinic_maple' })
 @Controller('clinics/:clinicId/tasks')
 export class TasksController {
-  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(DB) private readonly db: Database, @Inject(EVENTS) private readonly events: EventSink, @Inject(JOBS) private readonly jobs: JobQueue, @Inject(CIPHER) private readonly cipher: PhiCipher) {}
+  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(DB) private readonly db: Database, @Inject(EVENTS) private readonly events: EventSink, @Inject(JOBS) private readonly jobs: JobQueue, @Inject(CIPHER) private readonly cipher: PhiCipher, @Inject(CLOCK) private readonly now: () => Date) {}
 
   /**
    * A request someone at the clinic writes down by hand, in the same queue as the
@@ -82,7 +81,7 @@ export class TasksController {
   @Post('search')
   @HttpCode(200)
   @Requires('tasks:read')
-  @ApiOperation({ summary: 'The request queue with words to find in the patient\'s name, the details or the type, from the first character. Audited once per search with the number of matches, and per request shown, never by what was typed.' })
+  @ApiOperation({ summary: 'The request queue (open, done, or both with status=all: open first) with words to find in the patient\'s name, the details or the type, from the first character. Audited once per search with the number of matches, and per request shown, never by what was typed.' })
   @ApiBody({ schema: schemaOf(TaskSearch) })
   @ApiOkResponse({ schema: schemaOf(TaskList) })
   async search(@Param('clinicId') clinicId: string, @Body(new ZodPipe(TaskSearch)) q: z.infer<typeof TaskSearch>, @CurrentStaff() staff: Staff): Promise<TaskList> {
@@ -94,7 +93,7 @@ export class TasksController {
     // the days are the clinic's own, whatever zone the server or the browser is in
     const tz = q.from || q.to ? ClinicConfig.parse(await this.desk.settings(clinicId)).timezone : null;
     const tasks = await this.desk.listTasks(clinicId, {
-      status: q.status, type: q.type, assignee, limit: 100, q: q.q || undefined,
+      status: q.status, type: q.type, assignee, limit: q.status === 'all' ? 200 : 100, q: q.q || undefined,
       from: q.from && tz ? zonedInstant(q.from, '00:00', tz) : undefined,
       to: q.to && tz ? zonedInstant(addDays(q.to, 1), '00:00', tz) : undefined,
     }, staff.userId);
@@ -115,21 +114,22 @@ export class TasksController {
   }
 
   /**
-   * Texts about requests not sent in the last three days, the newest of each kind per request (note 2026-11-16, demo
-   * findings 3): what the dashboard's notice and Today's list show, so a text that fails after the request was closed
-   * is still seen. Numbers, types and codes only; not audited.
+   * Texts about requests not sent in the last 7 clinic-local days, the newest of each kind per request (note 2026-11-16,
+   * demo findings 3): what the dashboard's notice shows, so a text that fails after the request was closed is still
+   * seen; and how many of the 7 days nobody has handled, Today's count, which the Texts page's strip shows too
+   * (SMALL-2: one window, one count). Numbers, types and codes only; not audited.
    */
   @Get('text-problems')
   @Requires('tasks:read')
-  @ApiOperation({ summary: 'Texts about requests not sent in the last three days that nobody marked handled (the newest 20, and how many in all): request number and type, the text\'s state and why. No patient data, not audited.' })
+  @ApiOperation({ summary: 'Texts not sent in the last 7 clinic-local days that nobody marked handled: how many of every kind (total, the Texts page\'s count too), the first day (from), and the newest 20 about requests: request number and type, the text\'s state and why. No patient data, not audited.' })
   @ApiOkResponse({ schema: schemaOf(TextProblems) })
   async textProblems(@Param('clinicId') clinicId: string): Promise<TextProblems> {
-    // from the start of the clinic's day three days back: the same days the Texts page's link to them filters by
+    // the Texts page's "Last 7 days": the same days its link from Today filters by
     const stored = await this.desk.settings(clinicId);
     const tz = stored ? ClinicConfig.parse(stored).timezone : 'UTC';
-    const since = zonedInstant(addDays(localDateOf(new Date(), tz), -TEXT_PROBLEM_DAYS), '00:00', tz);
-    const { total, problems } = await this.desk.textProblems(clinicId, since);
-    return { total, problems: problems.map((r) => ({ ...r, at: r.at.toISOString() })) };
+    const window = textWindow(this.now(), tz);
+    const { total, problems } = await this.desk.textProblems(clinicId, window.since);
+    return { total, from: window.from, problems: problems.map((r) => ({ ...r, at: r.at.toISOString() })) };
   }
 
   @Get('count')

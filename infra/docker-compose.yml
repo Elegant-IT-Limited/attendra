@@ -10,7 +10,12 @@
 name: attendra
 
 x-node: &node
-  build: { context: .., dockerfile: infra/Dockerfile }
+  # which build this is (GET /api/v1/version): set ATTENDRA_COMMIT, ATTENDRA_BUILD and ATTENDRA_DIRTY when building
+  # from a tree without .git; left out, the API reads git if the tree has it, else says "unknown"
+  build:
+    context: ..
+    dockerfile: infra/Dockerfile
+    args: { ATTENDRA_COMMIT: "${ATTENDRA_COMMIT:-}", ATTENDRA_BUILD: "${ATTENDRA_BUILD:-}", ATTENDRA_DIRTY: "${ATTENDRA_DIRTY:-}" }
   env_file: ../.env
   environment:
     DATABASE_URL: postgres://attendra:attendra@postgres:5432/attendra

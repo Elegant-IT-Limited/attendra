@@ -13,6 +13,7 @@ import { useSettled } from '@/components/patients/patient-search';
 import { Kbd } from '@/components/ui/bits';
 import { Highlight } from '@/components/ui/highlight';
 import { api, useClinic } from '@/lib/api';
+import { searchRequests } from '@/lib/request-search';
 import { usePets } from '@/lib/terms';
 import { clinicTime, dob, EMERGENCY_RESULTS, OUTCOMES, phone, requestKind } from '@/lib/format';
 import type { NavItem } from '@/lib/nav';
@@ -60,14 +61,10 @@ export function CommandPalette({ clinicId, open, onOpenChange, pages, clinics = 
     retry: false,
     staleTime: 30_000,
   });
-  // open requests and done ones alike: a number is most often looked up for one already closed
+  // open requests and done ones alike, in one search: one line in the audit log (RPT-batch-11-07-3-2)
   const requests = useQuery({
     queryKey: ['request-search', clinicId, query],
-    queryFn: async () => {
-      const find = (status: 'open' | 'done') => api<TaskList>(`/clinics/${clinicId}/tasks/search`, { method: 'POST', body: JSON.stringify({ q: query, status }) });
-      const [opened, done] = await Promise.all([find('open'), find('done')]);
-      return [...opened.tasks, ...done.tasks];
-    },
+    queryFn: () => searchRequests(clinicId, query, api),
     enabled: open && canSearchRequests && typed,
     retry: false,
     staleTime: 30_000,

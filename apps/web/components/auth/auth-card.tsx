@@ -5,11 +5,11 @@ import { BrandMark } from '@/components/brand-mark';
 /**
  * The centred card every sign-in step uses. With `pending`, it is laid out but not
  * shown, so content that arrives a moment later (the demo logins) does not move the
- * form under someone's cursor.
+ * form under someone's cursor. The build line (VersionFooter) sits under it: the two fill the screen together.
  */
 export function AuthCard({ title, subtitle, children, pending = false, footer }: { title: string; subtitle?: string; children: ReactNode; pending?: boolean; footer?: ReactNode }) {
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-12">
+    <main className="flex min-h-[calc(100dvh-2rem)] items-center justify-center bg-background px-4 py-12">
       <div className={pending ? 'invisible w-full max-w-sm space-y-6' : 'w-full max-w-sm space-y-6'} aria-busy={pending || undefined}>
         <div className="flex items-center gap-2">
           <BrandMark className="size-7" />

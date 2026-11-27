@@ -29,5 +29,12 @@ COPY . .
 # (ERR_PNPM_CMD_SHIM_CHMOD). And a built image never installs anything when it starts.
 RUN chown -R node:node /app
 ENV npm_config_verify_deps_before_run=false
+# Which build this is, for GET /api/v1/version and the dashboard's footer. A release image is built from a git archive,
+# which has no .git: the deploy passes the commit, the build number (commits up to it) and dirty (false for an archive).
+# Left empty, the API asks git when there is one, else says "unknown". Last, so a new commit rebuilds only this layer.
+ARG ATTENDRA_COMMIT=
+ARG ATTENDRA_BUILD=
+ARG ATTENDRA_DIRTY=
+ENV ATTENDRA_COMMIT=$ATTENDRA_COMMIT ATTENDRA_BUILD=$ATTENDRA_BUILD ATTENDRA_DIRTY=$ATTENDRA_DIRTY
 USER node
 EXPOSE 8080 8081 8082

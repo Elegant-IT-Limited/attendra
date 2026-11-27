@@ -60,7 +60,7 @@ test.describe.serial('demo findings 3, 2026-11-16', () => {
     const failed = { status: 'failed', failureReason: null, errorCode: '30006', at: new Date(Date.now() - 60_000).toISOString() };
     const problem = { textId: 'f3-text-1', taskId: mine.id, number: mine.number, type: 'callback', taskStatus: 'open', ...failed };
     // the worker's result, as the API would send it once the carrier refused the text
-    await page.route('**/api/v1/clinics/*/tasks/text-problems', (r) => r.fulfill({ json: { total: 1, problems: [problem] } }));
+    await page.route('**/api/v1/clinics/*/tasks/text-problems', (r) => r.fulfill({ json: { total: 1, from: '2026-01-01', problems: [problem] } }));
     await page.route('**/api/v1/clinics/*/tasks/search', async (r) => {
       const res = await r.fetch();
       const body = await res.json() as { tasks: (Served & { textProblem?: unknown })[] };
@@ -77,7 +77,7 @@ test.describe.serial('demo findings 3, 2026-11-16', () => {
     await notice.getByRole('button', { name: /OK|Close|Got it/ }).first().click();
     await expect(notice).toBeHidden();
     // Today: one item for it, with the same words (texts not sent are one item since texts polish TX2)
-    const item = page.getByText('1 text not sent · Review', { exact: true });
+    const item = page.getByText('1 text not sent in the last 7 days · Review', { exact: true });
     await expect(item).toBeVisible();
     await expect(page.getByText(`R-${mine.number} · Callback: Text not sent: the carrier refused it (error 30006).`, { exact: false }).first()).toBeVisible();
     // said once in this browser: back on Today, no notice again

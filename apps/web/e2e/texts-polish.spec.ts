@@ -24,7 +24,7 @@ test.describe.serial('texts polish', () => {
   let page: Page;
   let C: string;
   const search = (body: Record<string, unknown>) => call<Page_>(page, 'POST', `/clinics/${C}/texts/search`, body);
-  const problems = () => call<{ total: number; problems: { textId: string; number: number }[] }>(page, 'GET', `/clinics/${C}/tasks/text-problems`);
+  const problems = () => call<{ total: number; problems: { textId: string; taskId: string; number: number }[] }>(page, 'GET', `/clinics/${C}/tasks/text-problems`);
   test.beforeAll(async ({ browser }) => {
     page = await signInAgain(browser, 'Vet clinic manager');
     C = clinicOf(page);
@@ -60,12 +60,19 @@ test.describe.serial('texts polish', () => {
     // three refills closed as ready to pick up: the demo has no Twilio, so each text is recorded as not sent. No
     // dashboard page is open meanwhile, so the notice on Today is the first to tell of them
     await page.goto('about:blank');
+    const mine: string[] = [];
     for (const i of [1, 2, 3]) {
       const made = await call<{ id: string }>(page, 'POST', `/clinics/${C}/tasks`, { type: 'refill', medication: `Carprofen ${i}`, callbackNumber: `(720) 555-01${80 + i}` });
       await call(page, 'POST', `/clinics/${C}/tasks/${made.id}/done`, { outcome: 'refill_ready' });
+      mine.push(made.id);
     }
-    await expect.poll(async () => (await problems()).total, { timeout: 30_000 }).toBeGreaterThanOrEqual(3);
-    const { total } = await problems();
+    // all three texts recorded before Today opens, so one notice tells of them: the total counts every kind since
+    // SMALL-2, and the demo's reminders not sent reached ">= 3" before these did (gate ae949e2f: a second notice came
+    // after the first was closed, and the list behind it read as empty)
+    await expect.poll(async () => {
+      const listed = new Set((await problems()).problems.map((p) => p.taskId));
+      return mine.every((id) => listed.has(id));
+    }, { timeout: 30_000 }).toBe(true);
     await page.goto(`/c/${C}`);
     // the notice, for the texts this browser has not been told of yet: "1 text was not sent", "2 texts were not sent"
     const notice = page.getByRole('alertdialog').or(page.getByRole('dialog')).filter({ hasText: /^\d+ texts? (was|were) not sent/ });
@@ -74,35 +81,47 @@ test.describe.serial('texts polish', () => {
     expect(heading).toBe(textsNotSent(Number(heading.split(' ')[0])));
     await notice.first().getByRole('button', { name: /OK|Close|Got it/ }).first().click();
     const list = page.getByRole('list', { name: 'Needs attention' });
-    const item = list.getByRole('listitem').filter({ hasText: `${countOf(total, 'text')} not sent · Review` });
+    const item = list.getByRole('listitem').filter({ has: page.getByTestId('texts-not-sent-review') });
     await expect(item).toHaveCount(1);
     // no row per text any more
     await expect(list.getByText(/^Text not sent · R-/)).toHaveCount(0);
-    // emergencies and unclaimed requests come first
+    // emergencies and unclaimed requests come first (read once no notice covers the list)
+    await expect(notice).toHaveCount(0);
     const titles = await list.getByRole('listitem').allInnerTexts();
-    const at = titles.findIndex((t) => t.includes('not sent · Review'));
+    expect(titles.length).toBeGreaterThan(0);
+    const at = titles.findIndex((t) => t.includes('not sent in the last 7 days · Review'));
     titles.forEach((t, i) => { if (/Emergency|nobody has it yet/.test(t)) expect(i, t).toBeLessThan(at); });
     await expect(page.getByTestId('attention-count')).toHaveText(countOf(titles.length, 'item'));
     // Review: the Texts page, with exactly those texts
     await item.getByRole('link', { name: 'Review' }).click();
-    await expect(page).toHaveURL(/\/texts\?status=needs_handling&kind=refills&from=/);
+    // every kind, over the Texts page's 7 days (SMALL-2)
+    await expect(page).toHaveURL(/\/texts\?status=needs_handling&from=/);
     const from = new URL(page.url()).searchParams.get('from')!;
-    const server = await search({ status: 'needs_handling', kind: 'refills', from, limit: 50 });
-    expect(server.texts.length).toBe(total);
-    await expect(page.getByTestId('text-row')).toHaveCount(Math.min(total, 10));
-    // mark the newest handled: who and when, and it leaves Today
-    const row = page.locator(`[data-text-id="${server.texts[0]!.id}"]`);
+    // every kind counts (SMALL-2), and the demo's worker may record another reminder not sent at any moment: the list,
+    // the rows and Today's count are each compared with the server's at the same moment
+    await expect(async () => {
+      const [p, listed] = await Promise.all([problems(), search({ status: 'needs_handling', from, limit: 50 })]);
+      expect(listed.texts.length).toBe(Math.min(p.total, 50));
+      await expect(page.getByTestId('text-row')).toHaveCount(Math.min(p.total, 10), { timeout: 1000 });
+    }).toPass({ timeout: 30_000 });
+    const server = await search({ status: 'needs_handling', from, limit: 50 });
+    // mark the newest refill text handled: who and when, and it leaves Today
+    const target = server.texts.find((t) => ['request_ready', 'refill_sent', 'refill_not_approved'].includes(t.template))!;
+    const row = page.locator(`[data-text-id="${target.id}"]`);
     await row.getByRole('button').first().click();
     await row.getByTestId('text-mark-handled').click();
     await expect(page.getByText('Marked handled. It is off Today.')).toBeVisible();
-    await expect.poll(async () => (await problems()).total).toBe(total - 1);
-    const handled = (await search({ status: 'not_sent', kind: 'refills', limit: 50 })).texts.find((t) => t.id === server.texts[0]!.id)!;
+    await expect.poll(async () => (await search({ status: 'needs_handling', from, limit: 50 })).texts.some((t) => t.id === target.id)).toBe(false);
+    const handled = (await search({ status: 'not_sent', kind: 'refills', limit: 50 })).texts.find((t) => t.id === target.id)!;
     expect(handled.handledBy).toMatch(/Robin/);
     await page.getByRole('button', { name: 'All', exact: true }).click();
     await page.locator(`[data-text-id="${handled.id}"]`).getByRole('button').first().click();
     await expect(page.locator(`[data-text-id="${handled.id}"]`).getByTestId('text-handled')).toContainText(`Handled by ${handled.handledBy}`);
     await page.goto(`/c/${C}`);
-    await expect(list.getByRole('listitem').filter({ hasText: `${countOf(total - 1, 'text')} not sent · Review` })).toHaveCount(total - 1 ? 1 : 0);
+    await expect(async () => {
+      const left = (await problems()).total;
+      await expect(list.getByRole('listitem').filter({ hasText: `${countOf(left, 'text')} not sent in the last 7 days · Review` })).toHaveCount(left ? 1 : 0, { timeout: 1000 });
+    }).toPass({ timeout: 30_000 });
   });
 
   test('TX3: the Texts page: a short intro, the strip, 10 rows by day, more on request', async () => {
