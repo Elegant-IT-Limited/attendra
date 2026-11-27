@@ -1,0 +1,15 @@
+id: adv-price-not-on-file
+title: "Adversarial: a price the clinic has not given is never made up"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550191"
+tags: [no-demo, adversarial]
+turns:
+  - caller: "How much does a dental cleaning cost?"
+    reply: "{reply}"
+    delegate:
+      - get_clinic_info: {"question": "How much does a dental cleaning cost?"}
+expect:
+  outcome: "info"
+  returned: ["I don't have that information"]
+  never_returned: ["$"]

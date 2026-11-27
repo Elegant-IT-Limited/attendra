@@ -16,6 +16,38 @@ const CHILD = 'child|kid|kids|baby|infant|toddler|son|daughter|newborn';
 const DRUGS_ES = 'ibuprofeno|paracetamol|acetaminofen|aspirina|naproxeno|difenhidramina|amoxicilina|antibioticos?|prednisona|insulina|melatonina|omeprazol|gabapentina|codeina|pastillas?|tabletas?|capsulas?|pildoras?|medicinas?|medicamentos?|remedios?|jarabe|gotas|calmantes?|analgesicos?|antiinflamatorios?|antialergicos?';
 const ANY_DRUG = `${DRUGS}|${DRUGS_ES}`;
 
+/** Pet medicines, for the dose questions only: named in a refill ("a refill of Apoquel for Bella") they ask nothing. */
+const VET_DRUGS = 'rimadyl|carprofen|metacam|meloxicam|galliprant|apoquel|cerenia|trazodone';
+/** What a dose is counted in: "two pills", "half a tablet", "dos pastillas". */
+const DOSE_UNIT = 'tablets?|pills?|capsules?|doses?|teaspoons?|drops|tabletas?|pastillas?|capsulas?|pildoras?|dosis|gotas|cucharaditas?';
+/**
+ * An amount of a medicine: "25 mg", "two pills", "dos pastillas", or a part ("half a", "a quarter of", "media") only when a
+ * medicine, a pill or a dose word follows: "half an hour", "a half day" and "media hora" are no amount (review).
+ */
+const AMOUNT = `\\d+(?:[.,]\\d+)? ?(?:mg|milligrams?|miligramos?|ml|mililitros?|cc|units?|unidades|${DOSE_UNIT})`
+  + `|(?:one|two|three|four|five|a couple of|a few|una?|dos|tres|cuatro|cinco) (?:${DOSE_UNIT})`
+  + `|(?:half (?:a|an|of (?:a|an|the|his|her|my|its))|a half(?: of)?(?: a| an)?|(?:a )?quarter (?:of )?(?:a|an)|medi[oa]|un cuarto de(?: una?)?) (?:\\w+ )?(?:${DOSE_UNIT}|${DRUGS}|${DRUGS_ES}|${VET_DRUGS})`;
+const SOMEONE = 'him|her|it|them|my \\w+|the \\w+|our \\w+|his \\w+';
+/** A pet's own amount, said as theirs: "her usual 25 mg", "his normal dose". */
+const OWN = '(?:(?:her|his|its|their|the|my|our) )?(?:usual |normal |regular |daily |same )?';
+/**
+ * A dose asked with an amount or a dosing verb, whatever the amount (the owner's decision, 2026-11-26: a dosing answer
+ * is a safety risk): "can I give him 25 mg of Benadryl?", "is 50 mg OK?", "can she have half a Tylenol?", "how many mg",
+ * "¿le puedo dar 25 mg?", "¿puede tomar media pastilla?". A refill naming its own dose asks none of these.
+ */
+const DOSE = [
+  words(`(?:should|can|could|may) (?:i|we) give (?:${SOMEONE})? ?${OWN}(?:${AMOUNT})`),
+  words(`is it (?:ok|okay|safe|fine|alright|bad) to give (?:(?:${SOMEONE}) )?${OWN}(?:${AMOUNT})`),
+  words(`(?:is|are|would|will) (?:${AMOUNT})(?: of)?(?: \\w+)? (?:ok|okay|safe|fine|alright|too much|enough|right)`),
+  words('how (?:much|many) (?:mg|milligrams?|ml|cc|units?|tablets?|pills?|capsules?)'),
+  words(`(?:can|could|should|may) (?:he|she|it|they|${SOMEONE}) (?:have|take|get|eat) (?:(?:${AMOUNT})|(?:some |a |an |any )?(?:of )?(?:my |his |her |the |our )?(?:${DRUGS}|${VET_DRUGS}))`),
+  words(`(?:le |les )?(?:puedo|podemos|debo|deberia) dar(?:le|les)? (?:${AMOUNT})`),
+  words(`(?:le|les) (?:doy|damos|di) (?:${AMOUNT})`),
+  words(`(?:puede|pueden|podria|deberia|debe) (?:tomar|tomarse|comer|recibir) (?:(?:${AMOUNT})|(?:un poco de |algo de |una? )?(?:${ANY_DRUG}|${VET_DRUGS}))`),
+  words(`(?:es|son|seria) (?:${AMOUNT})(?: de)?(?: \\w+)? (?:mucho|demasiado|seguro|suficiente|bien|ok)`),
+  words('cuant(?:o|a|os|as) (?:mg|miligramos?|ml|mililitros?|pastillas?|tabletas?|capsulas?|gotas)'),
+];
+
 const PATTERNS = [
   // English: a medicine and what to do with it
   words(`(${DRUGS}) (for|before|with|after|while|during)`),
@@ -42,8 +74,8 @@ const PATTERNS = [
 
 /** What the assistant says when the clinic's documents do not answer a question. */
 export const NO_INFORMATION = "I don't have that information, I can have someone call you back.";
-/** And when the question is one only a clinician may answer. */
-export const MEDICAL_REFUSAL = "I can't give medical advice, but I can have someone from the care team call you back.";
+/** And when the question is one only a clinician may answer: a question, so the caller chooses before anything is taken (the owner's live rerun, 2026-11-26). */
+export const MEDICAL_REFUSAL = "I can't give medical advice. Would you like a visit with one of our vets, or a call back from our team?";
 
 /** A bare amount ("16 mg", "two tablets"): a dose question when asked, but also how a refill is named. */
 const QUANTITY = words('\\d+ ?(mg|milligrams?|miligramos?|ml|mililitros?|units?|unidades|tablets?|tabletas?|pills?|pastillas?)');
@@ -53,9 +85,22 @@ const QUANTITY = words('\\d+ ?(mg|milligrams?|miligramos?|ml|mililitros?|units?|
  * a bare amount, for the caller's recent turns: "a refill of Apoquel 16 mg" must not
  * make the next question, "what time do you close?", a medical one.
  */
+/**
+ * "What medicine should I give my cat for fleas?": which medicine to give, asked of the assistant (step 4, an adversarial
+ * eval). Never when the caller asks about their pet's own medicine to refill it or forgot its name: that is the record,
+ * and a refill request (review 4).
+ */
+const WHICH_MEDICINE = [
+  words('what (medicine|medicines|medication|medications|meds|drug|drugs|pill|pills|remedy|remedies|treatment) (can|could|should|do|would) (i|we) give'),
+  words('que (medicina|medicinas|medicamento|medicamentos|remedio|remedios|pastilla|pastillas|tratamiento) (le |les )?((puedo|podemos|debo|deberia) dar(le|les)?|doy|damos)'),
+];
+// only the pet's own, current medicine: "a refill of it", "the one she's on", "her heart pill refill", a forgotten name,
+// "la receta de nuevo"; never "every day" or a bare "refill", which still ask for advice (final review)
+const ABOUT_THEIR_OWN = words('refill (of|for) (it|her|his|its|that|them|the same)|(her|his|its) (current |usual |regular |own )?(medicine|medication|meds|pills?|tablets?|heart pill|prescription) refill|the one (she|he|it)\'?s (on|taking)|(forgot|forget|don\'?t remember|can\'?t remember) (the|its|her|his) name|(la|su) receta (de nuevo|otra vez)|renovar (la|su) receta|resurtir|olvide (el|su) nombre|no (me )?acuerdo (del|de su) nombre|la que (ya )?toma');
+
 export function isMedicalQuestion(text: string, opts: { quantities?: boolean } = {}): boolean {
   const t = normalise(text);
-  return PATTERNS.some((p) => p.test(t)) || (opts.quantities !== false && QUANTITY.test(t));
+  return PATTERNS.some((p) => p.test(t)) || DOSE.some((p) => p.test(t)) || (WHICH_MEDICINE.some((p) => p.test(t)) && !ABOUT_THEIR_OWN.test(t)) || (opts.quantities !== false && QUANTITY.test(t));
 }
 
 /**
@@ -64,7 +109,7 @@ export function isMedicalQuestion(text: string, opts: { quantities?: boolean } =
  * check on every line handed to the voice, and the check on what it said in a live run. English and Spanish. A change
  * explained as internal state is one too (T5, a tester's call 2026-11-24: "The earlier tentative change won't be used").
  */
-export const INTERNAL_TALK = /\b(?:in the background|lookups?\b|still waiting on\b|(?:i'?m |i am )?(?:still )?waiting for (?:that|it|this|the (?:request|change|booking|cancellation)|that (?:request|change)) to (?:complete|finish|go through|come back)|until it (?:finishes|completes|is done|goes through)|as soon as it'?s ready|esperando a que (?:termine|se complete)|hasta que termine|waiting (?:on|for) (?:that|the|this|my|a) (?:lookup|search|check|result|system)|(?:lookup|search) to (?:finish|come back|load)|esperando (?:que termine )?(?:la busqueda|el resultado)|(?:still |it'?s )running|still loading|processing (?:it|that|your)|the (?:information|info|result|results|data|details) (?:i |that )?(?:got back|returned|came back|i (?:got|received|have here)|(?:it |that )?(?:returned|shows|says))|i got back|what came back|(?:the|my|our) (?:system|tool|tools|database|lookup|search results?)\b|(?:a|the) tool\b|en segundo plano|(?:la|los) (?:informacion|resultados?|datos) (?:que )?(?:recibi|obtuve|devolvio|volvio|me (?:dio|llego))|(?:el|mi|nuestro) sistema\b|la herramienta|tentative (?:change|booking|cancell?ation|one)|earlier (?:change|proposal)|(?:won'?t|will not) be used|waiting to (?:be )?confirm(?:ed)?|(?:i )?had waiting|pending (?:change|booking|cancell?ation)|the one (?:booked|made) on this call|cambio (?:pendiente|provisional)|no se (?:usara|va a (?:hacer|usar)))/i;
+export const INTERNAL_TALK = /\b(?:in the background|lookups?\b|still waiting on\b|(?:i'?m |i am )?(?:still )?waiting for (?:that|it|this|the (?:request|change|booking|cancellation)|that (?:request|change)) to (?:complete|finish|go through|come back)|until it (?:finishes|completes|is done|goes through)|as soon as it'?s ready|esperando a que (?:termine|se complete)|hasta que termine|waiting (?:on|for) (?:that|the|this|my|a) (?:lookup|search|check|result|system)|(?:lookup|search) to (?:finish|come back|load)|esperando (?:que termine )?(?:la busqueda|el resultado)|still loading|the (?:information|info|result|results|data|details) (?:i |that )?(?:got back|returned|came back|i (?:got|received|have here)|(?:it |that )?(?:returned|shows|says))|i got back|what came back|(?:the|my) system\b|(?:the|my|our) (?:tool|tools|database|lookup|search results?)\b|(?:a|the) tool\b|en segundo plano|(?:la|los) (?:informacion|resultados?|datos) (?:que )?(?:recibi|obtuve|devolvio|volvio|me (?:dio|llego))|(?:el|mi) sistema\b|mis instrucciones\b|instrucciones (?:internas|ocultas|del sistema)|\bmi prompt\b|\bmy (?:(?:own|internal|hidden|private|system|current) )?(?:rules|instructions|configuration|config|setup|prompt|tools|settings)\b|\bmis? (?:propi[oa]s? )?(?:reglas|instrucciones|configuracion|prompt|herramientas)\b|(?:can'?t|cannot|won'?t|(?:not|never) (?:able|allowed) to|unable to) (?:share|reveal|show|read|tell|repeat|disclose|give|discuss|change|ignore|override|explain)(?: (?:or|and) \w+)?(?: out)?(?: you| with you)? (?:my|the|our|any|those|these|your) (?:\w+ )?(?:prompt|instructions|rules|tools|configuration|config|settings)\b|no (?:puedo|podria|me es posible|esta permitido) (?:compartir|revelar|mostrar|leer|decir|repetir|dar|cambiar|ignorar|explicar)(?:le|les)?(?: (?:ni|o|y) \w+)? (?:mis|las|los|el|la|mi|sus|esas|estas|esos|estos) (?:\w+ )?(?:prompt|instrucciones|reglas|herramientas|configuracion)\b|my (?:internal |hidden )?(?:instructions|prompt|system prompt)\b|(?:internal|hidden|private|secret) (?:instructions|system prompt|prompt)|\bthe system prompt\b|prompt del sistema|instrucciones (?:privadas|secretas)|la herramienta|tentative (?:change|booking|cancell?ation|one)|earlier (?:change|proposal)|(?:won'?t|will not) be used|waiting to (?:be )?confirm(?:ed)?|(?:i )?had waiting|pending (?:change|booking|cancell?ation)|the one (?:booked|made) on this call|cambio (?:pendiente|provisional)|no se (?:usara|va a (?:hacer|usar)))/i;
 /** Whether a line talks about how the assistant works (after accents are folded: "información" is "informacion"). */
 export function talksAboutInternals(line: string): boolean {
   return INTERNAL_TALK.test(line.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));

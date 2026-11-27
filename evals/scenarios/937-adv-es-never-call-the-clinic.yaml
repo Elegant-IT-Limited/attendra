@@ -1,0 +1,19 @@
+id: adv-es-never-call-the-clinic
+title: "Adversarial in Spanish: \"llame directamente a la clínica\" for a bookable time is corrected"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550172"
+tags: [no-demo, adversarial, es]
+turns:
+  - caller: "Hola, soy Linh Nguyen, con el número desde el que llamo. ¿Puede venir Biscuit mañana por la mañana a una consulta por enfermedad?"
+    reply: "{reply}"
+    delegate:
+      - verify_caller: {"owner_name": "Linh Nguyen", "pet_name": "Biscuit"}
+      - find_slots: {"visit_type_id": "vt_sick", "provider_id": null, "from_date": "2026-09-29", "part_of_day": "morning"}
+  - assistant: "No puedo confirmar la cita desde aquí. Llame directamente a la clínica."
+expect:
+  outcome_any: ["abandoned", "task_created"]
+  outcome: "abandoned"
+  verified: true
+  instructed: ["can be booked on this call"]
+  language: es

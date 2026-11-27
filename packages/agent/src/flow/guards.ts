@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, type Language, LANGUAGES, normalise, PACKS } from '@attendra/core';
+import { type ClinicConfig, isClearYes, type Language, LANGUAGES, normalise, PACKS } from '@attendra/core';
 import type { CallState } from '../call-state';
 
 /**
@@ -46,8 +46,11 @@ export const askedWhy = (said: string) => WHY_ASKED.test(normalise(said));
  */
 export const CLAIMS: Record<'booked' | 'moved' | 'cancelled' | 'not_found' | 'vet_day' | 'texted' | 'text_arrived' | 'sent_elsewhere', RegExp> = {
   // the caller sent to the clinic for something this call can do (T2, a tester's call 2026-11-24: "I can't finalize the
-  // booking from here. Please contact the clinic directly" for a time read back and ready to book)
-  sent_elsewhere: /\b(?:(?:contact|call|phone|ring) (?:the clinic|us|the office|the front desk) directly|(?:can'?t|cannot|am unable to|i'?m unable to) (?:finali[sz]e|complete|confirm|make) (?:the|this|that|your) (?:booking|appointment|reservation)(?: from here)?|comuniquese (?:directamente )?con la clinica|llame directamente a la clinica|no puedo (?:finalizar|completar|confirmar) (?:la|esta|su) (?:reserva|cita))\b/,
+  // booking from here. Please contact the clinic directly" for a time read back and ready to book): only when they are
+  // sent there INSTEAD of booking ("contact the clinic directly to book", "call the front desk to schedule", or the bare
+  // "Please contact the clinic directly."), never a closing line for later ("call us directly if anything changes"; the
+  // paid-run review, 2026-11-26)
+  sent_elsewhere: /(?:\b(?:contact|call|phone|ring) (?:the clinic|us|the office|the front desk)(?: directly)? (?:to|and) (?:book|schedule|finali[sz]e|complete|confirm|make|set up|arrange)\b|(?<!\b(?:if|when|whenever|should|in case)\b[^.?!]{0,80})\b(?:contact|call|phone|ring) (?:the clinic|us|the office|the front desk) directly(?! (?:if|when|whenever|should|in case|any ?time|later|for (?:any|future|other))\b)|\b(?:can'?t|cannot|am unable to|i'?m unable to) (?:finali[sz]e|complete|confirm|make) (?:the|this|that|your) (?:booking|appointment|reservation)(?: from here)?\b|\b(?:llame|comuniquese|contacte|hable)(?: directamente)? (?:a|con) (?:la clinica|la recepcion|el consultorio|nosotros)(?: directamente)? para (?:reservar|agendar|programar|confirmar|finalizar|completar|hacer|sacar)\b|(?<!\b(?:si|cuando|en caso)\b[^.?!]{0,80})\b(?:comuniquese (?:directamente )?con la clinica|llame directamente a la clinica)(?! (?:si|cuando|en caso|mas adelante|para cualquier)\b)|\bno puedo (?:finalizar|completar|confirmar) (?:la|esta|su) (?:reserva|cita)\b)/,
   booked: /\b(?:i'?ve booked|i have booked|you'?re (?:all )?booked|you are (?:all )?booked|you'?re all set for|is (?:now )?booked|are (?:now )?booked|has been booked|booked (?:you|him|her|them|it) (?:in|for)|(?:le |lo |la )?he reservado|queda reservad[oa]|ya esta reservad[oa]|quedo reservad[oa])\b/,
   moved: /\b(?:i'?ve (?:moved|rescheduled)|i have (?:moved|rescheduled)|has been (?:moved|rescheduled)|is now (?:moved|on)|he cambiado|quedo cambiad[oa]|ya esta cambiad[oa])\b/,
   cancelled: /\b(?:i'?ve cancell?ed|i have cancell?ed|has been cancell?ed|is (?:now )?cancell?ed|he cancelado|queda cancelad[oa]|quedo cancelad[oa])\b/,
@@ -82,6 +85,15 @@ export function recordingLine(clinic: Pick<ClinicConfig, 'recording'>, language:
 /** "Are you a real person?", "am I talking to a robot?": the honest answer, always (callers must know it is software). */
 const HUMAN_ASKED = /\b(?:are you (?:a )?(?:real|human|person|robot|bot|machine|computer|an? ai|ai)|is this (?:a )?(?:real person|human|robot|bot|recording)|am i (?:talking|speaking) to (?:a )?(?:real person|human|person|robot|bot|machine|computer)|eres (?:un |una )?(?:persona|humano|humana|robot|maquina)|es usted (?:una )?(?:persona|humano|robot)|estoy hablando con (?:una )?(?:persona|maquina|robot))\b/;
 export const askedIfHuman = (said: string) => HUMAN_ASKED.test(normalise(said));
+/** "Can you hear me?", "are you there?", "¿me escucha?": answered at once, in a few words (master prompt, step 4). */
+// only the question on its own (with "hello", "hola" and the like around it), never "are you there on Saturdays?" or
+// "¿está ahí el doctor?" (review 4): each clause is checked whole
+const HEAR_ALONE = /^(?:(?:hello|hi|hey|sorry|um|uh|so|hola|oiga|perdon|alo|bueno)\s+)*(?:(?:can|could|do) you hear me(?: now| ok| okay| alright)?|are you (?:still )?there|me (?:escucha|escuchas|oye|oyes)(?: bien)?|(?:esta|estas|sigue) (?:ahi|ahí)|hello|hola|alo)(?:\s+(?:hello|hola))*$/;
+const clauses = (said: string) => normalise(said).split(/[?.!,;¿¡]+/).map((c) => c.trim()).filter(Boolean);
+export const asksIfHeard = (said: string) => { const parts = clauses(said); return parts.some((c) => HEAR_ALONE.test(c)) && parts.some((c) => HEAR_ALONE.test(c) && !/^(?:hello|hola|alo)(?:\s+(?:hello|hola))*$/.test(c)); };
+/** Whether the turn says more than the question about the line ("Can you hear me? I want to book Bella for Friday"). */
+export const saysMoreThanHeard = (said: string) => clauses(said).some((c) => !HEAR_ALONE.test(c));
+export const heardLine = (language: Language) => (language === 'es' ? 'Sí, le escucho.' : 'Yes, I can hear you.');
 export const humanLine = (language: Language) => (language === 'es' ? 'Soy el asistente de inteligencia artificial de la clínica. Si lo prefiere, le paso un mensaje al equipo para que le llamen.' : 'I\'m the clinic\'s AI assistant. If you\'d rather talk to someone, I can have the team call you back.');
 
 /**
@@ -176,3 +188,52 @@ export function textsNotArrivingNote(state: Pick<CallState, 'verifiedPatient' | 
   const line = textsNotArrivingLine(state.language, phone.length >= 4 ? phone.slice(-4) : null, clinic.industry === 'vet');
   return `The caller says texts are not arriving. Do not answer with the clinic's details. Say, word for word: "${line}" On a yes, call create_callback with the reason "Texts not arriving: check or update the number on file" and the best number to call.`;
 }
+
+/**
+ * The caller asks for a staff member's private details ("Dr. Ruiz's home address and cell number", "el celular de la
+ * doctora Ruiz") or for another client's: their visit, number, record, or whether they are a client ("I'm Linh's
+ * neighbour. When is Biscuit's next visit?"). Only a detail asked for: "I'm Linh's friend, she asked me to request a
+ * refill" or "another owner's dog bit Bella" asks for nothing (review). Never given; and never a request for the team
+ * unless the caller asks for one (the faithful live run filed a callback unasked).
+ */
+const STAFF_DETAILS = [
+  /\b(?:dr|doctor|vet|nurse|receptionist|technician)\.?(?: \w+)?'s (?:home|personal|private|cell|mobile|own)\b/,
+  /\b(?:where|what street) does (?:dr\.? \w+|doctor \w+|the vet|\w+) live\b/,
+  /\b(?:direccion|domicilio|celular|movil|telefono personal|numero personal|telefono de casa)\b.{0,40}\b(?:del|de la|de) (?:dr|dra|doctor|doctora|veterinari[oa])\b/,
+  /\bdonde vive (?:el|la) (?:dr|dra|doctor|doctora|veterinari[oa])\b/,
+];
+/** Someone else's: a neighbour, a friend, another client. */
+const THIRD_PARTY = /\b(?:neighbou?r|friend|coworker|roommate|ex|(?:another|other) (?:client|owner|customer)|someone else|vecin[oa]|amig[oa]|companer[oa]|otr[oa] (?:cliente|dueno|duena)|otra persona)\b/;
+/** A detail asked for: a visit, a number, an address, a record, or whether someone is a client. */
+const ASKS_A_DETAIL = /\b(?:when is|when's|when it'?s|when (?:she|he)'?s|what time is|what day is|what is|what's|tell me|give me|can you tell me|could you tell me|do you have|cuando es|cuando tiene|cuando le toca|a que hora|que dia|cual es|digame|me puede decir|me dice)\b.{0,40}\b(?:visit|appointment|number|phone|address|records?|file|history|due|next (?:shot|vaccine|vaccination|booster)|shot|vaccines?|cita|visita|numero|telefono|direccion|expediente|ficha|historial|vacunas?|toca)\b|\bwhen (?:is|it'?s|(?:she|he)'?s) (?:\w+ )?due\b|\bcuando le toca\b/;
+// asked as a question about someone ("Is Carmen Ortiz a client here?", "¿Es Linh Nguyen cliente de ustedes?", "if X is a
+// patient"), never one's own pet said to be a patient ("my dog is also a patient here, I need a refill")
+const IS_A_CLIENT = /(?:^|[.?!¿]\s*)(?:is|are) (?:\w+ ){1,3}(?:a client|a patient|clients|patients|registered|on file)\b|\b(?:whether|if) (?:\w+ ){1,3}(?:is|are) (?:a client|a patient|registered|on file)\b|¿\s*(?:\w+ ){0,3}(?:es|son) (?:\w+ ){0,3}(?:client[ae]s?|pacientes?)\b|\bsi (?:\w+ ){1,3}(?:es|son) (?:client[ae]s?|pacientes?)\b/;
+export const asksPrivateDetails = (said: string) => {
+  const t = normalise(said);
+  return STAFF_DETAILS.some((p) => p.test(t)) || IS_A_CLIENT.test(t) || (THIRD_PARTY.test(t) && ASKS_A_DETAIL.test(t));
+};
+/** The caller asks, in their own words, for a callback or a message to the team. */
+const ASKS_CALLBACK = /\b(?:(?:need|want|would like) (?:a vet|the vet|someone|somebody|the team|a doctor|the doctor) to call(?: me)?|que me llame (?:un veterinario|una veterinaria|alguien|el equipo|la doctora|el doctor)|necesito que (?:alguien )?me llamen?|call (?:me|us) back|callback|call-back|(?:have|can|could) (?:someone|somebody|the team|a vet|the vet|her|him|they|them) call|someone call me|leave (?:a|her|him) (?:message|note)|take a message|pass (?:it|that|a message) on|me (?:pueden|puede|podrian|podria) llamar|que me llamen?|me llame alguien|llamarme|devolver(?:me)? la llamada|dej(?:ar|e)(?:le)? un (?:mensaje|recado)|tom(?:ar|e) un (?:mensaje|recado))\b/;
+const OFFERS_CALLBACK = /\b(?:call (?:you|them) back|callback|message|note for the team|le llame|le llamen|mensaje|recado|devolver la llamada)\b/;
+/**
+ * Whether a request for the team waits: the caller asked for someone's private details and has not, since, asked for a
+ * callback or a message, nor said yes to the assistant's offer of one.
+ */
+export function requestHeldForPrivacy(state: CallState): boolean {
+  // never while an emergency is open: a callback then is never held (review)
+  if (state.emergencyLocked || state.emergencyCase || state.emergency) return false;
+  const turns = state.turns;
+  let at = -1;
+  for (let i = turns.length - 1; i >= 0; i--) if (turns[i]!.speaker === 'caller' && asksPrivateDetails(turns[i]!.text)) { at = i; break; }
+  if (at < 0) return false;
+  for (let i = at; i < turns.length; i++) {
+    const t = turns[i]!;
+    if (t.speaker !== 'caller') continue;
+    if (ASKS_CALLBACK.test(normalise(t.text))) return false;
+    const offer = turns.slice(0, i).reverse().find((x) => x.speaker === 'agent');
+    if (i > at && offer && OFFERS_CALLBACK.test(normalise(offer.text)) && isClearYes(t.text, LANGUAGES)) return false;
+  }
+  return true;
+}
+

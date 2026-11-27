@@ -251,6 +251,8 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const now = opts.now ?? (scenario.local_time ? zonedInstant('2026-09-28', scenario.local_time, clinic.timezone) : SIM_NOW);
   const callerNumber = scenario.caller_number === undefined ? defaultCaller(scenario) : scenario.caller_number;
   const { livePlanner } = opts;
+  // the live planner is the voice (the tools path): the turn's guard notes go to it, and it alone speaks
+  const notesToModel = !!livePlanner?.readsNotes;
   const scheduler = new BuiltinScheduler(db, 'voice-agent', cipher);
   const sms: string[] = [];
   const smsVars: Record<string, string>[] = [];
@@ -308,14 +310,27 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   let callerSilent = false;
   // the call was ended by a rule of the code (the abusive caller), not by end_call after a goodbye
   let endedByRule = false;
+  let held = 0;
   for (let i = 0; i < lines.length; i++) {
     const turn = lines[i]!;
+    // live, a line that answers a question the assistant has not asked yet waits for it (a read-back's yes), at most twice
+    if (livePlanner && 'caller' in turn && turn.wait_for?.length && held < 2) {
+      const last = transcript.filter((t) => t.speaker === 'assistant').at(-1)?.text.toLowerCase() ?? '';
+      if (!turn.wait_for.some((w) => last.includes(w.toLowerCase()))) {
+        held++;
+        lines.splice(i, 0, { caller: turn.meanwhile ?? 'Okay.' });
+        i--;
+        continue;
+      }
+    }
+    if ('caller' in turn && turn.wait_for?.length) held = 0;
     // a line the scenario gives the voice (the exact question a tool handed it) is said on the call: live, it counts as spoken (scripted, the reply before it says it)
     // the line is said after what came before it, and the caller answers after it: the clock moves, as on a call (an
     // answer "after the question was said" needs the question to have been said first, batch 1b)
     // live, a scripted line the voice has just said itself (the emergency question) is not said a second time
     if ('assistant' in turn && livePlanner && transcript.filter((t) => t.speaker === 'assistant').at(-1)?.text.trim() === turn.assistant.trim()) continue;
-    if ('assistant' in turn) { clock += 1500; agent.onAgentTranscript(turn.assistant, clock, clock + 1000); clock += 1000; transcript.push({ speaker: 'assistant', text: turn.assistant }); if (livePlanner) replies.push(turn.assistant); await segment('agent', turn.assistant, clock); continue; }
+    // what the assistant's own words set off (a correction from the claim or internal-talk guards) is part of the call too
+    if ('assistant' in turn) { clock += 1500; outbound.push(...agent.onAgentTranscript(turn.assistant, clock, clock + 1000)); clock += 1000; transcript.push({ speaker: 'assistant', text: turn.assistant }); if (livePlanner) replies.push(turn.assistant); await segment('agent', turn.assistant, clock); continue; }
     // live, the caller speaks after the assistant has finished, as on a real call: a yes said
     // at the same moment as the read-back would not count as an answer to it
     if (livePlanner) clock += 1500;
@@ -325,15 +340,21 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     transcript.push({ speaker: 'caller', text: turn.caller });
     observed.turn++;
     // the voice let this turn go: after 5 s the watchdog gives it the caller's own words to answer, and it hands them on
+    const nudgeNotes: string[] = [];
     if (turn.dropped) {
       const nudge = agent.onSilence(1);
       outbound.push(...nudge);
-      for (const o of nudge) if (o.type === 'instructions') { transcript.push({ speaker: 'instruction', text: o.content }); dropNudges.push(o.content); }
+      for (const o of nudge) if (o.type === 'instructions') { transcript.push({ speaker: 'instruction', text: o.content }); dropNudges.push(o.content); nudgeNotes.push(o.content); }
     }
+    // the guard notes this turn brought: on a call they are system messages the voice reads before its one reply
+    const notes: string[] = [...nudgeNotes];
     for (const o of heard) if (o.type === 'instructions') {
       transcript.push({ speaker: 'instruction', text: o.content });
-      // live, the voice model says the script it was handed (the quoted lines), as it does on a call
-      if (livePlanner) { const said = scriptLines(o.content); if (said) { clock += 1500; agent.onAgentTranscript(said, clock, clock + 1000); transcript.push({ speaker: 'assistant', text: said }); } }
+      notes.push(o.content);
+      // live with a planner that is the voice (the tools path), the note goes to it with the turn and its one reply is the
+      // reply (the owner's second final run: the harness said the line, then asked the model, which added a second one).
+      // With the planner path's backend model, the harness says the script as GPT-Live would
+      if (livePlanner && !notesToModel) { const said = scriptLines(o.content); if (said) { clock += 1500; agent.onAgentTranscript(said, clock, clock + 1000); transcript.push({ speaker: 'assistant', text: said }); } }
     }
     await segment('caller', turn.caller, clock);
     const say = async () => {
@@ -356,10 +377,11 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     // second reply here made it repeat the question or add words of its own (batch 1b live matrix)
     // a script that tells the voice to carry on afterwards ("then help with what they ask") is not the whole reply
     const emergencyOn = state.emergencyCase !== null || state.emergency !== null;
-    const waitsForCaller = !!livePlanner && emergencyOn && heard.some((o) => o.type === 'instructions' && /"[^"]+"/.test(o.content)
+    // (a planner that is the voice writes that reply itself, with the note: never waited out here)
+    const waitsForCaller = !!livePlanner && !notesToModel && emergencyOn && heard.some((o) => o.type === 'instructions' && /"[^"]+"/.test(o.content)
       && (/\?\s*$/.test(scriptLines(o.content)) || !/carry on|help with what they|go on with|offer the soonest/i.test(o.content)));
     if (!waitsForCaller) {
-      if (livePlanner) queue.push(livePlanner);
+      if (livePlanner) queue.push(notesToModel && notes.length ? { plan: (input, execute) => livePlanner.plan({ ...input, notes }, execute) } : livePlanner);
       else {
         const steps: ScriptedStep[] = turn.delegate!.map((step) => {
           const [tool, args] = Object.entries(step)[0]! as [ToolName, Record<string, unknown>];
@@ -417,7 +439,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   // live, the voice speaks the planner's words, which paraphrase the backend's: a line the
   // backend gave in a tool result (the read-back, the no-medical-advice line) counts as given
   const given = livePlanner ? observed.calls.flatMap((c) => ['say', 'readback', 'spoken'].flatMap((k) => (typeof c.data[k] === 'string' ? [c.data[k] as string] : []))) : [];
-  const spoken = [...outbound.flatMap((o) => (o.type === 'commentary' ? [o.content] : o.type === 'instructions' && scriptLines(o.content) ? [scriptLines(o.content)] : o.type === 'thinking' && announcedLine(o.content) ? [announcedLine(o.content)!] : [])), ...replies, ...given];
+  const spoken = [...outbound.flatMap((o) => (o.type === 'commentary' ? [o.content] : o.type === 'instructions' && !notesToModel && scriptLines(o.content) ? [scriptLines(o.content)] : o.type === 'thinking' && announcedLine(o.content) ? [announcedLine(o.content)!] : [])), ...replies, ...given];
   const transfer = outbound.find((o) => o.type === 'transfer');
   const e = scenario.expect;
   const failures: string[] = [];
@@ -451,8 +473,8 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     check(normalise(reply).includes(normalise(e.first_reply_contains)), `the first reply was "${reply}", expected it to contain "${e.first_reply_contains}"`);
   }
   // live, a call that answered a question and changed nothing is as good as one that changed nothing
-  const sameOutcome = state.outcome === e.outcome || (!!livePlanner && e.outcome === 'abandoned' && state.outcome === 'info');
-  check(sameOutcome, `outcome ${state.outcome}, expected ${e.outcome}`);
+  const sameOutcome = e.outcome_any ? e.outcome_any.includes(state.outcome as never) : state.outcome === e.outcome || (!!livePlanner && e.outcome === 'abandoned' && state.outcome === 'info');
+  check(sameOutcome, `outcome ${state.outcome}, expected ${e.outcome_any ? e.outcome_any.join(' or ') : e.outcome}`);
   if (!livePlanner) check(JSON.stringify(observed.refusals) === JSON.stringify(e.refusals), `refusals ${JSON.stringify(observed.refusals)}, expected ${JSON.stringify(e.refusals)}`);
   if (e.verified !== undefined) check(!!state.verifiedPatient === e.verified, `verified ${!!state.verifiedPatient}, expected ${e.verified}`);
   check(created === e.bookings_created, `${created} bookings created, expected ${e.bookings_created}`);
@@ -528,12 +550,16 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     const on = [...state.offered.values()].filter((s) => localDateOf(s.start, clinic.timezone) === date);
     check(on.length === 0, `offered ${on.length} time(s) on ${date}, a day it must not offer`);
   }
+  const notes = outbound.map((o) => ('content' in o ? String(o.content) : '')).join('\n').toLowerCase();
+  for (const phrase of e.instructed) check(notes.includes(phrase.toLowerCase()), `no instruction to the voice said "${phrase}"`);
   for (const phrase of e.spoken_contains) {
     check(spoken.some((s) => s.toLowerCase().includes(phrase.toLowerCase()) || (!!livePlanner && saysMostOf(s, phrase))), `never said "${phrase}"`);
   }
   // a forbidden phrase is one the assistant said: live, the tools' own notes to it ("Do not ask which vet") are not speech
   // the opening greeting is the clinic's own words, not the call's: a forbidden greeting is one said again
-  const said = livePlanner ? transcript.slice(1).filter((l) => l.speaker === 'assistant').map((l) => l.text) : spoken;
+  // live, what the voice said: never a line the script put in its mouth (an `assistant:` turn, said to set off a guard)
+  const injected = new Set(scenario.turns.flatMap((t) => ('assistant' in t ? [t.assistant.trim()] : [])));
+  const said = livePlanner ? transcript.slice(1).filter((l) => l.speaker === 'assistant' && !injected.has(l.text.trim())).map((l) => l.text) : spoken;
   // the caller never hears how the assistant works (note 49 B2): not in a line the backend hands the voice, nor, live, in
   // what the voice said
   // (live, the tools' own notes to the voice are not speech: only its transcript)
@@ -545,6 +571,11 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   for (const line of new Set(spoken)) { const flat = line.replace(/\s+/g, ' ').trim(); check(joinSaid(flat) === flat, `said a sentence twice, or ran two together: "${flat.slice(0, 120)}"`); }
   for (const phrase of scenario.forbid_spoken) {
     check(!said.some((s) => s.toLowerCase().includes(phrase.toLowerCase())), `said the forbidden phrase "${phrase}"`);
+  }
+  for (const word of scenario.forbid_words) {
+    const whole = new RegExp(`(?<![\\p{L}\\p{N}])${normalise(word).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'u');
+    const line = said.find((s) => whole.test(normalise(s)));
+    check(!line, `said the forbidden word "${word}": "${(line ?? '').slice(0, 100)}"`);
   }
   // a time the clinic cannot take is never offered, whichever planner ran
   for (const problem of offeredOutsideHours(clinic, [...state.offered.values()])) check(false, `offered a time it must not: ${problem}`);

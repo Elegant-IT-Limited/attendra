@@ -201,6 +201,8 @@ export const es: LanguagePack = {
   confirmPetName: ({ name }) => `${name} es el nombre de la mascota, ¿verdad?`,
   readbackSwap: ({ when: w, provider, visit, from, to }) => `pasar la cita de ${visit.toLowerCase()} del ${sinEl(w)} con ${provider} de ${from} a ${to}`,
   askOwnerName: '¿Cuál es su nombre?',
+  declineInternals: 'Eso no es algo con lo que pueda ayudarle. Puedo ayudarle con las citas de su mascota o con preguntas sobre la clínica.',
+  medicalRefusal: 'No puedo dar consejo médico. ¿Quiere una cita con uno de nuestros veterinarios o que alguien del equipo le llame?',
   invalidDate: ({ said }) => `${said} no es una fecha del calendario. ¿Qué día le viene bien?`,
   swapWrongVet: ({ vet, animals, pet, others }) => `${vet} ${animals ? `solo atiende ${animals}` : `no atiende ese tipo de animal`}, así que no puedo pasarle esa cita a ${pet}. ${others.length ? `${others.length === 1 ? others[0] : `${others.slice(0, -1).join(', ')} o ${others.at(-1)}`} puede atender a ${pet}: ¿le busco una hora?` : `¿Quiere que el equipo le llame para darle una cita a ${pet}?`}`,
   askPetSex: ({ pet }) => `¿${pet} es macho o hembra?`,
@@ -327,8 +329,9 @@ export const es: LanguagePack = {
   asksEmergencyService: words('(atienden|reciben|aceptan|ven|tratan|manejan|cubren|hacen) (las |los )?(emergencias|urgencias)|tienen (servicio (de )?)?(emergencias|urgencias)|(como|que hacen con las) (emergencias|urgencias)|(y|que pasa con|que hay de|y que hay de) (las |una |una |la )?(emergencias?|urgencias?)|(servicio|politica|horario) de (emergencias|urgencias)'),
   reportsEmergency: words('(es|tengo|tenemos|hay) (una )?(emergencia|urgencia)'),
   // "si" is also "if" ("si puede el martes"), so it counts only as its own word at the start, before a pause or the end
-  yes: new RegExp(`^si(?=\\s*[,.!]|$)|${words('claro|correcto|esta bien|de acuerdo|perfecto|exacto|adelante|confirmo|reservela|hagalo|asi es|me parece bien|suena bien|me sirve').source}`, 'u'),
-  yesAlone: /^(vale|por favor|si por favor|ok|okey|okay|dale|claro que si)$/,
+  yes: new RegExp(`^si(?=\\s*[,.!]|$)|${words('claro|correcto|esta bien|de acuerdo|perfecto|exacto|adelante|confirmo|reservela|hagalo|asi es|me parece bien|suena bien|me sirve|por supuesto').source}`, 'u'),
+  // "eso es" only as the whole answer: "eso es todo" is a goodbye (YES-ANY-LANG review)
+  yesAlone: /^(vale|por favor|si por favor|ok|okey|okay|dale|claro que si|eso es)$/,
   hedge: new RegExp(`${words('no|espere|espera|mejor|tal vez|quizas?|a lo mejor|en realidad|otro|otra|cambiar|momento|pensandolo|pero|prefiero|aunque|repita').source}|[?¿]`, 'u'),
   markers: /\b(el|la|los|las|de|que|por|para|con|una?|quiero|necesito|cita|gracias|hola|senor|senora|manana|hoy|si|esta|usted|puedo)\b/g,
   saysNew: words('(?:es|son|soy|somos) (?:completamente )?nuev[oa]s?|(?:paciente|cliente|mascota|cachorr[oa]|perrit[oa]|gatit[oa]|perr[oa]|gat[oa]|conej[oa])s? nuev[oa]s?|nuev[oa]s? (?:paciente|cliente|mascota|aqui|en (?:la|su) clinica)|no (?:esta|estan|estoy) (?:registrad[oa]s?|en (?:su|el) sistema)|nunca (?:ha|han|he) (?:venido|ido|estado)|primera (?:vez|visita|consulta) (?:aqui|con ustedes|en (?:la|su) clinica)|(?:su|una) primera (?:consulta|visita|revision)|(?:acabo|acabamos) de (?:adoptar|tener)|(?:quiero|quisiera|necesito) registrar|registrar a (?:mi|mis|nuestr[oa]s?)'),

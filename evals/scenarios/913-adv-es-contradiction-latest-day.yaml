@@ -1,0 +1,30 @@
+id: adv-es-contradiction-latest-day
+title: "Adversarial in Spanish: \"el viernes, no, mejor el jueves\": the latest day is searched and booked"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550172"
+tags: [no-demo, adversarial, es]
+turns:
+  - caller: "Hola, soy Linh Nguyen, con el número desde el que llamo. Biscuit necesita una consulta por enfermedad. ¿Puede venir el viernes? No, mejor el jueves."
+    reply: "{reply}"
+    delegate:
+      - verify_caller: {"owner_name": "Linh Nguyen", "pet_name": "Biscuit"}
+      - find_slots: {"visit_type_id": "vt_sick", "provider_id": null, "from_date": null, "part_of_day": "any"}
+  - caller: "La primera."
+    reply: "{reply}"
+    delegate:
+      - propose_booking: {"slot_id": "$offered[0]", "replaces_appointment_id": null}
+  - caller: "Sí."
+    reply: "{reply}"
+    wait_for: ["lo reservo", "la reservo", "le reservo", "quiere que lo reserve", "quiere que la reserve", "desea que lo reserve"]
+    meanwhile: "La primera, por favor."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: "booked"
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  not_offered_on: ["2026-10-02"]
+  booked_on: "2026-10-01"
+  language: es

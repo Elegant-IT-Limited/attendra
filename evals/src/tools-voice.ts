@@ -29,6 +29,8 @@ function clockFor(clinic: ClinicConfig, now: Date, state: CallState) {
 interface Session { flow: FlowMemory; sent: number; lastSaid: string | null; stateNote?: string | null; ws?: OpenAIRealtimeWS; ready?: Promise<void> }
 
 export class ToolsPathPlanner implements Planner {
+  /** The voice itself: a call's guard notes reach it with the turn, and its reply is the turn's one reply. */
+  readonly readsNotes = true;
   private readonly sessions = new WeakMap<CallState, Session>();
   /** The call's open socket: scenarios run one after another, so a new call closes the last one's (a socket left open hits OpenAI's 60-minute limit and its error ends the run). */
   private open: OpenAIRealtimeWS | null = null;
@@ -77,7 +79,8 @@ export class ToolsPathPlanner implements Planner {
   /** Path B: the Responses model with the backend's instructions and our tools, round after round until it writes words. */
   private async responses(input: PlannerInput, run: (name: string, args: string) => Promise<string>, requests: PlannerTiming['requests']): Promise<string | null> {
     const transcript = input.state.turns.map((t) => ({ role: t.speaker === 'caller' ? 'user' as const : 'assistant' as const, content: t.text }));
-    const items: OpenAI.Responses.ResponseInputItem[] = [...transcript];
+    // the turn's guard notes, as the voice on a call has them, after the turn
+    const items: OpenAI.Responses.ResponseInputItem[] = [...transcript, ...(input.notes ?? []).map((n) => ({ role: 'system' as const, content: n }))];
     for (let round = 0; round < 8; round++) {
       const t0 = performance.now();
       const res = await this.openai.responses.create({
@@ -123,6 +126,8 @@ export class ToolsPathPlanner implements Planner {
     // the per-turn note a call gets after each caller turn on path A (the same each turn, never removed: batch 1d)
     const note = (text: string) => ws.send({ type: 'conversation.item.create', item: { type: 'message', role: 'system', content: [{ type: 'input_text', text }] } } as never);
     note(TURN_NOTE);
+    // the turn's guard notes, as a call's voice has them: system messages before its one reply (realtime.ts, instructions)
+    for (const n of input.notes ?? []) note(n);
     // lookup-ahead: the lookups the caller's words ask for (at most two: the pet found, then its times), run before the
     // reply and handed to it, as the voice service does. On, as on calls; ATTENDRA_LOOKUP_AHEAD=off to compare
     const ran = new Set<string>();

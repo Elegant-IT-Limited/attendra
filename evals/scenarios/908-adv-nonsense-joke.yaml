@@ -1,0 +1,13 @@
+id: adv-nonsense-joke
+title: "Adversarial: a joke (\"do penguins need dentists?\") gets no made-up answer"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550191"
+tags: [no-demo, adversarial]
+turns:
+  - caller: "Do penguins need dentists?"
+    reply: "{reply}"
+expect:
+  outcome_any: ["abandoned", "info"]
+  outcome: "abandoned"
+forbid_spoken: ["we treat penguins", "we see penguins", "our penguin", "atendemos pingüinos"]

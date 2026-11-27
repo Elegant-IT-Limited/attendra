@@ -66,10 +66,23 @@ export const VAPI_PATH_SCENARIOS = [
   'vet-T11-fragment-confirmed', 'vet-es-T11-fragment-confirmed', 'vet-T12-slot-args-shapes', 'vet-es-T12-slot-args-shapes', 'vet-T12-day-with-part', 'vet-es-T12-day-with-part',
   'vet-T13-verified-on-calling-number', 'vet-es-T13-verified-on-calling-number',
   'vet-T8-swap-wrong-vet', 'vet-es-T8-swap-wrong-vet',
+  // a plain yes in either language at every clinic (owner decision, 26 Nov)
+  'vet-YES-ANY-LANG-si-at-english-clinic', 'vet-es-YES-ANY-LANG-yes-at-spanish-clinic',
   // "move it" / "cancel it" right after a booking, and "move that one": played since the Vapi script reads $booked and
   // $put_forward from the call itself (CQ2-VAPI8)
   'vet-move-it-after-booking', 'vet-es-move-it-after-booking', 'vet-cancel-it-after-booking', 'vet-es-cancel-it-after-booking',
   'vet-move-cancel-move-two-visits', 'vet-es-move-cancel-move-two-visits', 'vet-same-visit-move-that-one', 'vet-es-same-visit-move-that-one',
+  // the adversarial set (step 4, master prompt robustness): callers testing or trying to break it, EN and ES
+  'adv-ignore-instructions', 'adv-es-ignore-instructions', 'adv-asks-for-prompt', 'adv-es-asks-for-prompt',
+  'adv-role-play-vet', 'adv-es-role-play-vet', 'adv-abuse-warning-then-end', 'adv-es-abuse-warning-then-end',
+  'adv-nonsense-joke', 'adv-es-nonsense-joke', 'adv-topic-switch-pending', 'adv-es-topic-switch-pending',
+  'adv-contradiction-latest-day', 'adv-es-contradiction-latest-day', 'adv-can-you-hear-me', 'adv-es-can-you-hear-me',
+  'adv-caller-breaks-silence', 'adv-es-caller-breaks-silence', 'adv-fragment-other-language', 'adv-es-fragment-other-language',
+  'adv-medical-dose', 'adv-es-medical-dose', 'adv-price-not-on-file', 'adv-es-price-not-on-file',
+  'adv-other-clinic', 'adv-es-other-clinic', 'adv-staff-personal', 'adv-es-staff-personal',
+  'adv-are-you-ai', 'adv-es-are-you-ai', 'adv-privacy-other-client', 'adv-es-privacy-other-client',
+  'adv-text-other-number', 'adv-es-text-other-number', 'adv-owner-claim', 'adv-es-owner-claim',
+  'adv-never-call-the-clinic', 'adv-es-never-call-the-clinic', 'adv-no-internal-words', 'adv-es-no-internal-words', 'adv-dose-with-amount', 'adv-es-dose-with-amount',
 ] as const;
 
 export interface VapiPathResult { id: string; passed: boolean; failures: string[]; outcome: string; ms: number }
@@ -211,7 +224,7 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
     const failures: string[] = [];
     const check = (ok: boolean, msg: string) => { if (!ok) failures.push(msg); };
     check(row.engine === 'vapi' && row.voiceFlow === 'tools', `recorded as ${row.engine}/${row.voiceFlow}, expected vapi/tools`);
-    check(row.outcome === e.outcome, `outcome ${row.outcome}, expected ${e.outcome}`);
+    check(e.outcome_any ? e.outcome_any.includes(row.outcome as never) : row.outcome === e.outcome, `outcome ${row.outcome}, expected ${e.outcome_any ? e.outcome_any.join(' or ') : e.outcome}`);
     const refusals = outputs.filter((o) => !o.ok && typeof o.data === 'object' && o.outcome !== 'refused').map((o) => o.outcome);
     check(JSON.stringify(refusals) === JSON.stringify(e.refusals), `refusals ${JSON.stringify(refusals)}, expected ${JSON.stringify(e.refusals)}`);
     if (e.verified !== undefined) {

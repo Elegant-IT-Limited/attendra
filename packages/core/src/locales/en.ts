@@ -175,6 +175,9 @@ export const en: LanguagePack = {
   confirmPetName: ({ name }) => `${name} is the pet's name, right?`,
   readbackSwap: ({ when: w, provider, visit, from, to }) => `move the ${visit.toLowerCase()} on ${w} with ${provider} from ${from} to ${to}`,
   askOwnerName: "What's your first name?",
+  declineInternals: "That's not something I can help with. I can help with your pet's visits or questions about the clinic.",
+  // the same words as core MEDICAL_REFUSAL (a test keeps them equal)
+  medicalRefusal: "I can't give medical advice. Would you like a visit with one of our vets, or a call back from our team?",
   invalidDate: ({ said }) => `${said} isn't a date on the calendar. Which day would you like?`,
   swapWrongVet: ({ vet, animals, pet, others }) => `${vet} ${animals ? `sees ${animals} only` : `isn't listed for ${pet}'s kind of animal`}, so I can't move that visit to ${pet}. ${others.length ? `${others.length === 1 ? others[0] : `${others.slice(0, -1).join(', ')} or ${others.at(-1)}`} can see ${pet}: shall I look for a time?` : `Shall I take a request so the team can book ${pet}?`}`,
   askPetSex: ({ pet }) => `Is ${pet} a boy or a girl?`,

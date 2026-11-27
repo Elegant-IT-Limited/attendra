@@ -1,0 +1,29 @@
+id: adv-contradiction-latest-day
+title: "Adversarial: \"Friday. No wait, Thursday\": the latest day is searched and booked (asking once which they mean is prompt-only: a live judged run)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550172"
+tags: [no-demo, adversarial]
+turns:
+  - caller: "Hi, Linh Nguyen, on the number I'm calling from. Biscuit needs a sick visit. Can he come in on Friday? No wait, Thursday."
+    reply: "{reply}"
+    delegate:
+      - verify_caller: {"owner_name": "Linh Nguyen", "pet_name": "Biscuit"}
+      - find_slots: {"visit_type_id": "vt_sick", "provider_id": null, "from_date": null, "part_of_day": "any"}
+  - caller: "The first one."
+    reply: "{reply}"
+    delegate:
+      - propose_booking: {"slot_id": "$offered[0]", "replaces_appointment_id": null}
+  - caller: "Yes."
+    reply: "{reply}"
+    wait_for: ["shall i book", "book that", "would you like me to book", "want me to book", "should i book"]
+    meanwhile: "The first one, please."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: "booked"
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  not_offered_on: ["2026-10-02"]
+  booked_on: "2026-10-01"

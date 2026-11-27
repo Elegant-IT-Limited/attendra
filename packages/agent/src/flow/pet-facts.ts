@@ -70,6 +70,8 @@ const plural = (w: string) => [w, `${w}s`, `${w}es`];
 
 /** Every word for a kind of animal, in every language, to the English name kept on the record. */
 const KINDS: Record<string, string> = Object.assign({}, ...LANGUAGES.map((l) => PACKS[l].memory.species));
+/** Whether a word is a kind of animal in any language ("perro", "puppy", "gatito", "pet"): never a pet's name on its own. */
+export const isKindWord = (word: string) => { const w = normalise(word).trim(); return w in KINDS || w === 'pet' || w === 'mascota'; };
 const kindOf = (word: string) => { const w = normalise(word).trim(); return KINDS[w] ?? KINDS[w.replace(/e?s$/, '')] ?? w; };
 
 function saidSpecies(said: string[], species: string): boolean {

@@ -17,6 +17,11 @@ import { VISIT_TYPES_RULE } from './visit-offer';
  */
 export interface Planner {
   plan(input: PlannerInput, execute: (name: ToolName, args: unknown) => Promise<ToolResult>): Promise<PlannerOutput>;
+  /**
+   * The planner is the voice itself (the tools path's voice model): the call's guard notes for the turn come to it in
+   * `notes`, as a call's voice reads them, and its reply is the turn's one reply. The eval harness relies on it.
+   */
+  readsNotes?: boolean;
 }
 
 /**
@@ -33,6 +38,11 @@ export interface PlannerInput {
    * done before the backend confirms it. Given, the first round is streamed.
    */
   onLookup?: (line: string) => void;
+  /**
+   * The guard notes the caller's words brought this turn ("Say, word for word, only this line…"), for a planner that is
+   * the voice (readsNotes): on a call they are system messages in the voice's conversation before its one reply.
+   */
+  notes?: readonly string[];
 }
 export interface PlannerOutput { say: string | null; quiet?: string; timing?: PlannerTiming }
 /**
@@ -145,7 +155,7 @@ export function systemPrompt(clinic: ClinicConfig, dateLine: string) {
     'A time the caller picks before they (or their pet) are found: call propose_booking with it all the same. The backend keeps the choice and, once they are found or added, says how to read it back and book it on their yes. Until then say you will book it right after that; never "I\'ll take care of it", and never that it is booked or done.',
     'Every change is two steps: propose it, let the assistant read it back, and commit only after the caller says yes. Until then nothing is booked: read it back as a question ("Shall I book ...?"), never as done ("is set", "is booked"). When they say yes, call commit_pending straight away, without looking anything up again.',
     'Take a callback request only after the caller asked to be called back, or said yes when you offered one. When what they want cannot be done now, say so and offer the request in the same reply; take it after their yes. A yes ("okay", "sure", "yes please") is taken at once with create_callback, callback_number null (the number they are calling from), before any other question; then say the team will call them back on that number. Never ask first whether that number is the best one.',
-    `For a medical question (symptoms, whether something is serious, medicines or doses), say: "${MEDICAL_REFUSAL}" Then offer a visit or a callback. Preparing for a visit (fasting before blood work, what to bring, how long it takes) is a clinic question, not a medical one: look in search_knowledge or get_clinic_info first and answer from what they return.`,
+    `For a medical question (symptoms, whether something is serious, medicines or doses), say: "${MEDICAL_REFUSAL}" Then wait for their answer: never take a callback or book before they choose. Preparing for a visit (fasting before blood work, what to bring, how long it takes) is a clinic question, not a medical one: look in search_knowledge or get_clinic_info first and answer from what they return.`,
     'Asked about holidays or closures ("what\'s your next holiday?", "are you open on the 4th?"), answer from get_clinic_info\'s closed_days_ahead: the next ones by date and name. When it is empty, say no closures are marked in the next few months and give the usual weekly hours; that is not a reason for a callback.',
     'When the day the caller asks for is one the clinic is closed (a holiday, a weekend), say so and offer the first times after it from find_slots, which skips closed days; that is no reason for a callback. A vet with their own hours can work while the front desk is closed (a Sunday, an evening): find_slots offers those times, and say_as says so in its front-desk sentence.',
     'A time of day the caller names ("is 4 free?", "after 3", "earlier than 6", "around 5") goes to find_slots as from_time with its time_mode, with the day as from_date; the answer leads with whether that exact time is free, then the nearest times on that side, and say_as says it. Only "the earliest" or no time at all is an earliest-first search. A caller who asks for the first time available, or says any day or any provider is fine, is offered the first times straight away, with no question about preferences. "Tomorrow", "Friday" and "next week" are dates: look them up in the date table at the end, never work them out. "This Wednesday" is the coming one; "next Wednesday" early in a week could be either, and find_slots asks which, once. A time with no new day after a booking or a move on this call ("make it 4:40") keeps that visit\'s day.',

@@ -20,7 +20,9 @@ const Turn = z.union([
   // {booked} are filled in from the call as it happened.
   // dropped: the voice let this turn go, with no reply and no hand-off (a test call, 2026-10-26); the call's watchdog
   // gives the voice the caller's words back after 5 s, and the hand-off follows. Never answered with "say that again".
-  z.object({ caller: z.string(), reply: z.string().optional(), delegate: z.array(Step).optional(), dropped: z.boolean().optional() }),
+  // wait_for (live only): the caller says this line only once the assistant's last reply contains one of these words (a
+  // read-back's "Shall I book"); until then, at most twice, `meanwhile` (a model voice may ask something else first)
+  z.object({ caller: z.string(), reply: z.string().optional(), delegate: z.array(Step).optional(), dropped: z.boolean().optional(), wait_for: z.array(z.string()).optional(), meanwhile: z.string().optional() }),
   z.object({ assistant: z.string() }),
 ]);
 
@@ -54,6 +56,9 @@ export const Scenario = z.object({
   facts: z.string().optional(),
   expect: z.object({
     outcome: z.enum(['booked', 'rescheduled', 'cancelled', 'task_created', 'transferred', 'info', 'emergency', 'abandoned']),
+    // when more than one way through is right (the voice may answer a question without a tool live, or with one scripted):
+    // the call's outcome is any of these, and \`outcome\` is ignored (adversarial live run, 2026-11-26)
+    outcome_any: z.array(z.enum(['booked', 'rescheduled', 'cancelled', 'task_created', 'transferred', 'info', 'emergency', 'abandoned'])).optional(),
     refusals: z.array(z.string()).default([]), // error codes runTool must return, in order
     verified: z.boolean().optional(),
     bookings_created: z.number().int().default(0),
@@ -73,6 +78,8 @@ export const Scenario = z.object({
     no_emergency_result: z.boolean().optional(),
     language: z.enum(LANGUAGES).optional(), // the language the call ended in
     spoken_contains: z.array(z.string()).default([]), // phrases the backend must have given the voice model, like the 999 line
+    // phrases in an instruction the backend sent the voice (a guard's note, not a line to say): scripted path only (step 4)
+    instructed: z.array(z.string()).default([]),
     // phrases the backend's tool results gave the planner (a vet's own field from get_clinic_info), and ones they never gave (a field kept for the team)
     returned: z.array(z.string()).default([]),
     never_returned: z.array(z.string()).default([]),
@@ -114,6 +121,9 @@ export const Scenario = z.object({
     one_question_per_reply: z.boolean().default(true),
   }),
   forbid_spoken: z.array(z.string()).default([]), // phrases that must never be said
+  // words that must never be said, as whole words, accents aside ("rules" is never in "schedules"; the owner's decision on
+  // declining a prompt request, 2026-11-26: any decline, but no word for the assistant's internals)
+  forbid_words: z.array(z.string()).default([]),
 });
 export type Scenario = z.infer<typeof Scenario>;
 
